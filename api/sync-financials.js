@@ -219,18 +219,11 @@ export function rowsFor(json, statement, symbol) {
     return out;
 }
 
-async function sbUpsert(table, rows) {
-    if (!rows.length) return 0;
-    const url = SB_URL + '/rest/v1/' + table
-        + '?on_conflict=symbol,fiscal_date_ending,period,source';
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { ...sbHeaders(SB_SERVICE), Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify(rows),
-    });
-    if (!res.ok) throw new Error(table + ' upsert ' + res.status + ' ' + (await res.text().catch(() => '')).slice(0, 200));
-    return rows.length;
-}
+// NOTE: the per-table sbUpsert() that used to live here is deleted rather than
+// left unused. It wrote ONE table per request, which is precisely the
+// partial-symbol path the transactional RPC exists to close -- and a helper
+// that is still importable is a helper the next edit can reach for. Same
+// reasoning that deleted _shared/alpaca_tasks/account.ts.
 
 async function sbSelect(path) {
     const res = await fetch(SB_URL + '/rest/v1/' + path, { headers: sbHeaders(SB_SERVICE) });
@@ -241,6 +234,22 @@ async function sbSelect(path) {
 // Priority order is deliberate: the held book first (those names are on a page
 // someone is looking at today), then the wider screener universe. A run that
 // can only afford eight symbols should spend them on the book.
+// One transaction for a symbol's three statements, via the RPC. Returns the
+// total row count it wrote. See atlas_upsert_company_statements().
+async function sbUpsertStatements(income, balance, cashflow) {
+    const res = await fetch(SB_URL + '/rest/v1/rpc/atlas_upsert_company_statements', {
+        method: 'POST',
+        headers: sbHeaders(SB_SERVICE),
+        body: JSON.stringify({ p_income: income, p_balance: balance, p_cashflow: cashflow }),
+    });
+    if (!res.ok) {
+        throw new Error('atlas_upsert_company_statements ' + res.status + ' '
+            + (await res.text().catch(() => '')).slice(0, 200));
+    }
+    const out = await res.json().catch(() => null);
+    return (out && Number(out.total)) || 0;
+}
+
 async function resolveSymbols(explicit, limit, refreshDays) {
     if (explicit.length) return explicit;
 
@@ -380,8 +389,17 @@ export default async function handler(req, res) {
                 if (paceMs) await sleep(paceMs);
             }
             // Every fetch cleared, so the symbol is complete or genuinely empty.
-            for (const w of pending) {
-                summary.rows_written += await sbUpsert(w.table, w.rows);
+            // ONE transaction for all three. Three PostgREST POSTs are three
+            // transactions however they are sequenced, so a failure on the
+            // second or third left the first committed -- a half-loaded symbol,
+            // which is invisible downstream because vw_company_fundamentals
+            // inner-joins the three statements.
+            const byTable = Object.fromEntries(pending.map(w => [w.table, w.rows]));
+            if (pending.length) {
+                summary.rows_written += await sbUpsertStatements(
+                    byTable.company_income_statement || [],
+                    byTable.company_balance_sheet    || [],
+                    byTable.company_cash_flow        || []);
                 wroteAny = true;
             }
             if (wroteAny) {

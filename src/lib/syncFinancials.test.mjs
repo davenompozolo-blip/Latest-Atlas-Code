@@ -142,11 +142,27 @@ test('a symbol is written only after all three statements have been fetched', ()
     assert.ok(end > open, 'should be able to bound the fetch loop');
 
     const body = src.slice(open, end);
-    assert.ok(!/sbUpsert\s*\(/.test(body),
-        'sbUpsert must NOT be called inside the per-statement fetch loop: that is '
-      + 'what made a symbol non-atomic against the throttle');
-    assert.ok(/sbUpsert\s*\(/.test(src.slice(end)),
+    assert.ok(!/sbUpsert\w*\s*\(/.test(body),
+        'no write may happen inside the per-statement fetch loop: that is what '
+      + 'made a symbol non-atomic against the throttle');
+    assert.ok(/sbUpsertStatements\s*\(/.test(src.slice(end)),
         'the write should happen after the fetch loop closes');
+});
+
+test('the three statements are written in ONE transaction, not three POSTs', () => {
+    // Buffering the fetches closed the throttle window but not this one: three
+    // separate POSTs to /rest/v1/<table> are three transactions however they
+    // are sequenced, so a failure on the second left the first committed.
+    const src = stripComments(LOADER);
+    assert.ok(/rpc\/atlas_upsert_company_statements/.test(src),
+        'the write must go through the transactional RPC');
+    assert.ok(/sbUpsertStatements\s*\(/.test(src),
+        'and through the helper that calls it');
+    // The per-table upsert must no longer be on the statement write path.
+    const calls = (src.match(/[^\w]sbUpsert\s*\(/g) || []).length;
+    assert.equal(calls, 0,
+        'sbUpsert() must not be called any more: it writes one table per '
+      + 'request, which is exactly the partial-symbol path being closed');
 });
 
 test('freshness is judged on COMPLETE coverage, not on the income statement alone', () => {

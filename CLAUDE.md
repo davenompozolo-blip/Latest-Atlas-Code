@@ -2975,7 +2975,7 @@ than taken on trust:
 'NaN'::numeric > 0          ->  true
 'NaN'::numeric >= 0         ->  true
 'NaN'::numeric > 3.841459   ->  true
-'NaN'::numeric <> 'NaN'     ->  false    (numeric NaN equals itself; float does not)
+'NaN'::numeric <> 'NaN'     ->  false    (PostgreSQL treats NaN as equal to itself)
 ```
 
 So a NaN row satisfied `sd_pred_daily > 0`, satisfied `cvar_pred_daily >
@@ -2983,6 +2983,19 @@ var_pred_daily` **from either side**, satisfied `kupiec_lr >= 0`, and satisfied
 **both** `kupiec_reject_*` flag bindings with the flags set true. Fifteen CHECKs
 written specifically so a row could not claim something it had no evidence for,
 and one sentinel passed all of them.
+
+**CORRECTION (2026-09-22): this entry originally said "numeric NaN equals
+itself; float does not". That is FALSE in PostgreSQL and was repeated into the
+EQ-2 peer view's comment before CodeRabbit caught it on PR #804.** Measured on
+PG 17.6: `'NaN'::float8 = 'NaN'::float8` is **true**, and `'NaN'::float8 > 1e308`
+is **true**, exactly as for `numeric`. Postgres deliberately departs from IEEE
+754 for BOTH types so that NaN sorts and can sit in a btree. The IEEE rule
+(NaN != NaN) is what most languages do and is what I was remembering; it is not
+what this database does.
+
+Nothing else in this entry moves -- the finding is that a one-sided bound admits
+NaN, and it admits it under either type. **A fact about a database is measured
+in that database, not recalled from the standard it implements.**
 
 **A one-sided bound is NaN-permeable; a two-sided range is not.** `lw_delta >= 0
 and lw_delta <= 1` on `book_regime_cvar` refuses NaN already, because the UPPER
@@ -4456,10 +4469,10 @@ EQ-2. `vw_company_fundamentals` (CFA ratios, FCFF/FCFE, growth, SGR),
 `atlas_fiscal_aligned_year`. Full report in
 `docs/EQ2_DERIVED_FUNDAMENTALS_REPORT.md`. 8.4 ms symbol-filtered.
 
-**EQ-1's hand-computed TGT figures are a real regression test and four of seven
+**EQ-1's hand-computed TGT figures are a real regression test and three of seven
 reproduce exactly** -- tax 22.28%, dividend coverage 72.4%, FCF $2,835.0m. The
-three that differ are INPUT CHOICES and were run to ground rather than waved
-through. FCFF: the view takes the CFO-based definition on the reported $445m
+four that differ (FCFF, DIO, DSO, DPO) are INPUT CHOICES and were run to ground
+rather than waved through. FCFF: the view takes the CFO-based definition on the reported $445m
 interest expense; EQ-1 reconstructed from net income, and the $16m gap is the
 non-cash items that formulation has to enumerate and misses. Days ratios:
 EQ-1's 59.5/6.3/61.0 reproduce EXACTLY from ending balances, the view uses
@@ -4572,10 +4585,20 @@ margin 24.93% vs 12.84% off their own filings.
 
 **`percentile_cont` HAS NO NUMERIC OVERLOAD.** It coerces to double precision
 and returns it, so the medians published as float8 beside exact-numeric values.
-Not cosmetic: float8 carries NaN and Infinity, and **float NaN does not equal
-itself while numeric NaN does** -- the asymmetry that let a sentinel through
-fifteen CHECKs on PR #783. Cast the result back. A view column's type cannot be
-changed by `CREATE OR REPLACE`, so this needs a DROP.
+Cast the result back, and a view column's type cannot be changed by
+`CREATE OR REPLACE`, so this needs a DROP.
+
+**The reason first given for that cast was WRONG and CodeRabbit corrected it on
+PR #804.** I wrote that float NaN does not equal itself while numeric NaN does.
+Measured on PG 17.6: both are **true**, for `=` and for `> 1e308` alike --
+Postgres departs from IEEE 754 for both types so NaN can sort. There is no
+asymmetry and the cast does not close a NaN door.
+
+The cast is still right, for a narrower and duller reason: **float8 is inexact**
+and these are financial values, so `vs_peer_median` should be an exact
+difference of two exact numbers rather than a numeric minus a float8. Keeping a
+correct change for a wrong reason is how a wrong reason spreads -- it had
+already reached this file's PR #783 entry.
 
 **A percentile over one peer is degenerate** -- it can only be 0 or 1. No floor
 is baked in, because the right one is a display decision that depends on the

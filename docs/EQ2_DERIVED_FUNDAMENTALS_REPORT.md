@@ -19,7 +19,7 @@ indexes.
 ## Checked against EQ-1's independently computed TGT figures
 
 EQ-1 computed TGT FY2026 by hand to prove the statement layer worked. Those
-figures are a genuine regression test, and four reproduce exactly:
+figures are a genuine regression test. Three reproduce exactly and four differ:
 
 | | EQ-1 | view |
 |---|---|---|
