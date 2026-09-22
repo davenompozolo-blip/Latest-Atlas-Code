@@ -137,3 +137,54 @@ test('percentile is withheld when the company itself has no measurement', () => 
         'a company that cannot be measured does not sit at the bottom of its peer group');
     assert.equal(cmp.vsMedian, null);
 });
+
+// ── company phase, derived from the statements ───────────────────────────────
+import { companyPhase, revenueCagr, PHASE_BANDS } from '../pages/equity/statementRows.js';
+
+const period = (y, rev, ni, payout) => ({
+    fiscal_year: y, total_revenue: rev, net_income: ni, dividend_payout_ratio: payout,
+    ebit: rev * 0.1, effective_tax_rate: 0.22, capital_expenditures: rev * 0.04, d_and_a: rev * 0.03,
+});
+
+test('revenue CAGR is over the loaded window and null when an end is unusable', () => {
+    const rows = [period(2025, 1000), period(2024, 800), period(2023, 600), period(2022, 450)];
+    const c = revenueCagr(rows);
+    assert.ok(Math.abs(c - (Math.pow(1000 / 450, 1 / 3) - 1)) < 1e-12);
+    assert.equal(revenueCagr([period(2025, 1000)]), null, 'one period is not a trend');
+    assert.equal(revenueCagr([period(2025, 1000), period(2024, 0)]), null, 'growth from zero is undefined');
+    assert.equal(revenueCagr([period(2025, 1000), period(2024, null)]), null);
+});
+
+test('a fast-growing loss-maker is early stage, not growth', () => {
+    const rows = [period(2025, 1000, -50), period(2024, 700, -60), period(2023, 450, -40)];
+    const p = companyPhase(rows);
+    assert.equal(p.phase, 'Early stage');
+    assert.equal(p.evidence.profitable, false);
+});
+
+test('slow growth plus a real payout is mature', () => {
+    const rows = [period(2025, 1000, 100, 0.55), period(2024, 985, 98, 0.52), period(2023, 975, 95, 0.50)];
+    const p = companyPhase(rows);
+    assert.equal(p.phase, 'Mature');
+    assert.ok(p.evidence.payoutRatio >= PHASE_BANDS.maturePayout);
+});
+
+test('slow growth WITHOUT a payout is not called mature outright', () => {
+    const rows = [period(2025, 1000, 100, null), period(2024, 985, 98, null), period(2023, 975, 95, null)];
+    assert.equal(companyPhase(rows).phase, 'Mature / low growth',
+        'no dividend is not evidence of maturity on its own');
+});
+
+test('a company with no usable evidence gets NO phase, not a default', () => {
+    assert.equal(companyPhase([]), null);
+    assert.equal(companyPhase(null), null);
+    assert.equal(companyPhase([{ fiscal_year: 2025 }]), null,
+        'an empty row must not be placed in a phase');
+});
+
+test('the bands are absolute, so a phase does not move when peers change', () => {
+    // Same company, evaluated twice. Nothing about the cohort enters the call.
+    const rows = [period(2025, 1000, 100, null), period(2024, 700, 80, null), period(2023, 500, 60, null)];
+    assert.equal(companyPhase(rows).phase, companyPhase(rows).phase);
+    assert.equal(companyPhase(rows).bands.highGrowth, PHASE_BANDS.highGrowth);
+});

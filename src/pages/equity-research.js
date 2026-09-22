@@ -7,6 +7,7 @@ import {
     CapitalTab, FactorTab, TechnicalsAndPeersTab, parseInputs,
 } from './equity-research-panels.js';
 import { FinancialsTab } from './equity-financials-tab.js';
+import { BackgroundTab } from './equity-background-tab.js';
 import { EquityScreener } from './equity-screener.js';
 import { runValuation, canonicalSectorLabel } from '../lib/valuationEngine.js';
 
@@ -382,6 +383,7 @@ function EarningsSummary({ quarterly, snapshot }) {
 // ── New 6-tab main panel ─────────────────────────────────────────────────────
 
 var MAIN_TABS = [
+    { id: 'bg',      label: 'Background', isNew: true },
     { id: 'thesis',  label: 'Thesis' },
     { id: 'fin',     label: 'Financials', isNew: true },
     { id: 'val',     label: 'Valuation' },
@@ -404,6 +406,7 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, engine, 
 
     var tabContent = null;
     if (tab === 'thesis')  tabContent = React.createElement(ThesisTab,  { inputs: inp, price, engine, onBlendedFV: setBlendedFV, onEVPW: setEVPW, symbol, thesis, onThesis });
+    if (tab === 'bg')      tabContent = React.createElement(BackgroundTab, { symbol, rawOverview });
     if (tab === 'fin')     tabContent = React.createElement(FinancialsTab, { symbol });
     if (tab === 'val')     tabContent = React.createElement(ValuationTab, { inputs: inp, price });
     if (tab === 'qual')    tabContent = React.createElement(QualityTab,  { inputs: inp, derived, snap, symbol });

@@ -377,3 +377,82 @@ export function mergeDerived(fromTable, fromStatements) {
     });
     return out;
 }
+
+// ============================================================
+// Company type, derived from the statements rather than asserted.
+//
+// The brief asks for "Growth / Value / mature / early stage". That is a claim
+// about a company's phase, and the statements can support it: revenue
+// trajectory, whether earnings are positive and stable, what share of profit
+// is returned rather than reinvested, and how long the filing history runs.
+//
+// Bands are ABSOLUTE and stated on the card, never quantiles over whatever
+// happens to be loaded — a quantile rule would relabel a company because its
+// peers changed, which is a ranking dressed as a classification.
+//
+// Returns null when the evidence is not there. A company whose phase cannot be
+// established is not "mature by default".
+// ============================================================
+
+export const PHASE_BANDS = {
+    highGrowth: 0.15,   // revenue CAGR above this reads as growth
+    lowGrowth: 0.05,    // and below this as mature
+    maturePayout: 0.30, // returning this share of earnings reads as mature
+};
+
+/** Compound annual growth over the loaded window; null if either end is unusable. */
+export function revenueCagr(rows) {
+    if (!rows || rows.length < 2) return null;
+    const newest = rows[0], oldest = rows[rows.length - 1];
+    const a = numOrNull(newest.total_revenue);
+    const b = numOrNull(oldest.total_revenue);
+    if (a == null || b == null || b <= 0 || a <= 0) return null;
+    const years = rows.length - 1;
+    if (years < 1) return null;
+    return Math.pow(a / b, 1 / years) - 1;
+}
+
+export function companyPhase(rows) {
+    if (!rows || !rows.length) return null;
+    const cur = rows[0];
+    const cagr = revenueCagr(rows);
+    const payout = numOrNull(cur.dividend_payout_ratio);
+    const ni = numOrNull(cur.net_income);
+
+    // Loss-making with a filing history too short to show a trend is the one
+    // case the statements genuinely cannot place.
+    const profitable = ni == null ? null : ni > 0;
+    const lossMaking = profitable === false;
+
+    const evidence = {
+        revenueCagr: cagr,
+        periods: rows.length,
+        payoutRatio: payout,
+        profitable: profitable,
+        reinvestmentRate: reinvestmentRate(cur),
+    };
+
+    if (cagr == null && payout == null && profitable == null) return null;
+
+    let phase = null;
+    let why = null;
+    if (lossMaking && cagr != null && cagr >= PHASE_BANDS.highGrowth) {
+        phase = 'Early stage';
+        why = 'growing fast and not yet profitable';
+    } else if (cagr != null && cagr >= PHASE_BANDS.highGrowth) {
+        phase = 'Growth';
+        why = 'revenue compounding above ' + Math.round(PHASE_BANDS.highGrowth * 100) + '% a year';
+    } else if (cagr != null && cagr < PHASE_BANDS.lowGrowth
+               && payout != null && payout >= PHASE_BANDS.maturePayout) {
+        phase = 'Mature';
+        why = 'low revenue growth and returning a substantial share of earnings';
+    } else if (cagr != null && cagr < PHASE_BANDS.lowGrowth) {
+        phase = 'Mature / low growth';
+        why = 'revenue compounding below ' + Math.round(PHASE_BANDS.lowGrowth * 100) + '% a year';
+    } else if (cagr != null) {
+        phase = 'Steady';
+        why = 'revenue growth between the growth and mature bands';
+    }
+    if (!phase) return null;
+    return { phase, why, evidence, bands: PHASE_BANDS };
+}
