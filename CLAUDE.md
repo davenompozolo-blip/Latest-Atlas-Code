@@ -4335,12 +4335,29 @@ are year-over-year comparisons and there was no prior year.** Altman read
 "partial estimate X3+X4 only". Beneish read N/A. CCC, reinvestment rate and
 dividend coverage rendered em dashes. None of it was a display bug.
 
-**`equity_fundamentals_derived` has no writer.** 38 rows, last written
-2026-08-11, and grep across `api/`, `src/`, `scripts/`, `supabase/` finds
-readers and the original migration only. Inside it: beneish 0/38, ccc 0/38,
-reinvest 0/38, div_coverage 0/38, altman full 0/38. **A table with rows in it
-is not a table something maintains** -- the shape of the
-`sync_portfolio_history` finding, one layer out.
+**`equity_fundamentals_derived`'s writer is on-demand and shallow -- and I
+first recorded that it had NO writer, which is wrong.** The grep that produced
+that claim missed `supabase/functions/`. `compute_ticker_derived` is the
+writer, deployed and ACTIVE at version 3, and its `updated_at` is
+**2026-08-11 -- exactly the date those 38 rows stop**. It is called by the
+Equity Research UI when a ticker is opened and its derived row is missing or
+more than 7 days old, so it writes only for tickers somebody looked at. 38 rows
+is 38 tickers viewed, not a dead table.
+
+**A wrong dead-writer entry is worse than no entry** -- it sends the next
+session to build a writer that already exists. The same correction this file
+already had to make about `theme_leadership_weekly`.
+
+What is true, and is the actual defect: the function fetches **2 annual
+periods** from Finnhub (`financials-reported`), so every multi-year signal it
+owns is starved by construction. Inside it: beneish 0/38, ccc 0/38, reinvest
+0/38, div_coverage 0/38, altman full 0/38. Three of its fields
+(`pct_earnings_var`, `pct_momentum_12_1`, `pct_revision_breadth`) are
+**hardcoded `null`** with a comment saying the series is not available here --
+correctly, at the time. With EQ-1's 20 annual periods persisted, it is.
+
+**Check `supabase/functions/` when grepping for a writer.** Three of this
+file's layers live there and none of them is reachable from `api/` or `src/`.
 
 **No new vendor was needed.** `api/equity.js:584` already calls Finnhub
 `/stock/financials-reported?freq=annual` -- the full XBRL 10-K -- and then does
@@ -4397,13 +4414,135 @@ surfaced only when the first INSERT named the column the file declares and got
 error.** Fifth file/database divergence in this file, first one caused by a
 length limit rather than a paste.
 
-**Throughput is unresolved and it bounds coverage.** AV free tier is 25
-requests/day against 3 per symbol -- ~8 symbols/day, ~114 days for the
-913-symbol universe. The production key's tier is unverified. Finnhub is
-60/min with no daily cap and already wired, but **its year-depth is the one
-load-bearing assumption still unmeasured.** No `cron.job` entry was added
-deliberately: scheduling a loader before its throughput is known burns the
-daily cap on the same head of the list every night.
+**The production Alpha Vantage key is FREE TIER -- measured 2026-09-22, not
+assumed.** Two runs fired from Postgres over pg_net with the Vault
+`CRON_SECRET`, the way the chain already calls Vercel handlers, so the secret
+never had to be handled directly:
+
+| run | symbols | av_calls | rows | rate_limited |
+|---|---:|---:|---:|---|
+| `symbols=AMD,JPM,PFE` | 3 | 9 | 909 | false |
+| `limit=25` | 4 attempted, 3 written | 11 | 926 | **true** |
+
+The second run stopped mid-batch on AV's own message: *"...free key rate limit
+(25 requests per day)"*. So it is **25 requests/day against 3 per symbol --
+~8 symbols/day, ~114 days for the 913-symbol universe.** That is the worst case
+EQ-1 named, now confirmed rather than feared.
+
+**The throttle guard is what made this measurable.** The run wrote its 3
+complete symbols, marked `rate_limited: true`, named the vendor's message and
+stopped -- instead of writing partial rows and logging `success`. A loader
+without that guard would have reported a clean run and left a silently
+truncated universe.
+
+**A partial batch is not a failed batch.** `symbols_written` counts symbols
+whose three statements all landed; the run is terminal on a throttle precisely
+so a half-loaded symbol never exists.
+
+Finnhub remains the alternative -- 60/min, no daily cap, already wired -- and
+**its year-depth is still the one load-bearing assumption unmeasured.** Note
+`compute_ticker_derived` asks it for 2 annual periods, which is a choice in
+that function and not a statement about what Finnhub serves.
+
+No `cron.job` entry yet: at 8 symbols/day a nightly job burns the cap on the
+same head of the list every night, so the prioritised order has to be settled
+first. Reading a page can trigger its own symbol on demand, which is the
+coverage that actually matters before then.
+
+### A ratio layer is where the statement layer's holes become visible (2026-09-22)
+
+EQ-2. `vw_company_fundamentals` (CFA ratios, FCFF/FCFE, growth, SGR),
+`vw_company_fundamental_peers`, `vw_company_statement_coverage`,
+`atlas_fiscal_aligned_year`. Full report in
+`docs/EQ2_DERIVED_FUNDAMENTALS_REPORT.md`. 8.4 ms symbol-filtered.
+
+**EQ-1's hand-computed TGT figures are a real regression test and four of seven
+reproduce exactly** -- tax 22.28%, dividend coverage 72.4%, FCF $2,835.0m. The
+three that differ are INPUT CHOICES and were run to ground rather than waved
+through. FCFF: the view takes the CFO-based definition on the reported $445m
+interest expense; EQ-1 reconstructed from net income, and the $16m gap is the
+non-cash items that formulation has to enumerate and misses. Days ratios:
+EQ-1's 59.5/6.3/61.0 reproduce EXACTLY from ending balances, the view uses
+AVERAGE balances (the CFA convention for matching a flow to a stock), which is
+why the oldest period of every symbol is NULL for them.
+
+**A financial publishes ratios that are arithmetically correct and
+economically meaningless.** JPM FY2025 gave FCFF **-$70,850m**, interest
+coverage **0.74** and a current ratio of **14.85** from a straight reading. A
+bank has no operating cycle, its interest expense is a cost of revenue rather
+than a leverage signal, and CFO is not a free-cash-flow base. **165 of the
+913-symbol universe are Financials** -- wrong for 18% of intended coverage, on
+exactly the figures a reader would quote. `statement_profile` nulls those and
+keeps what does hold (JPM still publishes ROE 16.13%, D/E 1.38).
+
+The discriminator is **`assets.sector`, 100% populated across those 913** -- a
+classification the database already owns. An interest-to-revenue threshold was
+rejected even though it separates cleanly here (JPM 35.0% against <=4.3% for
+every other loaded name): **calibrating a threshold on six symbols is the
+mistake this file keeps recording.** Note this is the opposite call to H-2's,
+where the MODAL sector inside a risk bucket was literally `Other` -- there the
+question was what a cluster is about, here it is what kind of filer this is,
+and the field answers the second reliably.
+
+**A non-payer had no sustainable growth rate at all.** AMD pays no dividend, AV
+omits the line, so `dividends_paid` was NULL -> retention NULL -> SGR NULL --
+precisely the names where SGR is wanted, and precisely the input the
+valuation module's SGR-above-WACC problem needs. **A parsed cash-flow row
+carrying no dividend line is a measurement of ZERO, not an absence.** AMD now
+reads retention 1.000 and SGR 7.19% = its ROE. Gated on `operating_cashflow` so
+an UNPARSED statement still yields NULL, and `dividend_line_reported` publishes
+the inference so it stays auditable.
+
+**The join is what made EQ-1's loader defects visible.** SNDK had an income
+statement and no balance sheet and no cash flow: the loader wrote each
+statement AS IT FETCHED, so the AV throttle broke the run between calls.
+EQ-1's PR claimed a run is terminal on a throttle "so a half-loaded symbol
+never exists". **It was false.** Fetch all three, then write -- a symbol is now
+atomic against the interruption that actually happens.
+
+**And the half-loaded symbol was STICKY.** The freshness check read
+`company_income_statement` ALONE, so SNDK counted as loaded and would be
+skipped for the whole 30-day window, permanently incomplete.
+`vw_company_statement_coverage.is_complete` is the single definition of
+"loaded" and the loader reads it.
+
+**The symbol was INVISIBLE, not merely wrong.** `vw_company_fundamentals`
+inner-joins the three statements, so SNDK did not report itself incomplete --
+it was simply not there. **An absent symbol and an incomplete one are different
+facts.** Same family as `price_coverage` counting holdings while the universe
+froze: a measure scoped to one set cannot see what happens outside it.
+
+**The peer median is computed only from loaded statements** -- no default, no
+vendor composite, no fallback, so a thin set reports itself as thin. The
+company is EXCLUDED from its own peer group (a median containing the subject is
+not a benchmark, and in a small cohort the subject can BE the median);
+`peer_count` counts peers with a MEASURED value for that metric, never cohort
+size; `peer_percentile` is NULL when the company has no figure of its own,
+because a company that cannot be measured does not sit at the bottom of its
+peer group.
+
+**Group on the economic year, not the fiscal one.** `atlas_fiscal_aligned_year`
+shifts a year-end back six months, so a January-closing retailer aligns with
+the previous December-closing filer. Grouping on `fiscal_year` compares TGT's
+FY2026 against GOOGL's FY2026 -- a full year apart. Verified: WMT (Jan-2026)
+and COST (May-2026) both land on 2025 and compare correctly, giving gross
+margin 24.93% vs 12.84% off their own filings.
+
+**`percentile_cont` HAS NO NUMERIC OVERLOAD.** It coerces to double precision
+and returns it, so the medians published as float8 beside exact-numeric values.
+Not cosmetic: float8 carries NaN and Infinity, and **float NaN does not equal
+itself while numeric NaN does** -- the asymmetry that let a sentinel through
+fifteen CHECKs on PR #783. Cast the result back. A view column's type cannot be
+changed by `CREATE OR REPLACE`, so this needs a DROP.
+
+**A percentile over one peer is degenerate** -- it can only be 0 or 1. No floor
+is baked in, because the right one is a display decision that depends on the
+metric; `peer_count` is published beside it and the surface must state it.
+
+**Flagged, not fixed:** the peer view's correlated lateral is trivial at ten
+symbols and becomes a self-join over ~500k rows at 913 x 31 metrics x 20 years.
+**It has not been measured at scale and cannot be until coverage grows** -- a
+growth-linked node, a clock rather than a constant.
 
 ### The dashboard's Test panel cannot wait for a 110-second function (2026-09-22)
 
