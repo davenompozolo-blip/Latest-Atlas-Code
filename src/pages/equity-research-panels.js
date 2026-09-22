@@ -760,29 +760,39 @@ export function QualityTab(p) {
     var azComp = derived && derived.altman_components ? derived.altman_components : null;
     var azModel = derived && derived.altman_model ? derived.altman_model : 'service_z2';
 
-    // Approximate if not in derived table (needs balance sheet — show approx)
-    var azApprox = null;
-    if (az == null && inp) {
-        var bookEq = inp.bookVal && inp.shares ? inp.bookVal * inp.shares : null;
-        var totalLiab = (inp.mktCap && bookEq) ? inp.mktCap / (inp.pb || 5) - bookEq : null;
-        var approxTA = bookEq && inp.totalDebt ? bookEq + inp.totalDebt : null;
-        var ebit = inp.revenue && inp.operM ? inp.revenue * inp.operM : null;
-        if (approxTA && approxTA > 0) {
-            var x3 = ebit ? ebit / approxTA : null;
-            var x4 = (bookEq && totalLiab && totalLiab > 0) ? bookEq / totalLiab : null;
-            if (fin(x3) && fin(x4)) {
-                azApprox = 6.72 * x3 + 1.05 * x4; // partial — note as approximate
-            }
-        }
-    }
-    var azDisplay = fin(az) ? az : fin(azApprox) ? azApprox : null;
-    var azZone = azModel === 'manufacturing'
-        ? (azDisplay > 2.99 ? 'SAFE' : azDisplay > 1.81 ? 'GREY' : 'DISTRESS')
-        : (azDisplay > 2.60 ? 'SAFE' : azDisplay > 1.10 ? 'GREY' : 'DISTRESS');
-    var azColor = azZone === 'SAFE' ? T.green : azZone === 'GREY' ? T.amber : T.red;
-    var azNeedlePos = azModel === 'manufacturing'
-        ? clamp((azDisplay - 0) / 8 * 100, 2, 98)
-        : clamp((azDisplay - 0) / 8 * 100, 2, 98);
+    // THE APPROXIMATION THAT STOOD HERE IS GONE. It computed
+    //
+    //     totalLiab  = mktCap / pb − bookEq          <- not a liability figure
+    //     approxTA   = bookEq + totalDebt            <- not total assets
+    //     azApprox   = 6.72 * x3 + 1.05 * x4         <- X3+X4 only, no X1, no X2
+    //
+    // and fed the result straight into the full Z'' bands and needle below. Two
+    // independent faults compounding: a PARTIAL score read under the zones of a
+    // complete one (CodeRabbit, PR #806, which found the same partial in
+    // `compute_ticker_derived`), and inputs algebraically inverted out of a
+    // market multiple rather than read off a balance sheet.
+    //
+    // JPM is the live case. EQ-2's statement_profile gate correctly nulls a
+    // bank's working capital, so the statements refuse the Z'' — and this
+    // fallback then printed a distress zone from a fabricated balance sheet.
+    //
+    // A Z'' missing a term is not a lower Z''; it is a different statistic.
+    // `altman_refused` carries the refusal from the statement layer and
+    // `mergeDerived` deletes any partial score the table holds, so `az` is the
+    // only path and an unformed score renders as absent with its reason.
+    var azRefused = derived && derived.altman_refused === true;
+    var azWithheld = derived && derived._withheld ? derived._withheld : null;
+    var azDisplay = fin(az) ? az : null;
+    // `null > 2.60` is FALSE, so the old chain fell straight through to
+    // DISTRESS — a score that could not be formed rendered as the worst
+    // reading on the card, in red, with a needle. An unformed score has NO
+    // zone: the band is the reading, not a default.
+    var azZone = !fin(azDisplay) ? null
+        : azModel === 'manufacturing'
+            ? (azDisplay > 2.99 ? 'SAFE' : azDisplay > 1.81 ? 'GREY' : 'DISTRESS')
+            : (azDisplay > 2.60 ? 'SAFE' : azDisplay > 1.10 ? 'GREY' : 'DISTRESS');
+    var azColor = azZone === 'SAFE' ? T.green : azZone === 'GREY' ? T.amber : azZone === 'DISTRESS' ? T.red : T.muted2;
+    var azNeedlePos = fin(azDisplay) ? clamp(azDisplay / 8 * 100, 2, 98) : null;
 
     // Beneish M-Score
     var bm = derived && derived.beneish_m != null ? derived.beneish_m : null;
@@ -829,8 +839,8 @@ export function QualityTab(p) {
             // Altman Z
             h(Card, { title: 'Altman Z-Score', badge: 'REWORKED' },
                 h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 } },
-                    h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: azColor } }, fin(azDisplay) ? azDisplay.toFixed(1) : '—'),
-                    h(Pill, { text: azZone, color: azColor, dim: azColor === T.green ? T.greenDim : azColor === T.amber ? T.amberDim : T.redDim })
+                    h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: azColor } }, fin(azDisplay) ? azDisplay.toFixed(1) : '\u2014'),
+                    azZone && h(Pill, { text: azZone, color: azColor, dim: azColor === T.green ? T.greenDim : azColor === T.amber ? T.amberDim : T.redDim })
                 ),
                 h('div', { style: { height: 30, borderRadius: 7, display: 'flex', overflow: 'hidden', border: '1px solid ' + T.border, position: 'relative', margin: '8px 0 4px' } },
                     h('div', { style: { flex: 33, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.red, fontFamily: T.mono, fontSize: 9, color: 'rgba(0,0,0,.55)', fontWeight: 600 } }, 'DISTRESS'),
@@ -846,7 +856,15 @@ export function QualityTab(p) {
                 h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.12em', color: T.muted2, textTransform: 'uppercase', margin: '12px 0 8px' } }, 'Components'),
                 azComp ? [['X1 · working capital/assets', azComp.x1], ['X2 · retained earnings/assets', azComp.x2], ['X3 · EBIT/assets', azComp.x3], ['X4 · equity/liabilities', azComp.x4]].map(function(r) {
                     return h(CkRow, { key: r[0], label: r[0], value: fin(r[1]) ? r[1].toFixed(2) : '—', na: !fin(r[1]) });
-                }) : h(Note, { style: { fontSize: 10 } }, azApprox != null ? '※ Partial estimate (X3+X4 only) — balance sheet needed for full score.' : 'Balance sheet data required. Run sync_fundamentals to populate.')
+                }) : null,
+                !fin(azDisplay) && h(Note, { style: { fontSize: 10, marginTop: 8 } },
+                    azRefused && azWithheld && azWithheld.reason === 'financial_profile'
+                        ? 'WITHHELD, not missing. ' + azWithheld.note
+                        : azRefused
+                            ? 'Refused: a Z\u2033 missing a component is not a lower Z\u2033, it is a different '
+                              + 'statistic, and the band chart above is drawn for the complete one. '
+                              + 'The components below show which terms are absent.'
+                            : 'No statements loaded for this symbol yet, so no Z\u2033 can be formed.')
             ),
 
             // Beneish M

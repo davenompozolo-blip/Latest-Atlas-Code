@@ -205,3 +205,89 @@ unbounded and `Max` passes null.
 - The reverse DCF's terminal growth still comes from the engine's **sector**
   default (`SECTORS[key].gL`). It is a real per-sector number rather than one
   constant, and re-deriving it per company is a decision about the statistic.
+
+---
+
+# Addendum — Tab 4's condition, measured, and two partial Altman scores
+
+2026-09-22, same branch.
+
+The brief keeps Quality & Forensics **"only on condition all metrics actually
+come through and display"**. That is a measurement, so it was measured:
+`derivedFromStatements` run over the live `vw_company_fundamentals` rows for
+every loaded symbol.
+
+| symbol | periods | Piotroski | determinable | Altman Z″ | CCC | ROIC | reinvest | div cover |
+|---|---:|---|---:|---:|---|---:|---:|---:|
+| TGT   | 20 | 6/9 | **9** | 1.355 | 5 pts | 0.114 | 0.146 | 1.381 |
+| GOOGL | 20 | 7/9 | **9** | 7.136 | 5 pts | 0.322 | 0.530 | 7.291 |
+| AMD   | 20 | 8/9 | **9** | 6.898 | 5 pts | 0.067 | −0.466 | — |
+| PFE   | 20 | 7/9 | **9** | 3.058 | 5 pts | 0.066 | −0.223 | 0.929 |
+| ADBE  | 20 | 7/9 | **9** | 7.737 | 5 pts | 0.382 | −0.087 | — |
+| WMT   | 20 | 6/9 | **9** | 2.027 | 5 pts | 0.153 | 0.510 | 1.988 |
+| COST  | 20 | 8/9 | **9** | 2.661 | 5 pts | 0.225 | 0.374 | 3.590 |
+| AMGN  | 20 | 7/9 | **9** | 0.336 | 5 pts | 0.156 | −0.328 | 1.581 |
+| JPM   | 20 | 3/9 | **7** | — | — | — | −0.155 | — |
+
+**Eight of nine resolve completely** — against the screenshotted `0/9 with
+eight rows blank`, `partial estimate X3+X4 only` and `N/A`. The dividend
+coverage absent on AMD and ADBE is correct: neither pays one.
+
+**JPM is the exception and it is the gate working.** EQ-2's
+`statement_profile` nulls a bank's working capital, CCC, ROIC and cash
+conversion, so `crRising` and `gmRising` cannot be scored and X1 cannot be
+formed. That is CAMELS-shaped work (EQ-4), not a data failure.
+
+## Two partial Altman scores, one of them fabricated
+
+CodeRabbit found the first on PR #806: `compute_ticker_derived/index.ts:271`
+publishes
+
+```ts
+altman_z = 6.72 * x3 + 1.05 * x4
+```
+
+when it cannot form x1 and x2 — and `mergeDerived`'s rule that "a null from
+the statements must not erase a real figure" let that partial survive
+wherever the statements refused. **JPM is the live case.**
+
+The second was in the panel and is worse:
+
+```js
+totalLiab = inp.mktCap / (inp.pb || 5) - bookEq;   // not a liability figure
+approxTA  = bookEq + inp.totalDebt;                 // not total assets
+azApprox  = 6.72 * x3 + 1.05 * x4;                  // X3+X4 only
+```
+
+Total liabilities algebraically inverted out of a market multiple, total
+assets from book equity plus debt, and the result fed **straight into the
+full Z″ bands and needle**. So a refused score for a bank was rendered as a
+zone, in colour, from a balance sheet that does not exist.
+
+And a third fault underneath both: `azZone` read
+
+```js
+azDisplay > 2.60 ? 'SAFE' : azDisplay > 1.10 ? 'GREY' : 'DISTRESS'
+```
+
+`null > 2.60` is **false**, so a score that could not be formed fell through
+to **DISTRESS, in red, with a needle**. The worst reading on the card was the
+default for having no reading at all.
+
+Three fixes:
+
+- `altmanZDoublePrime` already returned `partial: true`; `derivedFromStatements`
+  now publishes it as **`altman_refused`**, and `mergeDerived` **deletes**
+  `altman_z` and `altman_components` rather than nulling them — a renderer
+  cannot print a number it was never handed. Scoped: every other key the table
+  carries survives, and a healthy symbol keeps its score.
+- The fabricated approximation is **gone**. `az` is the only path.
+- An unformed score has **no zone, no pill and no needle**, and the card states
+  the reason — "WITHHELD, not missing" with the CAMELS note for a financial,
+  the missing-component note otherwise.
+
+The footnote also referenced `azApprox`, which the removal deleted — a
+**ReferenceError at render** that `vite build` reported clean, the
+"build is not a scope audit" lesson for the third time.
+
+Four tests; **2 of 4 fail** against the pre-fix code, checked by reverting.
