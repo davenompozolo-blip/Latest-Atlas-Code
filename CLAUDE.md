@@ -4335,12 +4335,29 @@ are year-over-year comparisons and there was no prior year.** Altman read
 "partial estimate X3+X4 only". Beneish read N/A. CCC, reinvestment rate and
 dividend coverage rendered em dashes. None of it was a display bug.
 
-**`equity_fundamentals_derived` has no writer.** 38 rows, last written
-2026-08-11, and grep across `api/`, `src/`, `scripts/`, `supabase/` finds
-readers and the original migration only. Inside it: beneish 0/38, ccc 0/38,
-reinvest 0/38, div_coverage 0/38, altman full 0/38. **A table with rows in it
-is not a table something maintains** -- the shape of the
-`sync_portfolio_history` finding, one layer out.
+**`equity_fundamentals_derived`'s writer is on-demand and shallow -- and I
+first recorded that it had NO writer, which is wrong.** The grep that produced
+that claim missed `supabase/functions/`. `compute_ticker_derived` is the
+writer, deployed and ACTIVE at version 3, and its `updated_at` is
+**2026-08-11 -- exactly the date those 38 rows stop**. It is called by the
+Equity Research UI when a ticker is opened and its derived row is missing or
+more than 7 days old, so it writes only for tickers somebody looked at. 38 rows
+is 38 tickers viewed, not a dead table.
+
+**A wrong dead-writer entry is worse than no entry** -- it sends the next
+session to build a writer that already exists. The same correction this file
+already had to make about `theme_leadership_weekly`.
+
+What is true, and is the actual defect: the function fetches **2 annual
+periods** from Finnhub (`financials-reported`), so every multi-year signal it
+owns is starved by construction. Inside it: beneish 0/38, ccc 0/38, reinvest
+0/38, div_coverage 0/38, altman full 0/38. Three of its fields
+(`pct_earnings_var`, `pct_momentum_12_1`, `pct_revision_breadth`) are
+**hardcoded `null`** with a comment saying the series is not available here --
+correctly, at the time. With EQ-1's 20 annual periods persisted, it is.
+
+**Check `supabase/functions/` when grepping for a writer.** Three of this
+file's layers live there and none of them is reachable from `api/` or `src/`.
 
 **No new vendor was needed.** `api/equity.js:584` already calls Finnhub
 `/stock/financials-reported?freq=annual` -- the full XBRL 10-K -- and then does
@@ -4397,13 +4414,40 @@ surfaced only when the first INSERT named the column the file declares and got
 error.** Fifth file/database divergence in this file, first one caused by a
 length limit rather than a paste.
 
-**Throughput is unresolved and it bounds coverage.** AV free tier is 25
-requests/day against 3 per symbol -- ~8 symbols/day, ~114 days for the
-913-symbol universe. The production key's tier is unverified. Finnhub is
-60/min with no daily cap and already wired, but **its year-depth is the one
-load-bearing assumption still unmeasured.** No `cron.job` entry was added
-deliberately: scheduling a loader before its throughput is known burns the
-daily cap on the same head of the list every night.
+**The production Alpha Vantage key is FREE TIER -- measured 2026-09-22, not
+assumed.** Two runs fired from Postgres over pg_net with the Vault
+`CRON_SECRET`, the way the chain already calls Vercel handlers, so the secret
+never had to be handled directly:
+
+| run | symbols | av_calls | rows | rate_limited |
+|---|---:|---:|---:|---|
+| `symbols=AMD,JPM,PFE` | 3 | 9 | 909 | false |
+| `limit=25` | 4 attempted, 3 written | 11 | 926 | **true** |
+
+The second run stopped mid-batch on AV's own message: *"...free key rate limit
+(25 requests per day)"*. So it is **25 requests/day against 3 per symbol --
+~8 symbols/day, ~114 days for the 913-symbol universe.** That is the worst case
+EQ-1 named, now confirmed rather than feared.
+
+**The throttle guard is what made this measurable.** The run wrote its 3
+complete symbols, marked `rate_limited: true`, named the vendor's message and
+stopped -- instead of writing partial rows and logging `success`. A loader
+without that guard would have reported a clean run and left a silently
+truncated universe.
+
+**A partial batch is not a failed batch.** `symbols_written` counts symbols
+whose three statements all landed; the run is terminal on a throttle precisely
+so a half-loaded symbol never exists.
+
+Finnhub remains the alternative -- 60/min, no daily cap, already wired -- and
+**its year-depth is still the one load-bearing assumption unmeasured.** Note
+`compute_ticker_derived` asks it for 2 annual periods, which is a choice in
+that function and not a statement about what Finnhub serves.
+
+No `cron.job` entry yet: at 8 symbols/day a nightly job burns the cap on the
+same head of the list every night, so the prioritised order has to be settled
+first. Reading a page can trigger its own symbol on demand, which is the
+coverage that actually matters before then.
 
 ### The dashboard's Test panel cannot wait for a 110-second function (2026-09-22)
 
