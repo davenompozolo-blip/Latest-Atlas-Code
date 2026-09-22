@@ -438,6 +438,12 @@ function renderCell(k, h, ctx) {
                 e('span', { className: 'nf-cb-track' }, e('i', { style: { width: Math.min(100, ((Number(h.currentWeightPct) || 0) / ctx.wtScale) * 100) + '%', background: '#5b6b7d' } })),
                 e('span', { className: 'nf-mono-cell' }, (Number(h.currentWeightPct) || 0).toFixed(1) + '%'));
         case 'conviction':
+            // No bar at all when the analytics have not been computed for this
+            // name yet. `null + '%'` is the string "null%", which CSS drops --
+            // so the track rendered empty and the cell printed "null" beside a
+            // colour picked by comparing null against every threshold.
+            if (h.conviction == null)
+                return e('span', { className: 'nf-mono-cell', title: 'Analytics pending', style: { opacity: .5 } }, '—');
             return e('span', { className: 'nf-conv-bar' },
                 e('span', { className: 'nf-cb-track' }, e('i', { style: { width: h.conviction + '%', background: convColor(h.conviction) } })),
                 e('span', { className: 'nf-mono-cell' }, h.conviction));

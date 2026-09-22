@@ -56,3 +56,51 @@ test('no NAV or no price → no trade (never guesses a size)', () => {
     assert.equal(sizeTrade('add', { nav: null, price: 50, currentWeightPct: 5, targetWeightPct: 9 }).tradeSide, null);
     assert.equal(sizeTrade('add', { nav: 1e5, price: 0, currentWeightPct: 5, targetWeightPct: 9 }).tradeSide, null);
 });
+
+// ── H-4: a name whose analytics are pending has NO target weight ──────
+// Not a target of 0%. The two are opposite instructions: 0% means "the book's
+// own conviction model says hold none of this", and that is what `sizeTrade`
+// turns into a full exit. A name bought between two matview refreshes arrives
+// priced and sized with no conviction on file, and the model has said nothing
+// about it at all.
+
+test('targetWeights gives a pending name NO entry, never a zero one', () => {
+    const rows = [
+        { symbol: 'A', weight_pct: 30, conviction_score: 75 },
+        { symbol: 'B', weight_pct: 30, conviction_score: 25 },
+        { symbol: 'C', weight_pct: 40, conviction_score: null },   // bought minutes ago
+    ];
+    const t = targetWeights(rows);
+    // `has`, not `get(...) || 0` -- the caller must be able to tell the two apart.
+    assert.equal(t.has('C'), false);
+    assert.equal(t.get('C'), undefined);
+});
+
+test('a pending name does not dilute the targets of the names that are scored', () => {
+    const scoredOnly = [
+        { symbol: 'A', weight_pct: 30, conviction_score: 75 },
+        { symbol: 'B', weight_pct: 30, conviction_score: 25 },
+    ];
+    const withPending = [...scoredOnly, { symbol: 'C', weight_pct: 40, conviction_score: null }];
+
+    const a = targetWeights(scoredOnly), b = targetWeights(withPending);
+    // Identical: C contributes nothing to `invested` and nothing to `convSum`.
+    assert.equal(+b.get('A').toFixed(6), +a.get('A').toFixed(6));
+    assert.equal(+b.get('B').toFixed(6), +a.get('B').toFixed(6));
+    assert.equal(+b.get('A').toFixed(2), 45);
+    // The old code counted C's 40ppt in `invested` and 0 in `convSum`, giving
+    // A = 75/100 * 100 = 75 -- a target two thirds higher than the model says,
+    // manufactured by a name the model never scored.
+    assert.notEqual(+b.get('A').toFixed(2), 75);
+});
+
+test('a conviction of 0 still gets a target entry -- it is a reading', () => {
+    const t = targetWeights([
+        { symbol: 'A', weight_pct: 50, conviction_score: 80 },
+        { symbol: 'Z', weight_pct: 50, conviction_score: 0 },
+    ]);
+    assert.equal(t.has('Z'), true);
+    assert.equal(t.get('Z'), 0);
+    // And Z's weight IS in the denominator, because the model did score it.
+    assert.equal(+t.get('A').toFixed(2), 100);
+});
