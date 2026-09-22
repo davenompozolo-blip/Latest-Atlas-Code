@@ -2,6 +2,9 @@ import React from 'react';
 import { sb } from './config.js';
 import { PeerComparison } from './equity-peers.js';
 import { TechnicalsTab } from './equity-technicals.js';
+import {
+    loadStatementLayer, STATE_LOADED, derivedFromStatements, mergeDerived,
+} from './equity/equityStatements.js';
 
 var h = React.createElement;
 var useState = React.useState;
@@ -843,8 +846,42 @@ export function ValuationTab(p) {
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 3 — QUALITY & FORENSICS
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── derived scores, loaded HERE rather than in equity-research.js ────────────
+//
+// The `derived` prop is supplied by an effect in equity-research.js that reads
+// equity_fundamentals_derived. Measured against the production bundle on the
+// baseline commit: the strings `equity_fundamentals_derived` and
+// `compute_ticker_derived` appear ZERO times, while `Composite Fair-Value`
+// from this file appears once. That read has never shipped, so `derived` has
+// always been null in the deployed app — which is the whole of the 0/9
+// Piotroski, the "partial estimate" Altman and the N/A Beneish, independently
+// of what the table holds.
+//
+// Loading from this file, which provably ships, removes the dependency on
+// whatever rollup is doing to that effect body. It also upgrades the source:
+// the statements carry 20 annual periods, so every year-over-year test
+// resolves, where compute_ticker_derived only ever fetched two.
+function useStatementDerived(symbol, fromProps) {
+    var state = React.useState(null);
+    var fromStatements = state[0], setFromStatements = state[1];
+    React.useEffect(function () {
+        var cancelled = false;
+        setFromStatements(null);
+        if (!symbol) return;
+        loadStatementLayer(symbol, 'annual').then(function (res) {
+            if (cancelled || res.state !== STATE_LOADED) return;
+            setFromStatements(derivedFromStatements(res.rows));
+        });
+        return function () { cancelled = true; };
+    }, [symbol]);
+    // Statements win per key; a null from them never erases a real figure.
+    return mergeDerived(fromProps, fromStatements);
+}
+
 export function QualityTab(p) {
-    var inp = p.inputs, derived = p.derived, snap = p.snap;
+    var inp = p.inputs, snap = p.snap;
+    var derived = useStatementDerived(p.symbol, p.derived);
     var s = snap || {};
 
     // Piotroski — compute what we can from AV data; prefer derived table
@@ -1049,7 +1086,8 @@ export function QualityTab(p) {
 // TAB 4 — CAPITAL ALLOCATION
 // ─────────────────────────────────────────────────────────────────────────────
 export function CapitalTab(p) {
-    var inp = p.inputs, derived = p.derived;
+    var inp = p.inputs;
+    var derived = useStatementDerived(p.symbol, p.derived);
 
     // Use derived if available, otherwise approximate
     var roic       = (derived && fin(derived.roic))          ? derived.roic          : (inp && inp.roe ? inp.roe * 0.6 : null);  // rough proxy

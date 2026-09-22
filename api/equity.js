@@ -648,6 +648,14 @@ function mapFinnhubOverview(data, symbol) {
         // Domicile — lets the assembler decide whether to probe for a foreign
         // reporting currency (Finnhub's metric blob isn't currency-tagged).
         _country: p.country || '',
+        // Profile fields the company-background card needs. Underscore-prefixed
+        // like _country because they are passthroughs from the vendor profile,
+        // not Alpha-Vantage-shaped OVERVIEW keys. Empty string rather than a
+        // placeholder: the card renders an absent logo as absent.
+        _logo: p.logo || '',
+        _ipo: p.ipo || '',
+        _weburl: p.weburl || '',
+        _sharesOutstanding: p.shareOutstanding != null ? p.shareOutstanding * 1e6 : null,
     };
     var set = function(k, v) { if (v != null && isFinite(Number(v))) out[k] = String(v); };
     set('MarketCapitalization', p.marketCapitalization ? intVal(p.marketCapitalization * 1e6) : null);
