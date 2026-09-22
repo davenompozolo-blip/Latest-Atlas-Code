@@ -4475,6 +4475,31 @@ than a leverage signal, and CFO is not a free-cash-flow base. **165 of the
 exactly the figures a reader would quote. `statement_profile` nulls those and
 keeps what does hold (JPM still publishes ROE 16.13%, D/E 1.38).
 
+**The first gate was incomplete, also caught on #804.** `cash_conversion` and
+`sloan_accrual_ratio` are CFO-derived too and were still published -- JPM
+reported a cash conversion of **-2.59** as an earnings-quality reading.
+`gross_margin` and `ebitda_margin` went with them: "gross profit" is not a line
+a bank reports, and the view ALREADY nulled `debt_to_ebitda` on the grounds that
+EBITDA is meaningless where interest is operating, so publishing the margin
+built on that same aggregate was the identical inconsistency wearing different
+clothes. **When you gate a family of ratios, enumerate every member of the
+family** -- I gated by listing what I happened to think of.
+
+`asset_turnover`, `operating_margin` and `net_margin` are KEPT: a bank's asset
+turnover is genuinely low (JPM 0.066 vs TGT 1.787), not undefined.
+
+**Nulling is the honest interim, NOT the end state.** CFA L2 V3 Learning Module
+4 sets out THREE frameworks -- CAMELS for banks, and separate ones for P&C and
+life/health insurers -- and **none of their inputs exist in the persisted
+statements**: no Tier 1 capital, no risk-weighted assets, no NPLs, no allowance
+for loan losses, no net premiums earned or written, no loss reserves.
+Normalisation is what makes a retailer and a bank comparable in one schema and
+is also what discards every line item those frameworks need. Finnhub's
+`/stock/financials-reported` is AS-REPORTED XBRL where those concepts survive --
+so the throughput fallback and the financial-institution framework are the SAME
+piece of work. Its year-depth and cross-filer concept consistency are unmeasured
+and load-bearing.
+
 The discriminator is **`assets.sector`, 100% populated across those 913** -- a
 classification the database already owns. An interest-to-revenue threshold was
 rejected even though it separates cleanly here (JPM 35.0% against <=4.3% for
@@ -4486,12 +4511,29 @@ and the field answers the second reliably.
 
 **A non-payer had no sustainable growth rate at all.** AMD pays no dividend, AV
 omits the line, so `dividends_paid` was NULL -> retention NULL -> SGR NULL --
-precisely the names where SGR is wanted, and precisely the input the
-valuation module's SGR-above-WACC problem needs. **A parsed cash-flow row
-carrying no dividend line is a measurement of ZERO, not an absence.** AMD now
-reads retention 1.000 and SGR 7.19% = its ROE. Gated on `operating_cashflow` so
-an UNPARSED statement still yields NULL, and `dividend_line_reported` publishes
-the inference so it stays auditable.
+precisely the names where SGR is wanted, and precisely the input the valuation
+module's SGR-above-WACC problem needs.
+
+**I "fixed" that by inferring zero from absence. It was wrong, CodeRabbit
+caught it on PR #804, and it is reverted.** The objection: `operating_cashflow
+is not null` proves ONE field parsed, not that the dividend fields were
+complete. The data proves it twice:
+
+| | |
+|---|---|
+| GOOGL, paid nothing 2013-2023 | explicit `0` for 2014-2017 and 2022-2023, **NULL for 2018-2021** |
+| AMD, never paid a common dividend | **6m / 85m / 104m** for 2019-2021, NULL for 2022-2025 |
+
+**The vendor field is unreliable in BOTH directions** -- NULL where zero is
+true, and non-zero where no common dividend was paid -- so absence cannot carry
+a claim about what the company paid. My justification ("AMD pays no dividend")
+was contradicted by AMD's own rows, which I had not looked at before asserting
+it. **Check the column's history before letting absence mean anything.**
+
+The cost is accepted and stated: a genuine non-payer has no retention ratio and
+no SGR. An absent number beats a fabricated one, and SGR feeds valuation.
+`dividend_line_reported` stays and now reports what the VENDOR did, never what
+the company did.
 
 **The join is what made EQ-1's loader defects visible.** SNDK had an income
 statement and no balance sheet and no cash flow: the loader wrote each

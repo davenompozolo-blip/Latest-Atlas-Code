@@ -58,7 +58,22 @@ for 18% of the intended coverage, on the exact figures a user would most likely
 quote.
 
 `statement_profile` nulls those and keeps the ones that do hold: JPM still
-publishes ROE 16.13% and D/E 1.38. The discriminator is `assets.sector`, **100%
+publishes ROE 16.13% and D/E 1.38.
+
+**CodeRabbit found the gate was incomplete, and was right.** `cash_conversion`
+and `sloan_accrual_ratio` are also CFO-derived and were still published — JPM
+was reporting a cash conversion of **−2.59** as an earnings-quality reading.
+`gross_margin` and `ebitda_margin` went with them on the same reasoning one step
+out: "gross profit" is not a line a bank reports, and the view already nulls
+`debt_to_ebitda` and `net_debt_to_ebitda` because EBITDA is meaningless where
+interest is operating — so publishing the margin built on that same aggregate
+was the identical inconsistency. `asset_turnover`, `operating_margin` and
+`net_margin` are kept: a bank's asset turnover is genuinely low (JPM 0.066
+against TGT 1.787) rather than undefined.
+
+**Nulling is the honest interim, not the end state.** A financial needs its own
+framework — CAMELS for banks, and the separate P&C and life/health frameworks —
+which is a unit of its own. See "What this cannot do yet" below. The discriminator is `assets.sector`, **100%
 populated across all 913**, a classification the database already owns. An
 interest-to-revenue threshold was considered and rejected — JPM separates
 cleanly at 35.0% against <=4.3% for every other loaded name, but calibrating a
@@ -68,11 +83,29 @@ threshold on six symbols is the mistake this codebase keeps paying for.
 pays none, Alpha Vantage omits the line, so `dividends_paid` was NULL,
 `retention_ratio` was NULL and SGR was NULL — precisely the names where SGR is
 wanted, and precisely the input the valuation module's SGR-above-WACC problem
-needs. A parsed cash-flow row carrying no dividend line is a **measurement of
-zero**, not an absence. AMD now reads retention 1.000 and SGR 7.19%, equal to
-its ROE, as it should be. `dividend_line_reported` publishes the inference so it
-stays auditable, and the rule is gated on `operating_cashflow` so an *unparsed*
-statement still yields NULL.
+needs.
+
+I first fixed this by inferring zero: a parsed cash-flow row carrying no
+dividend line was treated as a measurement of zero. **CodeRabbit challenged it
+on PR #804 and was right; it is reverted.** The objection was that
+`operating_cashflow is not null` proves one field parsed, not that the dividend
+fields were complete. The data proves it twice over:
+
+| | |
+|---|---|
+| GOOGL, no dividend 2013–2023 | explicit `0` for 2014–2017 and 2022–2023, **NULL for 2018–2021** |
+| AMD, never paid a common dividend | **6,000,000 / 85,000,000 / 104,000,000** for 2019–2021, NULL for 2022–2025 |
+
+The field is unreliable in **both** directions — NULL where zero is true, and
+non-zero where no common dividend was paid — so absence cannot carry a claim
+about what the company paid. The justification I originally gave ("AMD pays no
+dividend") is contradicted by AMD's own rows.
+
+The cost is accepted and stated: a genuine non-payer now has no retention ratio
+and no SGR. An absent number beats a fabricated one, and SGR feeds valuation.
+A reliable dividend source is its own unit. `dividend_line_reported` stays, and
+now reports what the **vendor** did rather than asserting anything about the
+company.
 
 ## Two defects in the EQ-1 loader, found by the join
 
@@ -156,6 +189,40 @@ choice in that function and not a statement about what Finnhub serves.
 - All five EQ-2 migrations hash-verified against
   `supabase_migrations.schema_migrations`, normalised for comments and
   whitespace — the equivalence class Postgres's view parser works in.
+
+## What this cannot do yet — the financial-institution framework
+
+Nulling a bank's undefined ratios stops the module lying. It does not make the
+module useful for the 165 Financials in the universe.
+
+CFA Level II Volume 3, Learning Module 4 (*Analysis of Financial Institutions*)
+sets out three frameworks, not one:
+
+- **Banks — CAMELS**: Capital adequacy (CET1 / Tier 1 / total capital over
+  risk-weighted assets), Asset quality, Management, Earnings, Liquidity,
+  Sensitivity to market risk.
+- **P&C insurers**: loss and loss-adjustment expense ratio (losses / net
+  premiums **earned**), underwriting expense ratio (underwriting expense / net
+  premiums **written** — note the denominators genuinely differ), combined
+  ratio as their sum, combined ratio after policyholder dividends, and loss
+  reserve development.
+- **Life and health insurers**: their own profile, earnings, investment-return,
+  liquidity and capitalisation measures.
+
+**None of those inputs exist in the persisted statements.** Alpha Vantage's
+normalised schema has no Tier 1 capital, no risk-weighted assets, no
+non-performing loans, no allowance for loan losses, no net premiums earned or
+written, and no loss reserves — normalisation is what makes a retailer and a
+bank comparable in one schema, and it is also what discards every line item
+these frameworks are built on.
+
+Finnhub's `/stock/financials-reported` returns **as-reported XBRL**, where those
+concepts survive. That is the same endpoint already wired in `api/equity.js`
+(which fetches the full history and keeps `annuals[0]`), so the fallback source
+and the financial-institution framework are the same piece of work, not two.
+**Unmeasured and load-bearing:** Finnhub's year-depth, and whether its concept
+coverage is consistent enough across filers to compute CAMELS without
+per-filer concept mapping.
 
 ## Flagged, not fixed
 
