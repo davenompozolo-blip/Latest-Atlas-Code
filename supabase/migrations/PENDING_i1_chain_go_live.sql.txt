@@ -1,0 +1,71 @@
+-- I-1 GO-LIVE. NOT APPLIED. Renamed to .sql and applied only after a shadow
+-- night has been read out of vw_chain_status.
+--
+-- Flipping the chain live is two things: run atlas_chain_advance(false) instead
+-- of (true), and stop the 27 stage cron entries firing the same work on a clock.
+-- Both must happen together -- leaving the clock armed beside a live chain means
+-- every stage runs twice.
+--
+-- READ THIS BEFORE APPLYING
+--
+-- 1. Job 15 `sync_alpaca_transactions` is scheduled `10 13,22 * * 1-5` -- TWO
+--    times in one entry. The chain covers only the 22:10 leg, so unscheduling
+--    it outright would silently kill the 13:10 intraday run. It is replaced by
+--    a 13:10-only entry below rather than removed.
+--
+-- 2. `atlas_chain_reap` (job 25) STAYS. atlas_chain_advance() calls it on every
+--    tick, but the tick only runs 20:00-01:59 and dispatch rows opened outside
+--    that window still need closing.
+--
+-- 3. Nothing here touches the intraday writers -- `sync-alpaca-positions`
+--    (*/5) and `refresh-nexus-holdings` (*/10). They are not part of the
+--    nightly chain and are what a daytime reader actually sees.
+--
+-- 4. Rollback is symmetric: unschedule the live tick, re-schedule the 27
+--    entries from their definitions in git history, re-arm the shadow tick.
+
+select cron.unschedule('atlas_chain_advance_shadow');
+
+select cron.schedule('atlas_chain_advance', '* 20-23,0-1 * * *',
+    $$select public.atlas_chain_advance(false);$$);
+
+-- The 27 stages the chain now owns.
+select cron.unschedule(j) from unnest(array[
+    'refresh_asset_sectors',
+    'chain_trade_sync_assets',
+    'sync_alpaca_prices_daily',
+    'refresh_holding_vol_trailing',
+    'chain_ledger_snapshot',
+    'chain_ts_correlations',
+    'chain_ts_signals',
+    'sync_market_series_daily',
+    'chain_ts_coherence',
+    'chain_options_snapshot',
+    'chain_ts_universe',
+    'load_macro_series_daily',
+    'refresh_factor_scores_nightly',
+    'chain_ts_triggers',
+    'sync_alpaca_prices_universe',
+    'chain_theme_leadership',
+    'atlas_feed_reconciliation_nightly',
+    'chain_ts_clusters',
+    'atlas_write_theme_states',
+    'refresh_position_returns',
+    'atlas_write_verdicts',
+    'atlas_write_segment_verdicts',
+    'atlas_refresh_cluster_identity',
+    'atlas_run_validation',
+    'atlas_write_regime_cvar',
+    'atlas_write_var_backtest'
+]) as j;
+
+-- Job 15 carried BOTH the 13:10 and 22:10 legs. Keep the intraday one.
+select cron.unschedule('sync_alpaca_transactions');
+select cron.schedule('sync_alpaca_transactions_intraday', '10 13 * * 1-5', $cmd$
+ select net.http_post(
+   url := 'https://vdmojjszvvcithuxwexx.supabase.co/functions/v1/sync_alpaca_transactions',
+   headers := '{}'::jsonb,
+   body := jsonb_build_object('time', now())::jsonb,
+   timeout_milliseconds := 120000
+ ) as request_id;
+$cmd$);
