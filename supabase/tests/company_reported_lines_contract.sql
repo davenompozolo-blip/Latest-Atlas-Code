@@ -19,10 +19,15 @@
 -- SQL parsing, so the layer sat frozen and the failure was one level below
 -- anything that looked at it.
 --
--- Nine cases. The acceptances are as load-bearing as the refusals: a wall of
+-- Eleven cases. The acceptances are as load-bearing as the refusals: a wall of
 -- CHECKs that also blocks legitimate writes is worse than no CHECKs.
 --
--- Last run 2026-09-23: 9/9.
+-- Cases 10 and 11 close coverage gaps raised on PR #810: the loaded_at
+-- overwrite was asserted only as "not null", and the pair-scoped DELETE was
+-- never exercised with a mixed-source batch -- which is the cross-product
+-- defect it was written to avoid, so nothing stopped it coming back.
+--
+-- Last run 2026-09-23: 11/11.
 
 DO $test$
 DECLARE
@@ -128,6 +133,50 @@ BEGIN
   VALUES (src, sym, fy, 'us-gaap:ResearchAndDevelopmentExpense', NULL);
   ok := ok || E'\n  9 a NULL value is accepted, never coerced        pass';
 
-  RAISE EXCEPTION 'CONTRACT PROOF -- 9/9, rolling back.%', ok;
+  -- 10. A caller-supplied loaded_at is OVERWRITTEN, not honoured. The column
+  --     records when the DATABASE received the row; letting a payload set it
+  --     lets a loader backdate a row past its own freshness window and be
+  --     skipped forever. Raised as a coverage gap on PR #810.
+  r := public.atlas_upsert_reported_lines(jsonb_build_array(
+         jsonb_build_object('source', src, 'symbol', sym, 'fiscal_year', fy,
+           'concept', 'us-gaap:Goodwill', 'value', 1,
+           'loaded_at', '1999-01-01T00:00:00Z')));
+  SELECT count(*) INTO n FROM public.company_reported_lines
+   WHERE source = src AND concept = 'us-gaap:Goodwill'
+     AND loaded_at < now() - interval '1 day';
+  IF n <> 0 THEN
+    RAISE EXCEPTION 'CASE 10 FAILED: a caller-supplied loaded_at was honoured';
+  END IF;
+  ok := ok || E'\n 10 a caller-supplied loaded_at is overwritten     pass';
+
+  -- 11. A MIXED-SOURCE batch must not disturb pairs it is not rewriting.
+  --     The DELETE is scoped to the (symbol, source) PAIRS in the payload.
+  --     Two arrays compared with `= any` is a CROSS PRODUCT, so a batch
+  --     carrying (A, s1) and (B, s2) would also delete (A, s2) and (B, s1) --
+  --     rows it never replaces. This case fails against that form; it passes
+  --     against the pair-scoped one. Raised as a coverage gap on PR #810.
+  DELETE FROM public.company_reported_lines WHERE source IN (src, src || '2');
+  INSERT INTO public.company_reported_lines(source, symbol, fiscal_year, concept, value)
+  VALUES (src,          'AA', fy, 'c', 1),      -- to be rewritten
+         (src || '2',   'BB', fy, 'c', 2),      -- to be rewritten
+         (src || '2',   'AA', fy, 'c', 3),      -- MUST SURVIVE
+         (src,          'BB', fy, 'c', 4);      -- MUST SURVIVE
+
+  r := public.atlas_upsert_reported_lines(jsonb_build_array(
+         jsonb_build_object('source', src,        'symbol', 'AA', 'fiscal_year', fy, 'concept', 'c', 'value', 10),
+         jsonb_build_object('source', src || '2', 'symbol', 'BB', 'fiscal_year', fy, 'concept', 'c', 'value', 20)));
+
+  SELECT count(*) INTO n FROM public.company_reported_lines
+   WHERE (source = src || '2' AND symbol = 'AA' AND value = 3)
+      OR (source = src        AND symbol = 'BB' AND value = 4);
+  IF n <> 2 THEN
+    RAISE EXCEPTION 'CASE 11 FAILED: the cross product deleted % of 2 untouched pairs', 2 - n;
+  END IF;
+  SELECT count(*) INTO n FROM public.company_reported_lines
+   WHERE source IN (src, src || '2');
+  IF n <> 4 THEN RAISE EXCEPTION 'CASE 11 FAILED: % rows, expected 4', n; END IF;
+  ok := ok || E'\n 11 a mixed-source batch leaves other pairs alone  pass';
+
+  RAISE EXCEPTION 'CONTRACT PROOF -- 11/11, rolling back.%', ok;
 END
 $test$;
