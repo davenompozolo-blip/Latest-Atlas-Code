@@ -4798,14 +4798,20 @@ batch tripped the undocumented-until-you-hit-it **1 request/second burst
 limit**, and the refusals still counted against the daily 25. Serialise, or the
 quota is gone before the work starts.
 
-**The backfill wrote nothing, and that was the design working.** The ingest
-script imports `rowsFor` and `STATEMENTS` from `api/sync-financials.js` and
-writes through the same `atlas_upsert_company_statements` RPC, so a row it
-writes is indistinguishable from a loader row -- and it refuses a symbol unless
-all three statements are in hand. That is EQ-2's atomicity lesson (SNDK had an
-income statement and no balance sheet, because the loader wrote per statement
-and the throttle broke the run between calls) applied to the one-off path. Row
-counts before and after: 845 / 828 / 828, unchanged.
+**The backfill wrote nothing, and I read that as the design working. It was
+not -- corrected 2026-09-23.** The ingest script imports `rowsFor` and
+`STATEMENTS` from `api/sync-financials.js` and writes through the same
+`atlas_upsert_company_statements` RPC, so a row it writes is indistinguishable
+from a loader row -- and it refuses a symbol unless all three statements are in
+hand. That atomicity guard is real and is EQ-2's lesson (SNDK had an income
+statement and no balance sheet) applied to the one-off path. Row counts before
+and after: 845 / 828 / 828, unchanged.
+
+But the RPC **could not write a row at all** -- it threw 23502 on every call
+since it shipped, for the `loaded_at` reason in the 2026-09-23 entry below. The
+zero was over-determined and the two causes are indistinguishable from outside.
+**A plausible explanation for a zero is not a measurement of one**; the check
+that settles it is one call with a sentinel payload, which takes seconds.
 
 **A management-API SQL path exists from this container.**
 `POST https://api.supabase.com/v1/projects/<ref>/database/query` with
@@ -4890,6 +4896,122 @@ surface. The Valuation House files above still carry `#00d4ff`. Also
 `equity-peers.js:121` calls `.replace(')', ',0.4)').replace('rgb','rgba')` on
 what are HEX strings, so it is a no-op returning the hex -- pre-existing, not
 touched here.
+
+### A column with a DEFAULT is mandatory under `select *` (2026-09-23)
+
+`atlas_upsert_company_statements` shipped in EQ-2 and **could not write a
+single row**. Found by checking whether the pattern EQ-4's own writer was
+copied from actually works, before copying it.
+
+```
+select atlas_upsert_company_statements(p_income := '[{...}]')
+ERROR 23502: null value in column "loaded_at" ... violates not-null constraint
+CONTEXT: insert into public.company_income_statement
+         select * from jsonb_populate_recordset(...)
+```
+
+`insert into T select * from jsonb_populate_recordset(null::T, payload)` fills
+**every** column of `T` from the payload, and a key the payload omits comes back
+NULL rather than absent. `loaded_at` is `not null default now()` and `rowsFor()`
+has never set it, so every call died. **No statement load has succeeded since
+the RPC shipped**; the layer is frozen at what the earlier direct-POST path
+wrote -- 845/828/828 rows, 10 symbols.
+
+**The default is the trap.** A column with a default reads as optional, and
+under `select *` it is mandatory and unstated. PostgREST applies a default for a
+key it is not sent, so the SAME payload succeeds through a plain POST and fails
+through the RPC -- the transactional wrapper added to make a symbol atomic is
+the thing that broke it. Any NOT NULL DEFAULT column added to those tables later
+breaks it again, silently, in exactly the same way.
+
+**EQ-3 read the resulting empty backfill as the atomicity guard working.** That
+entry says the ingest script "refuses a symbol unless all three statements are
+in hand" and that row counts were unchanged "by design". The guard is real; this
+would have refused the write regardless, and the two were indistinguishable from
+the outside. **A plausible explanation for a zero is not a measurement of one.**
+
+Fixed by stamping `loaded_at` inside the function rather than naming the other
+24/36/28 columns, which keeps the property the original was written for. It is
+also the more correct reading of the field -- when the DATABASE received the
+row, not when a client said it did -- and it removes a caller's ability to
+backdate it.
+
+**No test covered the RPC writing anything**, only its SQL parsing, which is why
+a total write failure sat one level below everything that looked at it.
+`supabase/tests/company_reported_lines_contract.sql` is 9/9 against production
+in a rolled-back transaction, and case 1 is the exact payload shape `rowsFor()`
+produces -- observed throwing before the repair and passing after.
+
+### Never delete on two arrays compared with `= any` (2026-09-23)
+
+`atlas_upsert_reported_lines` first scoped its DELETE
+`where symbol = any(v_syms) and source = any(v_src)`. That is a CROSS PRODUCT: a
+batch carrying (A, finnhub) and (B, alpha_vantage) deletes A's alpha_vantage
+lines and B's finnhub lines, neither of which it is about to rewrite. Harmless
+while one run uses one source, which is the condition that stops being true
+later and without warning. Scope the DELETE to the PAIRS actually present.
+
+### The framework comes out of the filing, not out of the sector (2026-09-23)
+
+EQ-4. `company_reported_lines` / `atlas_upsert_reported_lines` /
+`mode=reported`. Full report in `docs/EQ4_INSTITUTION_LAYER_REPORT.md`.
+
+Eight insurers probed -- TRV, PGR, CB (P&C), MET, PRU, AFL (life), UNH, HUM
+(health). All return **16-19 annual 10-K periods**, 251-472 distinct concepts.
+CB is Swiss-domiciled and still files a 10-K, so EQ-3's 20-F cliff is about
+foreign PRIVATE ISSUERS, not about domicile.
+
+**`loss_reserves` misses exactly the three life names; `future_policy_benefits`
+misses exactly the two pure P&C names.** That is not a coverage gap, it is the
+two business models reporting different liabilities -- which is what the CFA
+frameworks separate them on. A bank carries deposits and net interest income and
+neither.
+
+**`assets.sector` cannot pick the framework, and this is measured:** `Other`
+covers **6,879 of 7,921** active rows. The field is meaningful only inside the
+`equity_cache` cohort (942 symbols: 165 Financials, 4 `Other`, 21 null) --
+EQ-2's `statement_profile` gate is safe for that reason and the claim
+"100% populated" was about the cohort, not the table. Inside it, `Financials`
+still mixes banks, insurers, asset managers and exchanges, and health insurers
+sit under `Healthcare` (UNH, ELV, CI, HUM). **The sector decides who is worth
+fetching; the filing decides which framework applies.**
+
+**Three fields are wrong or unavailable, so the COMBINED RATIO waits.**
+`underwriting_expense`'s only candidate is
+`DeferredPolicyAcquisitionCostAmortizationExpense` -- DAC amortisation is a
+component of underwriting expense, not the measure, so publishing an expense
+ratio from it is the `fwd_pe` defect again. `premiums_written_net` hits 1/8 (the
+CFA denominator; Travelers itself reports on earned, per the text's own
+footnote). `policyholder_benefits` hits 0/8. Both terms of the **loss and LAE
+ratio** hit 8/8, so that is computable and the combined ratio -- which is loss
+ratio plus expense ratio -- is not. **CAMELS - C is not computable from this
+source at all**: Tier 1 and RWA are in the regulatory capital tables, not the
+face statements, absent on every filer probed. A, E and L largely are.
+
+**`sample_concepts` could not fix the mapping** -- it is the first 40 tags in an
+arbitrary order out of several hundred. `conceptSearch` matches the **LABEL** as
+well as the tag, which is the load-bearing half: the label is what a human wrote
+in the filing, so it can find a tag that was never guessed, where a tag search
+can only find what you already thought of. `periods` on each hit, for the reason
+`periods_covered` exists: a tag used in one filing of sixteen is not a series.
+
+**Stored LONG FORM on purpose.** The tag-to-field mapping is exactly what is not
+known, so a corrected mapping is a `CREATE OR REPLACE VIEW` rather than a
+backfill -- the `ratio_pairs` argument. It also turns "which tag does this filer
+use" into a SQL query instead of a code change, a deploy and a vendor call,
+which is the round trip that made this unit slow.
+
+**`taxonomy` is NULL exactly when the concept is us-gaap in ANY of its three
+spellings**, so `taxonomy is not null` IS the foreign test in one predicate.
+Storing `taxonomyOf`'s raw prefix gives `'us-gaap'` for `us-gaap:Assets` and
+NULL for the bare `Assets` the vendor sometimes already strips -- and then
+`taxonomy is distinct from 'us-gaap'` counts every bare tag as foreign. Caught
+by testing, not by reading; 2 of 37 fail against the raw accessor.
+
+**Not loaded yet.** Preview deployments on this project are SSO-gated, so every
+Finnhub measurement round costs a merge to `main`. Finnhub is 60/min with no
+daily cap, so the ~165-symbol cohort is about three minutes of calls -- the
+Alpha Vantage throughput ceiling does not apply to this layer.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
