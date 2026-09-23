@@ -257,3 +257,43 @@ test('the institution concepts cover all three CFA L2 V3 LM4 frameworks', () => 
         assert.ok(Array.isArray(c) && c.length > 0, f);
     });
 });
+
+// ── the namespace prefix, found by the probe's first live run ───────────────
+
+import { localName, indexByLocalName } from '../../api/sync-financials.js';
+
+test('a namespaced XBRL tag resolves to its local name', () => {
+    // Measured: the first probe returned MISS on EVERY field for GOOGL while
+    // indexing 149 distinct concepts, and 3–4 of 16 periods for the others.
+    // A tag matching on some periods and not others of the SAME filer is a
+    // FORMAT difference, not a filer choosing a different concept.
+    assert.equal(localName('us-gaap:Assets'), 'assets');
+    assert.equal(localName('us-gaap_Assets'), 'assets');
+    assert.equal(localName('Assets'), 'assets');
+    assert.equal(localName('ifrs-full:Assets'), 'assets');
+    assert.equal(localName(null), '');
+    assert.equal(localName(''), '');
+});
+
+test('probeConcepts matches across BOTH tag formats and reports the raw one', () => {
+    const bare = indexReport({ bs: [{ concept: 'Assets', value: '1' }] });
+    const ns   = indexReport({ bs: [{ concept: 'us-gaap:Assets', value: '2' }] });
+    const und  = indexReport({ bs: [{ concept: 'us-gaap_Assets', value: '3' }] });
+
+    const out = probeConcepts([bare, ns, und], { total_assets: ['Assets'] });
+    assert.equal(out.total_assets.periods_covered, 3);
+    // The RAW tag is reported, not the normalised one — a reader chasing a
+    // filing needs the string the filing actually used.
+    assert.ok(['Assets', 'us-gaap:Assets', 'us-gaap_Assets'].includes(out.total_assets.matched));
+    // Three spellings of one concept is a FORMAT difference, and it is still
+    // surfaced as drift so the normalisation is visible rather than silent.
+    assert.equal(out.total_assets.tags_seen.length, 3);
+});
+
+test('indexByLocalName keeps the raw concept alongside the value', () => {
+    const idx = indexReport({ ic: [{ concept: 'us-gaap:NetIncomeLoss', label: 'NI', value: '7' }] });
+    const by = indexByLocalName(idx);
+    assert.equal(by.netincomeloss.value, 7);
+    assert.equal(by.netincomeloss.concept, 'us-gaap:NetIncomeLoss');
+    assert.equal(by.netincomeloss.label, 'NI');
+});

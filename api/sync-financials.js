@@ -683,6 +683,36 @@ export function indexReport(report) {
 }
 
 /**
+ * Strip a namespace prefix from an as-reported XBRL tag.
+ *
+ * The first probe returned MISS on every field for GOOGL while indexing 149
+ * distinct concepts, and 3-4 of 16 periods for the others. A tag matching on
+ * some periods and not others of the SAME filer is not a filer choosing a
+ * different concept — it is a FORMAT difference, and the candidate lists were
+ * written in the bare `us-gaap` local-name form.
+ *
+ * Both separators appear in the wild (`us-gaap:Assets`, `us-gaap_Assets`), so
+ * both are stripped, and the comparison is case-insensitive.
+ */
+export function localName(concept) {
+    if (!concept) return '';
+    const s = String(concept);
+    const i = Math.max(s.lastIndexOf(':'), s.lastIndexOf('_'));
+    return (i >= 0 ? s.slice(i + 1) : s).toLowerCase();
+}
+
+/** A concept index keyed by LOCAL NAME, so a namespaced tag still resolves. */
+export function indexByLocalName(idx) {
+    const out = {};
+    for (const [concept, v] of Object.entries(idx || {})) {
+        const k = localName(concept);
+        if (!k || out[k] !== undefined) continue;
+        out[k] = Object.assign({ concept }, v);
+    }
+    return out;
+}
+
+/**
  * Measure, for one symbol's reports, which candidate concept each target
  * field resolved to and on how many of the periods.
  *
@@ -693,13 +723,18 @@ export function indexReport(report) {
  */
 export function probeConcepts(reports, groups) {
     const out = {};
+    // Match on LOCAL NAME, so `us-gaap:Assets`, `us-gaap_Assets` and `Assets`
+    // all resolve to the same candidate. The first probe compared raw strings
+    // and reported MISS on every GOOGL field while indexing 149 concepts.
+    const locals = reports.map(indexByLocalName);
     for (const [field, candidates] of Object.entries(groups)) {
+        const wanted = candidates.map(localName);
         let matched = null, hits = 0;
         const seen = new Set();
-        for (const idx of reports) {
+        for (const idx of locals) {
             let found = null;
-            for (const c of candidates) {
-                if (idx[c] !== undefined) { found = c; break; }
+            for (let i = 0; i < wanted.length; i++) {
+                if (idx[wanted[i]] !== undefined) { found = idx[wanted[i]].concept; break; }
             }
             if (found) { hits++; seen.add(found); if (!matched) matched = found; }
         }
@@ -734,6 +769,10 @@ export async function probeSymbol(symbol, count) {
         year_min: years.length ? Math.min(...years) : null,
         year_max: years.length ? Math.max(...years) : null,
         distinct_concepts: new Set(reports.flatMap(r => Object.keys(r))).size,
+        // A MISS is only actionable if the report says what was there instead.
+        // The first probe returned MISS with no sample and the cause — a
+        // namespace prefix on the tag — was invisible from its output.
+        sample_concepts: Array.from(new Set(reports.flatMap(r => Object.keys(r)))).slice(0, 40),
         gaap: probeConcepts(reports, GAAP_CONCEPTS),
         institution: probeConcepts(reports, INSTITUTION_CONCEPTS),
     };
