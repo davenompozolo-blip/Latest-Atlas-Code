@@ -22,6 +22,10 @@ import {
     buildColumns, visibleLines, visibleRatioGroups,
     periodChange, finite, numOrNull, indexPeers, peerComparison,
 } from './equity/statementRows.js';
+import {
+    loadInstitutionLayer, buildInstitutionView, withheldSentence,
+    INST_LOADED, INST_NO_FRAMEWORK, INST_FAILED,
+} from './equity/institutionRatios.js';
 
 const { useState, useEffect, useMemo } = React;
 const h = React.createElement;
@@ -284,6 +288,223 @@ function Failed({ symbol, error }) {
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
+// ── EQ-4 · the CFA L2 V3 LM4 institution framework ──────────────────────────
+//
+// EQ-2's `statement_profile` gate correctly nulls a bank's operating cycle,
+// free cash flow, EBITDA multiples and interest coverage: for a depository,
+// interest expense is a cost of revenue and CFO is not a free-cash-flow base.
+// Until now the tab said so and stopped, with a note reading "a CAMELS
+// framework is the right instrument here and is not built yet". It is built,
+// and a sentence on screen asserting otherwise is the wrong-entry defect this
+// codebase already records twice — once about a dead feed that had recovered.
+//
+// Nothing here computes a ratio. The arithmetic lives in
+// `vw_company_institution_ratios`, gated on the framework the FILING supports,
+// and `buildInstitutionView` decides only what may be RENDERED.
+
+const METRIC_META = {
+    // ── CAMELS · E ──
+    efficiency_ratio: {
+        group: 'Earnings', label: 'Efficiency ratio', fmt: 'pct',
+        note: 'Noninterest expense over net interest income plus noninterest income. Lower is better.',
+    },
+    noninterest_income_share: {
+        group: 'Earnings', label: 'Noninterest income share', fmt: 'pct',
+        note: 'How much of revenue does not come from the spread.',
+    },
+    nii_to_assets: {
+        // NOT "net interest margin": that is NII over average EARNING assets,
+        // and earning assets are not a line the face statements carry.
+        group: 'Earnings', label: 'Net interest income / assets', fmt: 'pct2',
+        note: 'Not the net interest margin — that needs average earning assets, which the face statements do not report.',
+    },
+    // ── CAMELS · A ──
+    allowance_to_loans: {
+        group: 'Asset quality', label: 'Allowance / loans', fmt: 'pct2',
+        note: 'The credit-loss allowance against the loan book it is held for.',
+    },
+    loans_to_assets: {
+        group: 'Asset quality', label: 'Loans / assets', fmt: 'pct',
+        note: 'How much of the balance sheet is lending rather than markets.',
+    },
+    // ── CAMELS · L ──
+    deposits_to_assets: {
+        group: 'Liquidity', label: 'Deposits / assets', fmt: 'pct',
+        note: 'The share of funding that is deposits.',
+    },
+    // ── short-duration contracts ──
+    loss_and_lae_ratio: {
+        group: 'Underwriting', label: 'Loss and LAE ratio', fmt: 'pct',
+        note: 'Losses and loss-adjustment expense over premiums earned. For a health insurer this is the medical care ratio.',
+    },
+    reserves_to_premiums: {
+        group: 'Underwriting', label: 'Claim reserves / premiums', fmt: 'x',
+        note: 'Reserve size against the premium base the reserves were written on.',
+    },
+    // ── long-duration contracts ──
+    benefits_to_premiums: {
+        group: 'Long-duration', label: 'Benefits / premiums', fmt: 'x',
+        note: null, // supplied by the caveat, which travels with the figure
+    },
+    separate_account_share: {
+        group: 'Long-duration', label: 'Separate accounts / assets', fmt: 'pct',
+        note: 'Policyholder-directed assets, where the investment risk is not the insurer’s.',
+    },
+};
+
+const CAVEAT_SENTENCE = {
+    premiums_are_a_minority_of_long_duration_revenue:
+        'READ THIS AS A COVERAGE RATIO, NOT A LOSS RATIO. A long-duration insurer earns most '
+      + 'of its revenue as net investment income and policy fees, so premiums are a minority '
+      + 'denominator and this figure runs near or above 1.0 in an ordinary year without saying '
+      + 'anything about underwriting.',
+};
+
+const GROUP_ORDER = ['Earnings', 'Asset quality', 'Liquidity', 'Underwriting', 'Long-duration'];
+
+function fmtMetric(v, kind) {
+    if (kind === 'x')    return Number(v).toFixed(3) + '×';
+    if (kind === 'pct2') return pct(v, 2);
+    return pct(v, 1);
+}
+
+function InstitutionMetric({ k, value, series }) {
+    const meta = METRIC_META[k];
+    if (!meta) return null;
+    // The trend is the last five MEASURED years. A year the filing did not
+    // support the metric is absent from it rather than plotted as zero.
+    const pts = series ? series(k).slice(-5) : [];
+    return h('div', {
+        style: {
+            border: '1px solid ' + T.border, borderRadius: 9, padding: '11px 13px',
+            background: T.card2, display: 'flex', flexDirection: 'column', gap: 5,
+        },
+    },
+        h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.07em', color: T.muted2, textTransform: 'uppercase' } }, meta.label),
+        h('div', { style: { fontFamily: T.mono, fontSize: 19, color: T.text, letterSpacing: '-.01em' } }, fmtMetric(value, meta.fmt)),
+        pts.length > 1 && h('div', { style: { fontFamily: T.mono, fontSize: 9, color: T.muted2, display: 'flex', gap: 9, flexWrap: 'wrap' } },
+            pts.map(function (pt) {
+                return h('span', { key: pt.year },
+                    String(pt.year).slice(2) + ' ' + fmtMetric(pt.value, meta.fmt));
+            })
+        ),
+        meta.note && h('div', { style: { fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.5 } }, meta.note)
+    );
+}
+
+function Withheld({ code }) {
+    const sentence = withheldSentence(code);
+    if (!sentence) return null;
+    return h('div', {
+        style: {
+            border: '1px dashed ' + T.border2, borderRadius: 9, padding: '11px 13px',
+            display: 'flex', flexDirection: 'column', gap: 5,
+        },
+    },
+        h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.07em', color: T.amber, textTransform: 'uppercase' } }, 'Withheld'),
+        // NO VALUE NODE AT ALL. An em dash in a slot that looks like every
+        // other slot is indistinguishable from a measurement; F-4 records the
+        // same near miss.
+        h('div', { style: { fontFamily: T.mono, fontSize: 10.5, color: T.muted, lineHeight: 1.55 } }, sentence)
+    );
+}
+
+export function InstitutionFrameworkPanel({ symbol }) {
+    const [res, setRes] = useState(null);
+
+    useEffect(function () {
+        let cancelled = false;
+        setRes(null);
+        if (!symbol) return;
+        loadInstitutionLayer(symbol).then(function (r) { if (!cancelled) setRes(r); });
+        return function () { cancelled = true; };
+    }, [symbol]);
+
+    if (!res) {
+        return h(Card, { title: 'CFA institution framework' },
+            h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted2 } }, 'Loading as-reported lines…'));
+    }
+
+    // A TRANSPORT FAILURE IS NEVER A STATEMENT ABOUT THE DATA.
+    if (res.state === INST_FAILED) {
+        return h(Card, { title: 'CFA institution framework' },
+            h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.amber, lineHeight: 1.6 } },
+                'The as-reported line feed did not answer, so nothing is shown. This says nothing '
+              + 'about whether ' + symbol + ' has an institution framework — the query failed.'));
+    }
+
+    const v = buildInstitutionView(res.rows);
+
+    if (v.state === INST_NO_FRAMEWORK) {
+        return h(Card, { title: 'CFA institution framework', meta: 'FY' + v.fiscalYear },
+            h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.6 } },
+                symbol + '’s as-reported filings are loaded and carry no depository or insurance '
+              + 'contract lines, so no LM4 framework applies. That is an answer about the filer, '
+              + 'not a gap in the data.'));
+    }
+
+    if (v.state !== INST_LOADED) {
+        // NOT LOADED is different from NO FRAMEWORK and says what to do.
+        return h(Card, { title: 'CFA institution framework' },
+            h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.6 } },
+                'No as-reported lines are loaded for ' + symbol + '. The institution layer covers the '
+              + 'filers loaded so far, not the whole universe — an unloaded symbol is not a symbol '
+              + 'without a framework.'));
+    }
+
+    const keys = Object.keys(v.metrics).filter(function (k) { return METRIC_META[k]; });
+    const byGroup = {};
+    keys.forEach(function (k) {
+        const g = METRIC_META[k].group;
+        (byGroup[g] = byGroup[g] || []).push(k);
+    });
+    const caveat = v.metrics.benefits_ratio_caveat
+        ? CAVEAT_SENTENCE[v.metrics.benefits_ratio_caveat] || v.metrics.benefits_ratio_caveat
+        : null;
+    const withheldCodes = Object.keys(v.withheld)
+        .map(function (k) { return v.withheld[k]; })
+        .filter(function (c) { return withheldSentence(c); });
+
+    return h(Card, {
+        title: 'CFA institution framework',
+        badge: v.frameworkLabel,
+        meta: 'FY' + v.fiscalYear + '  ·  ' + v.periods + ' periods  ·  as-reported XBRL',
+    },
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 14 } },
+            GROUP_ORDER.filter(function (g) { return byGroup[g]; }).map(function (g) {
+                return h('div', { key: g },
+                    h('div', {
+                        style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.13em', color: T.muted2, textTransform: 'uppercase', marginBottom: 8 },
+                    }, g),
+                    h('div', {
+                        style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 },
+                    }, byGroup[g].map(function (k) {
+                        return h(InstitutionMetric, { key: k, k, value: v.metrics[k], series: v.series });
+                    }))
+                );
+            }),
+
+            // The caveat sits WITH the figure's group, not in a footnote.
+            caveat && h('div', {
+                style: {
+                    border: '1px solid ' + T.border2, borderRadius: 9, padding: '11px 13px',
+                    fontFamily: T.mono, fontSize: 10.5, color: T.amber, lineHeight: 1.55,
+                },
+            }, caveat),
+
+            withheldCodes.length > 0 && h('div', null,
+                h('div', {
+                    style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.13em', color: T.muted2, textTransform: 'uppercase', marginBottom: 8 },
+                }, 'Refused, with a reason'),
+                h('div', {
+                    style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 },
+                }, withheldCodes.map(function (c) { return h(Withheld, { key: c, code: c }); }))
+            )
+        )
+    );
+}
+
+
 export function FinancialsTab({ symbol }) {
     const [period,  setPeriod]  = useState('annual');
     const [showPoP, setShowPoP] = useState(true);
@@ -347,8 +568,13 @@ export function FinancialsTab({ symbol }) {
                 'This is a financial institution. Ratios that are undefined for one — the operating '
               + 'cycle, free cash flow, EBITDA multiples and interest coverage — are withheld rather '
               + 'than computed, because for a bank interest expense is a cost of revenue and CFO is '
-              + 'not a free-cash-flow base. A CAMELS framework is the right instrument here and is not built yet.')
+              + 'not a free-cash-flow base. The right instrument is the CFA L2 V3 LM4 framework '
+              + 'below, computed from as-reported XBRL lines rather than from the normalised '
+              + 'statements these ratios come from.')
         ),
+        // Only for a financial filer: for everyone else the LM4 frameworks do
+        // not apply and a panel saying so on every retailer is noise.
+        profile === 'financial' && h(InstitutionFrameworkPanel, { symbol }),
         h(RatioTable,      { columns, peerIndex }),
         h(CashFlowBridge,  { columns }),
         h(StatementTable,  { title: 'Income statement', lines: INCOME_LINES,   columns, showPoP }),

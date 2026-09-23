@@ -329,7 +329,50 @@ practice rather than about the bank.
 
 ---
 
-## 8. What is not done
+## 8. The layer has a consumer
+
+EQ-4j. Opening JPM in Equity Research showed an amber note reading *"A CAMELS
+framework is the right instrument here and is not built yet."* It is built —
+and a sentence on screen asserting a capability does not exist is the
+wrong-entry defect this codebase records twice already.
+
+`src/lib/institutionView.js` (pure) decides what may be rendered;
+`src/pages/equity/institutionRatios.js` is transport. A metric is **absent from
+the shape** when unmeasured, so a renderer cannot print a number it was never
+handed, and `benefits_to_premiums` is emitted **only** together with its
+caveat.
+
+Exercised against the live rows for four filers rather than against fixtures:
+
+| | framework | headline | withheld |
+|---|---|---|---|
+| JPM FY2025 | Depository · CAMELS | efficiency **0.524**, allowance/loans **1.76%**, loans/assets **33.2%** | C |
+| WFC FY2025 | Depository · CAMELS | efficiency **0.655**, deposits/assets **66.4%** | **A** and C |
+| UNH FY2025 | Short-duration insurer | loss and LAE **0.891** | combined ratio |
+| PRU FY2025 | Long-duration insurer | benefits/premiums **1.1437** *with caveat* | — |
+
+WFC's two CAMELS A ratios are **not keys on the object** — its FY2025 filing
+reports no loan book — and PRU's loss-ratio series is legitimately empty
+because it is not a short-duration filer.
+
+20 unit tests across the view shape and a new theme-token scanner; **5 of 11**
+view tests fail against a naive implementation that nulls instead of omitting,
+publishes the ratio bare, zero-fills a series and keeps the P&C label, checked
+by reverting. 597/597 overall.
+
+**What is proven and what is not, stated apart:** the shape builder is proven
+against production rows, and the panel's strings are confirmed present in
+`dist/` with `grep -o | wc -l` on a literal only this path can produce. **The
+render is not proven** — the browser in this container cannot reach Supabase.
+
+Two dead theme tokens were written in the first draft (`T.navy2`, `T.sans`,
+neither on the palette) and rendered as nothing with no error —
+`src/lib/equityThemeTokens.test.mjs` now fails any `T.<token>` that the palette
+does not export.
+
+---
+
+## 9. What is not done
 
 
 - **CB is not loaded.** `pickOnePerYear` is committed and untested against the

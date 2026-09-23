@@ -5085,6 +5085,67 @@ happy paths; cases 8-12 in each fail against the pre-fix views.
 the merged Chubb/ACE entity — which is what `pickOnePerYear` (EQ-4g) exists
 for. Committed, not yet re-run.
 
+### An undefined `T.<token>` renders as nothing, silently (2026-09-23)
+
+EQ-4j put the institution framework on the Financials tab, and both
+`background: T.navy2` and `fontFamily: T.sans` were written into it. **Neither
+token is on the palette.** React drops a style property whose value is
+`undefined`, so the tile had no background and no reported error — the
+dead-`var()` failure recorded for the app shell, in a JS form instead of a CSS
+one. `vite build` was clean, 597 tests were green, and the strings shipped to
+the bundle.
+
+The palette is `card / card2 / cardHi`, `border / border2`, `text / muted /
+muted2`, `mono / display`. There is no `navy2` and no `sans`; the ramp keys
+(`--navy-2`) are the SOURCE of `card`, not a token name.
+
+`src/lib/equityThemeTokens.test.mjs` parses `equityTheme.js` for the names it
+actually exports and fails any `T.<token>` in the Equity Research closure that
+is not one of them. It carries the three tests such a scanner needs: that the
+palette parses to a non-empty set (a vacuous scan passes trivially), that it
+finds the exact two-token shape that shipped, and that it does not read its own
+documentation as code — `pagerOrdering.test.mjs` and the EQ-6 palette scanner
+both hit that last one. Reintroducing `T.navy2` fails it, checked by reverting.
+
+**The EQ-6 scanner checks for hardcoded literals; it cannot see a token that
+does not exist.** Those are different failures and need different checks.
+
+### The tab said the framework "is not built yet" (2026-09-23)
+
+EQ-4j. `vw_company_institution_ratios` had no consumer, so opening JPM in
+Equity Research showed an amber note reading *"A CAMELS framework is the right
+instrument here and is not built yet."* It is built. **A sentence on screen
+asserting a capability does not exist is the wrong-entry defect this file
+already records twice** — once about `theme_leadership_weekly`, which had
+recovered while the entry still called it dead.
+
+`src/lib/institutionView.js` is pure and decides only what may be RENDERED;
+`src/pages/equity/institutionRatios.js` is transport. The `clusterView.js` /
+`segmentView.js` split, and it is what lets the shape be tested without a
+bundler.
+
+**A metric is ABSENT from the shape when unmeasured** — not null, not zero, not
+an em dash the renderer supplies. WFC's FY2025 filing reports no loan book, so
+`allowance_to_loans` is not a key on the object and a renderer cannot print
+`0.00%` of a bank's loan book. Verified against the live rows, not a fixture:
+JPM publishes both CAMELS A ratios and withholds C, WFC withholds A with its
+reason, UNH carries no bank metric at all, and PRU's `benefits_to_premiums`
+(1.1437 on FY2025) arrives **only** with its caveat — a row carrying the figure
+without it is refused.
+
+**Four states, because they need four different actions.** `not_loaded` (no
+as-reported lines for this symbol — the layer covers 11 filers, not the
+universe) is not `no_framework` (lines loaded, no depository or insurance
+contract lines, which is an ANSWER about the filer), and neither is `failed`.
+A transport failure never renders as a statement about the data.
+
+**The panel lives in `equity-financials-tab.js` and the string is confirmed in
+`dist/`**, with `grep -o | wc -l` on a literal only this path can produce —
+the EQ-5b rule, because that module's sibling `equity-research.js` has an
+effect body rollup does not emit. **What is proven is the shape builder against
+live rows and that the code ships; the render is not** — the browser in this
+container cannot reach Supabase.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
