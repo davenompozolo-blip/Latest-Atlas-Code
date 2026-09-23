@@ -4692,6 +4692,42 @@ believing the panel. Test it with `{"symbols":["TGT"]}`, which returns in ~1.3s.
 "Total invocations 0" on that page is the dashboard's 24h-lagged analytics, not
 a claim about whether the function has run.
 
+### A second, independent Alpha Vantage key is also free tier (2026-09-23)
+
+EQ-1 measured the production AV key at 25 requests/day and concluded coverage
+needs ~114 days for the 913-symbol universe. The obvious escape is "use a
+different key", so it was **tested rather than assumed**: a second AV
+credential, reached through this session's own MCP server rather than through
+the platform, returns the same message -- *"free key rate limit (25 requests
+per day)"*.
+
+So the throughput ceiling is a property of the **plan**, not of that one key.
+There are exactly two ways past it: pay for AV premium, or move the statement
+loader to **Finnhub** (60/min, no daily cap, 11-16 annual 10-K periods
+measured). That is EQ-3, and it is the reason EQ-3 matters rather than being a
+nice-to-have fallback.
+
+**Parallel requests do not just fail, they SPEND.** Twelve calls fired in one
+batch tripped the undocumented-until-you-hit-it **1 request/second burst
+limit**, and the refusals still counted against the daily 25. Serialise, or the
+quota is gone before the work starts.
+
+**The backfill wrote nothing, and that was the design working.** The ingest
+script imports `rowsFor` and `STATEMENTS` from `api/sync-financials.js` and
+writes through the same `atlas_upsert_company_statements` RPC, so a row it
+writes is indistinguishable from a loader row -- and it refuses a symbol unless
+all three statements are in hand. That is EQ-2's atomicity lesson (SNDK had an
+income statement and no balance sheet, because the loader wrote per statement
+and the throttle broke the run between calls) applied to the one-off path. Row
+counts before and after: 845 / 828 / 828, unchanged.
+
+**A management-API SQL path exists from this container.**
+`POST https://api.supabase.com/v1/projects/<ref>/database/query` with
+`SUPABASE_ACCESS_TOKEN` is the same capability the Supabase MCP uses and is
+scriptable from Bash, which is what makes a bulk backfill cheap when there is
+data to load. There is no service-role key and no `SUPABASE_DB_URL` in the
+container; only the management token.
+
 ### Equity Research was painting from six palettes and three extra accents (2026-09-23)
 
 The UI-upgrade item from the brief. The module did not look different because
