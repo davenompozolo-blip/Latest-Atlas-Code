@@ -785,6 +785,19 @@ export async function probeSymbol(symbol, count) {
         year_min: years.length ? Math.min(...years) : null,
         year_max: years.length ? Math.max(...years) : null,
         distinct_concepts: new Set(reports.flatMap(r => Object.keys(r))).size,
+        // PERIODS ARE NOT PERIODS WITH DATA. `periods` counts 10-K filings
+        // the vendor returns; this counts the ones whose `report` actually
+        // carries concepts, and the two are not the same claim. Which of the
+        // three candidate causes is live — a sparse payload, a per-filer tag
+        // vocabulary, or a mapping fault — is OPEN, and this column only
+        // rules the first in or out. `sample_concepts` below is what settles
+        // the second: it names the tags the filer actually used, so a MISS
+        // can be read against them instead of guessed at.
+        periods_with_concepts: reports.filter(r => Object.keys(r).length > 0).length,
+        concepts_per_period: use.map((d, i) => ({
+            year: d && d.year,
+            n: Object.keys(reports[i] || {}).length,
+        })),
         // A MISS is only actionable if the report says what was there instead.
         // The first probe returned MISS with no sample and the cause — a
         // namespace prefix on the tag — was invisible from its output.
