@@ -390,7 +390,7 @@ export default async function handler(req, res) {
             if (Date.now() - started > budgetMs) { summary.budget_exhausted = true; break; }
             summary.attempted++;
             try {
-                summary.probes.push(await probeSymbol(sym, Number(q.count) || 0));
+                summary.probes.push(await probeSymbol(sym, Number(q.count) || 0, String(q.concept_like || '')));
             } catch (e) {
                 if (e instanceof RateLimited) {
                     summary.rate_limited = true;
@@ -819,9 +819,48 @@ export function probeConcepts(reports, groups) {
 }
 
 /**
+ * Every concept whose TAG or LABEL carries `needle`, with the number of
+ * periods it appears on.
+ *
+ * `sample_concepts` is the first 40 tags in an arbitrary order, which is
+ * enough to prove a namespace prefix and useless for building a concept map
+ * for a filer class nobody has mapped yet: an insurer reports 251-472
+ * distinct concepts and the one wanted is rarely in the first 40.
+ *
+ * The LABEL is searched as well as the tag, because the label is what a
+ * human wrote in the filing. "Policyholder benefits and claims" is how the
+ * CFA framework names the line; the tag the filer chose for it is precisely
+ * the unknown. Searching only the tag can only find what you already guessed.
+ *
+ * `periods` is on each hit for the same reason `periods_covered` is on a
+ * field result — a tag used in one year of sixteen is not a series, and
+ * reading it as one is how a ratio ends up defined on a line the filer
+ * stopped reporting.
+ */
+export function conceptSearch(reports, needle, limit) {
+    if (!needle) return undefined;
+    const n = String(needle).toLowerCase();
+    const cap = Math.max(1, Math.min(200, Number(limit) || 60));
+    const acc = new Map();
+    for (const r of reports) {
+        for (const [concept, v] of Object.entries(r || {})) {
+            const label = (v && v.label) || '';
+            if (!concept.toLowerCase().includes(n) && !label.toLowerCase().includes(n)) continue;
+            const e = acc.get(concept)
+                || { concept, label: (v && v.label) || null, section: v && v.section, periods: 0 };
+            e.periods++;
+            acc.set(concept, e);
+        }
+    }
+    return Array.from(acc.values())
+        .sort((a, b) => b.periods - a.periods || a.concept.localeCompare(b.concept))
+        .slice(0, cap);
+}
+
+/**
  * One symbol's shape. Writes nothing.
  */
-export async function probeSymbol(symbol, count) {
+export async function probeSymbol(symbol, count, conceptLike) {
     const j = await finnhubGetJson('/stock/financials-reported?symbol='
         + encodeURIComponent(symbol) + '&freq=annual'
         + (count ? '&count=' + count : ''));
@@ -855,6 +894,9 @@ export async function probeSymbol(symbol, count) {
         // The first probe returned MISS with no sample and the cause — a
         // namespace prefix on the tag — was invisible from its output.
         sample_concepts: Array.from(new Set(reports.flatMap(r => Object.keys(r)))).slice(0, 40),
+        // Present only when asked for. An empty array would read as "nothing
+        // matches", which is a different claim from "nobody searched".
+        concept_matches: conceptSearch(reports, conceptLike),
         gaap: probeConcepts(reports, GAAP_CONCEPTS),
         institution: probeConcepts(reports, INSTITUTION_CONCEPTS),
     };

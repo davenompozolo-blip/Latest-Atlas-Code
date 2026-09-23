@@ -333,3 +333,71 @@ test('indexByLocalName keeps the raw concept alongside the value', () => {
     assert.equal(by.netincomeloss.concept, 'us-gaap:NetIncomeLoss');
     assert.equal(by.netincomeloss.label, 'NI');
 });
+
+// ============================================================
+// EQ-4 · conceptSearch — the tool for mapping a filer class nobody has mapped.
+//
+// `sample_concepts` is the first 40 tags in an arbitrary order. An insurer
+// reports 251-472 distinct concepts, so the line a framework needs is almost
+// never in that slice, and a candidate list built without seeing the rest is
+// a guess. These tests pin the two properties that make the search usable on
+// an UNKNOWN vocabulary rather than a known one.
+// ============================================================
+import { conceptSearch } from '../../api/sync-financials.js';
+
+const P_AND_C = [
+    indexReport({
+        ic: [
+            { concept: 'us-gaap:PremiumsEarnedNet', label: 'Premiums earned, net', value: '100' },
+            { concept: 'us-gaap:PolicyholderBenefitsAndClaimsIncurredNet', label: 'Claims and claim adjustment expenses', value: '60' },
+            { concept: 'us-gaap:Revenues', label: 'Total revenues', value: '120' },
+        ],
+        bs: [{ concept: 'us-gaap:LiabilityForClaimsAndClaimsAdjustmentExpense', label: 'Claims and claim adjustment expense reserves', value: '900' }],
+    }),
+    indexReport({
+        ic: [{ concept: 'us-gaap:PremiumsEarnedNet', label: 'Premiums earned, net', value: '110' }],
+    }),
+];
+
+test('conceptSearch is ABSENT when nobody searched, never an empty array', () => {
+    // An empty array reads as "nothing in this filing matches", which is a
+    // finding. "No search was requested" is not a finding about the filing.
+    assert.equal(conceptSearch(P_AND_C, ''), undefined);
+    assert.equal(conceptSearch(P_AND_C, null), undefined);
+    assert.deepEqual(conceptSearch(P_AND_C, 'zzz-no-such-line'), []);
+});
+
+test('conceptSearch matches the LABEL, so an unguessable tag is still findable', () => {
+    // This is the whole point. Searching the tag can only find what you
+    // already guessed; the label is what a human wrote in the filing, and the
+    // CFA framework names its lines the way a human would.
+    const byLabel = conceptSearch(P_AND_C, 'claim adjustment');
+    const tags = byLabel.map(h => h.concept);
+    assert.ok(tags.includes('us-gaap:PolicyholderBenefitsAndClaimsIncurredNet'));
+    assert.ok(tags.includes('us-gaap:LiabilityForClaimsAndClaimsAdjustmentExpense'));
+
+    // And neither of those two tags contains the string "claim adjustment"
+    // in a form a tag search would find with that spacing.
+    assert.equal(conceptSearch(P_AND_C, 'claim adjustment expense').length, 2);
+});
+
+test('conceptSearch counts PERIODS, so a one-year line is not read as a series', () => {
+    const hits = conceptSearch(P_AND_C, 'premiumsearnednet');
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].periods, 2);          // both filings
+
+    const oneYear = conceptSearch(P_AND_C, 'Revenues');
+    assert.equal(oneYear[0].periods, 1);       // the second filing does not carry it
+
+    // Ranked by coverage, so the line a filer reports EVERY year sorts above
+    // one it reported once — the opposite ordering would put the accident at
+    // the top of a mapping exercise.
+    const both = conceptSearch(P_AND_C, 'us-gaap:');
+    assert.ok(both[0].periods >= both[both.length - 1].periods);
+});
+
+test('conceptSearch caps its result and the cap is bounded', () => {
+    assert.equal(conceptSearch(P_AND_C, 'us-gaap:', 1).length, 1);
+    // A caller cannot ask for an unbounded scan of a 472-concept filing.
+    assert.ok(conceptSearch(P_AND_C, 'us-gaap:', 100000).length <= 200);
+});
