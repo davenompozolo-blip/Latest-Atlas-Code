@@ -5194,6 +5194,59 @@ cohort size.
 asserted from one source was removed by a single query against another. Check
 before filing something as blocked.
 
+### `RANGE ... 1 PRECEDING` is a VALUE offset, not a row offset (2026-09-23)
+
+EQ-7's peer layer. `peer_percentile` was meant to be "how many peers rank
+strictly below this one", written as
+
+```sql
+count(*) over (partition by cohort_key, metric order by value
+               range between unbounded preceding and 1 preceding)
+```
+
+In RANGE mode the offset is **arithmetic on the ordering value**, so that
+counts peers whose value is at most `value - 1` — it subtracts one unit of
+whatever the metric is measured in. On `beta`, where the universe spans about
+0 to 3, subtracting 1 discards a third of the range; on `roe_ttm`, spanning 0
+to 110, it discards almost nothing. **The error was not even consistent
+between metrics.**
+
+**Postgres accepts it silently** because `value` is numeric and a numeric
+RANGE offset is legal. It is a correct query computing a different quantity,
+which is exactly why nothing caught it: percentiles stayed inside [0, 1],
+`peer_count` stayed consistent with `peer_median`, no plan node looked odd,
+and every row read plausibly. Eight structural invariants over all 14,058 rows
+passed while the number was wrong.
+
+**It was found only by computing the same quantity a second way** — a plain
+`count(*) where b.value < a.value` over the same cohorts — and measuring the
+disagreement: **0.905 on a figure bounded by 1.**
+
+`rank()` is the right primitive. It is 1 + the count of strictly smaller
+values, so `rank() - 1` is exactly "peers strictly below", ties on neither
+side, and the subject excluded because its own value ties with itself. Use
+`ROWS` when you mean rows; `RANGE` with an offset is for values, and ordering
+by a measurement makes the two look identical in the source.
+
+**The leave-one-out median beside it was right**, checked in the same pass —
+1,442 rows, max difference 5e-7 against `percentile_cont` excluding the
+subject, which is the 6-decimal rounding. **Verify each derived column
+separately**: they were written in one sitting and only one of them was wrong.
+
+**An aggregate hid the distribution, three times in one session.** Cohort-level
+coverage looked healthy (Banking `forward_pe` 58 of 63) while **JPM carries
+nothing but `roic_pct`** and TGT three of twenty metrics. Per symbol: 820 of
+913 carry 12+ metrics, 42 carry four or fewer. And `roic_pct` /
+`roic_wacc_spread_pct` sit at **3.6%** because their writer
+`compute_ticker_derived` is on-demand and stopped at 38 tickers. Read the
+distribution, not the mean — this file already says it about `pg_stat_statements`
+and it is the same mistake in a coverage query.
+
+`equity_screener_universe` is a **VIEW over `equity_cache` JSON**, not a table:
+it seq-scans and re-parses that payload twice per read, which is most of the
+413 ms `vw_company_peer_cohort` takes. Under the 3,000 ms anon cap, and a
+growth-linked node — flagged, not fixed.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
