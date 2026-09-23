@@ -559,3 +559,78 @@ test('`taxonomy is not null` IS the foreign test, across all three spellings', (
 
     assert.equal(rows.filter(r => r.taxonomy !== null).length, 2);
 });
+
+// ============================================================
+// EQ-4 · one filing per fiscal year.
+//
+// Found by the FIRST LIVE RUN, not by a fixture: CB failed on
+// 23505 (source, symbol, fiscal_year, concept) already exists. CB returns 19
+// filings all tagged `10-K` and 2011, 2012 and 2013 each appear twice -- the
+// merged Chubb/ACE entity, two predecessor registrants filing for the same
+// years under one ticker. Case 6 above covered a concept repeated WITHIN one
+// filing; nothing covered the same year arriving in TWO.
+// ============================================================
+import { pickOnePerYear, supersededFilings } from '../../api/sync-financials.js';
+
+const filing = (year, n, filed, acc) => ({
+    year, form: '10-K', filedDate: filed, accessNumber: acc,
+    report: { ic: Array.from({ length: n }, (_, i) => ({ concept: 'c' + i, value: '1' })) },
+});
+
+test('two filings for ONE fiscal year cannot both be emitted', () => {
+    // The real CB shape: a full payload and a stub for the same year.
+    const rows = reportedRowsFor({ data: [
+        filing(2013, 3, '2014-02-28', 'A'),
+        filing(2013, 1, '2014-03-01', 'B'),
+    ] }, 'CB');
+    const keys = rows.map(r => r.fiscal_year + '/' + r.concept);
+    assert.equal(new Set(keys).size, keys.length, 'a duplicate key would be refused by the PK');
+});
+
+test('the RICHEST filing wins, not the latest — richest cannot lose a line', () => {
+    // The stub here is filed LATER. Taking "latest" would drop two concepts
+    // the other filing carried, which is the failure mode this rule avoids.
+    const kept = pickOnePerYear([
+        filing(2013, 3, '2014-02-28', 'A'),
+        filing(2013, 1, '2014-03-01', 'B'),
+    ]);
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0].accessNumber, 'A');
+    assert.equal(kept[0].report.ic.length, 3);
+});
+
+test('an equal-sized pair is broken by filing date, then by accession', () => {
+    const byDate = pickOnePerYear([
+        filing(2013, 2, '2014-02-28', 'A'),
+        filing(2013, 2, '2014-03-01', 'B'),
+    ]);
+    assert.equal(byDate[0].accessNumber, 'B');       // later filing wins
+    // Fully deterministic even with no date to separate them: the loader must
+    // not depend on the vendor's array order.
+    const byAcc = pickOnePerYear([
+        filing(2013, 2, null, 'B'),
+        filing(2013, 2, null, 'A'),
+    ]);
+    assert.equal(byAcc[0].accessNumber, 'B');
+});
+
+test('distinct years are all kept — the rule dedupes, it does not collapse', () => {
+    const kept = pickOnePerYear([filing(2013, 2, 'x', 'A'), filing(2012, 2, 'x', 'B'),
+                                 filing(2011, 2, 'x', 'C')]);
+    assert.equal(kept.length, 3);
+    assert.deepEqual(kept.map(f => f.year).sort(), [2011, 2012, 2013]);
+});
+
+test('a superseded year is REPORTED, never dropped silently', () => {
+    const data = [filing(2013, 3, 'x', 'A'), filing(2013, 1, 'y', 'B'), filing(2012, 2, 'z', 'C')];
+    assert.deepEqual(supersededFilings(data), [{ year: 2013, filings: 2 }]);
+
+    const s = reportedSummary({ data }, reportedRowsFor({ data }, 'CB'));
+    assert.deepEqual(s.superseded, [{ year: 2013, filings: 2 }]);
+
+    // ABSENT, not an empty array, when no year was duplicated: every other
+    // symbol would otherwise carry a key that says nothing.
+    const clean = [filing(2013, 2, 'x', 'A'), filing(2012, 2, 'y', 'B')];
+    assert.equal(reportedSummary({ data: clean }, reportedRowsFor({ data: clean }, 'X')).superseded,
+                 undefined);
+});

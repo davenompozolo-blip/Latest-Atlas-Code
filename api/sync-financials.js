@@ -988,6 +988,69 @@ export function probeConcepts(reports, groups) {
 export const SOURCE_REPORTED = 'finnhub';
 
 /**
+ * ONE FILING PER FISCAL YEAR.
+ *
+ * `indexReport` dedupes a concept within a single filing; the table's key
+ * spans filings, so two filings covering the same fiscal year collide on
+ * insert. That is not hypothetical: CB returns 19 filings all tagged `10-K`,
+ * and 2011, 2012 and 2013 each appear TWICE -- the merged Chubb/ACE entity,
+ * where two predecessor registrants filed for the same years and the vendor
+ * returns both under one ticker. One payload carries 109-111 concepts, the
+ * other 20-83.
+ *
+ * THE INSERT ERROR WAS THE LESSER HAZARD. Every consumer aggregates per
+ * (symbol, fiscal_year), so without the key refusing them, two registrants'
+ * figures for one year would have been silently mixed into one set of ratios.
+ *
+ * Nothing in the payload says which filing supersedes the other, so the rule
+ * is stated rather than inferred: KEEP THE RICHEST, tie-broken by the later
+ * filing date and then by accession so it is fully deterministic. Richest
+ * cannot lose a line that the other filing carried; "latest" could, and here
+ * would, since the stub payloads are not obviously the older ones. What is
+ * dropped is REPORTED (`supersededFilings`) rather than discarded quietly.
+ */
+export function pickOnePerYear(filings) {
+    const best = new Map();
+    for (const d of filings) {
+        const year = Number(d && d.year);
+        if (!Number.isFinite(year)) continue;
+        const prev = best.get(year);
+        if (!prev || compareFilings(d, prev) > 0) best.set(year, d);
+    }
+    return Array.from(best.values());
+}
+
+function conceptCount(d) {
+    const r = (d && d.report) || {};
+    return ['ic', 'bs', 'cf'].reduce(
+        (n, k) => n + (Array.isArray(r[k]) ? r[k].length : 0), 0);
+}
+
+/** > 0 when `a` should win. Richest, then later filed, then accession. */
+function compareFilings(a, b) {
+    const byCount = conceptCount(a) - conceptCount(b);
+    if (byCount !== 0) return byCount;
+    const fa = isoDate(a && a.filedDate) || '';
+    const fb = isoDate(b && b.filedDate) || '';
+    if (fa !== fb) return fa < fb ? -1 : 1;
+    return String((a && a.accessNumber) || '').localeCompare(String((b && b.accessNumber) || ''));
+}
+
+/** The filings a fiscal year had beyond the one kept, so a duplicate year is
+ *  legible as a decision rather than as a number that quietly went missing. */
+export function supersededFilings(filings) {
+    const seen = new Map();
+    for (const d of filings) {
+        const year = Number(d && d.year);
+        if (!Number.isFinite(year)) continue;
+        seen.set(year, (seen.get(year) || 0) + 1);
+    }
+    const out = [];
+    for (const [year, n] of seen) if (n > 1) out.push({ year, filings: n });
+    return out.sort((a, b) => b.year - a.year);
+}
+
+/**
  * One symbol's as-reported annual filings, flattened to company_reported_lines
  * rows.
  *
@@ -1006,7 +1069,7 @@ export function reportedRowsFor(json, symbol) {
     // a filter result -- see reportedSummary() below.
     const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
     const out = [];
-    for (const d of annuals) {
+    for (const d of pickOnePerYear(annuals)) {
         const year = Number(d.year);
         if (!Number.isFinite(year)) continue;
         const idx = indexReport(d.report);
@@ -1070,6 +1133,8 @@ export function isoDate(v) {
  */
 export function reportedSummary(json, rows) {
     const data = Array.isArray(json && json.data) ? json.data : [];
+    const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
+    const superseded = supersededFilings(annuals);
     const forms = Array.from(new Set(data.map(d => d && d.form).filter(Boolean)));
     const years = rows.map(r => r.fiscal_year);
     return {
@@ -1079,6 +1144,10 @@ export function reportedSummary(json, rows) {
         year_min: years.length ? Math.min(...years) : null,
         year_max: years.length ? Math.max(...years) : null,
         rows: rows.length,
+        // Present only when a year really had more than one filing. An empty
+        // array on every symbol would be noise; absence here means no year
+        // was duplicated.
+        superseded: superseded.length ? superseded : undefined,
         reason: data.length === 0 ? 'no_filings'
             : rows.length === 0 ? 'no_10k_filings'
             : null,
