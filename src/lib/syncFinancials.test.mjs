@@ -260,19 +260,55 @@ test('the institution concepts cover all three CFA L2 V3 LM4 frameworks', () => 
 
 // ── the namespace prefix, found by the probe's first live run ───────────────
 
-import { localName, indexByLocalName } from '../../api/sync-financials.js';
+import { conceptKey, taxonomyOf, indexByLocalName } from '../../api/sync-financials.js';
 
-test('a namespaced XBRL tag resolves to its local name', () => {
+test('the three us-gaap spellings resolve to one key', () => {
     // Measured: the first probe returned MISS on EVERY field for GOOGL while
     // indexing 149 distinct concepts, and 3–4 of 16 periods for the others.
     // A tag matching on some periods and not others of the SAME filer is a
     // FORMAT difference, not a filer choosing a different concept.
-    assert.equal(localName('us-gaap:Assets'), 'assets');
-    assert.equal(localName('us-gaap_Assets'), 'assets');
-    assert.equal(localName('Assets'), 'assets');
-    assert.equal(localName('ifrs-full:Assets'), 'assets');
-    assert.equal(localName(null), '');
-    assert.equal(localName(''), '');
+    assert.equal(conceptKey('us-gaap:Assets'), 'assets');
+    assert.equal(conceptKey('us-gaap_Assets'), 'assets');
+    assert.equal(conceptKey('Assets'), 'assets');
+    assert.equal(conceptKey('US-GAAP:Assets'), 'assets');   // case-insensitive
+    assert.equal(conceptKey(null), '');
+    assert.equal(conceptKey(''), '');
+});
+
+test('a FOREIGN taxonomy keeps its prefix and does NOT match us-gaap', () => {
+    // THIS TEST ASSERTED THE OPPOSITE UNTIL PR #808's REVIEW. The first fix
+    // took the last ':' or '_' and dropped whatever preceded it, so
+    // `ifrs-full:Assets` collapsed to `assets` and was counted as the
+    // US-GAAP candidate -- the probe would report mapping coverage it does
+    // not have. ASML files in IFRS, so this is in the live sample, not
+    // hypothetical.
+    assert.equal(conceptKey('ifrs-full:Assets'), 'ifrs-full:assets');
+    assert.equal(conceptKey('issuer:Assets'), 'issuer:assets');
+    assert.equal(conceptKey('tgt_Custom'), 'tgt:custom');
+    assert.notEqual(conceptKey('ifrs-full:Assets'), conceptKey('us-gaap:Assets'));
+
+    assert.equal(taxonomyOf('us-gaap:Assets'), 'us-gaap');
+    assert.equal(taxonomyOf('ifrs-full:Assets'), 'ifrs-full');
+    assert.equal(taxonomyOf('Assets'), null);   // already stripped by Finnhub
+});
+
+test('an IFRS filer reports a MISS, and says the tag exists in IFRS', () => {
+    // A miss because the concept is absent and a miss because the filer uses
+    // another taxonomy are different findings, and collapsing them is exactly
+    // what the defect above did. The second must be legible.
+    const ifrs = indexReport({ bs: [{ concept: 'ifrs-full:Assets', value: '9' }] });
+    const out = probeConcepts([ifrs], { total_assets: ['Assets'] });
+
+    assert.equal(out.total_assets.matched, null, 'an IFRS tag is not a us-gaap match');
+    assert.equal(out.total_assets.periods_covered, 0);
+    assert.deepEqual(out.total_assets.foreign_taxonomy_tags, ['ifrs-full:Assets']);
+});
+
+test('a us-gaap match reports no foreign taxonomy', () => {
+    const us = indexReport({ bs: [{ concept: 'us-gaap:Assets', value: '1' }] });
+    const out = probeConcepts([us], { total_assets: ['Assets'] });
+    assert.equal(out.total_assets.periods_covered, 1);
+    assert.equal(out.total_assets.foreign_taxonomy_tags, undefined);
 });
 
 test('probeConcepts matches across BOTH tag formats and reports the raw one', () => {

@@ -699,29 +699,55 @@ export function indexReport(report) {
 }
 
 /**
- * Strip a namespace prefix from an as-reported XBRL tag.
+ * The key an as-reported XBRL tag is matched on.
  *
  * The first probe returned MISS on every field for GOOGL while indexing 149
- * distinct concepts, and 3-4 of 16 periods for the others. A tag matching on
- * some periods and not others of the SAME filer is not a filer choosing a
- * different concept — it is a FORMAT difference, and the candidate lists were
- * written in the bare `us-gaap` local-name form.
+ * distinct concepts. A tag matching on some periods and not others of the
+ * SAME filer is not a filer choosing a different concept -- it is a FORMAT
+ * difference: Finnhub returns `Assets`, `us-gaap:Assets` and `us-gaap_Assets`
+ * for the same US-GAAP concept, and the candidate lists were written in the
+ * bare form.
  *
- * Both separators appear in the wild (`us-gaap:Assets`, `us-gaap_Assets`), so
- * both are stripped, and the comparison is case-insensitive.
+ * ONLY THE `us-gaap` NAMESPACE IS STRIPPED, AND THAT IS THE WHOLE POINT.
+ * The first fix took the last `:` or `_` and dropped whatever preceded it, so
+ * `ifrs-full:Assets` and `issuer:Assets` both collapsed to `assets` and
+ * counted as the US-GAAP candidate. A namespace is part of a concept's
+ * identity: an IFRS filer tagging `ifrs-full:Assets` has NOT reported the
+ * US-GAAP concept, and a probe that says otherwise reports coverage the
+ * mapping does not have. That matters here rather than in theory -- ASML
+ * files in IFRS (its statements come back in EUR), so a foreign taxonomy is
+ * in the very sample this probe measures.
+ *
+ * Any other taxonomy keeps its prefix, so it stays visible as a mismatch.
+ * Raised by the Codex reviewer on PR #808.
  */
-export function localName(concept) {
+const US_GAAP = 'us-gaap';
+const NS = /^([A-Za-z][A-Za-z0-9-]*)[:_](.+)$/;
+
+export function conceptKey(concept) {
     if (!concept) return '';
     const s = String(concept);
-    const i = Math.max(s.lastIndexOf(':'), s.lastIndexOf('_'));
-    return (i >= 0 ? s.slice(i + 1) : s).toLowerCase();
+    const m = NS.exec(s);
+    if (!m) return s.toLowerCase();
+    const [, ns, local] = m;
+    return ns.toLowerCase() === US_GAAP
+        ? local.toLowerCase()
+        : ns.toLowerCase() + ':' + local.toLowerCase();
 }
 
-/** A concept index keyed by LOCAL NAME, so a namespaced tag still resolves. */
+/** The taxonomy a tag declares, or null for a bare (already-stripped) tag. */
+export function taxonomyOf(concept) {
+    if (!concept) return null;
+    const m = NS.exec(String(concept));
+    return m ? m[1].toLowerCase() : null;
+}
+
+/** A concept index keyed by `conceptKey`, so a us-gaap tag resolves in any
+ *  of its three spellings while a foreign taxonomy stays distinct. */
 export function indexByLocalName(idx) {
     const out = {};
     for (const [concept, v] of Object.entries(idx || {})) {
-        const k = localName(concept);
+        const k = conceptKey(concept);
         if (!k || out[k] !== undefined) continue;
         out[k] = Object.assign({ concept }, v);
     }
@@ -737,6 +763,25 @@ export function indexByLocalName(idx) {
  * finding about the mapping, and a field silently missing from the
  * report reads as one nobody asked about.
  */
+/**
+ * The tags carrying one of `wanted`'s local names under a NON-us-gaap
+ * taxonomy. `wanted` is already in conceptKey form, so a us-gaap candidate is
+ * a bare local name; anything matching it after its own prefix is stripped is
+ * the same concept in a different taxonomy.
+ */
+function foreignHits(locals, wanted) {
+    const bare = new Set(wanted.filter(w => !w.includes(':')));
+    const out = new Set();
+    for (const idx of locals) {
+        for (const [key, v] of Object.entries(idx)) {
+            const colon = key.indexOf(':');
+            if (colon < 0) continue;                       // us-gaap or bare
+            if (bare.has(key.slice(colon + 1))) out.add(v.concept);
+        }
+    }
+    return Array.from(out);
+}
+
 export function probeConcepts(reports, groups) {
     const out = {};
     // Match on LOCAL NAME, so `us-gaap:Assets`, `us-gaap_Assets` and `Assets`
@@ -744,7 +789,7 @@ export function probeConcepts(reports, groups) {
     // and reported MISS on every GOOGL field while indexing 149 concepts.
     const locals = reports.map(indexByLocalName);
     for (const [field, candidates] of Object.entries(groups)) {
-        const wanted = candidates.map(localName);
+        const wanted = candidates.map(conceptKey);
         let matched = null, hits = 0;
         const seen = new Set();
         for (const idx of locals) {
@@ -754,12 +799,20 @@ export function probeConcepts(reports, groups) {
             }
             if (found) { hits++; seen.add(found); if (!matched) matched = found; }
         }
+        // A MISS under us-gaap while the SAME local name is present under
+        // another taxonomy is a different finding from the concept being
+        // absent: it says this is a foreign filer, not that the mapping is
+        // wrong. Reporting them as one number is what the namespace collapse
+        // did, so they are reported apart.
+        const foreign = matched ? [] : foreignHits(locals, wanted);
+
         out[field] = {
             matched: matched,
             periods_covered: hits,
             // More than one tag across the sample is the cross-filer
             // inconsistency this probe exists to detect.
             tags_seen: seen.size > 1 ? Array.from(seen) : undefined,
+            foreign_taxonomy_tags: foreign.length ? foreign : undefined,
         };
     }
     return out;

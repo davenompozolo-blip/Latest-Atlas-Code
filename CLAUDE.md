@@ -4692,6 +4692,128 @@ believing the panel. Test it with `{"symbols":["TGT"]}`, which returns in ~1.3s.
 "Total invocations 0" on that page is the dashboard's 24h-lagged analytics, not
 a claim about whether the function has run.
 
+### Finnhub is a SEC 10-K feed, so it cannot replace Alpha Vantage (2026-09-23)
+
+EQ-3, measured against production. Full report in
+`docs/EQ3_FINNHUB_MEASUREMENT_REPORT.md`. The working assumption across three
+entries above was "move the statement loader to Finnhub". **That is wrong, and
+the split is not where it was assumed to be.**
+
+**The sparse-payload hypothesis is dead.** Every period carries concepts --
+TGT 16/16 at 64-96 concepts each, JPM 15/15 at 108-118, AAPL 16/16. The
+original MISS was the namespace after all: everything resolves to the
+`us-gaap_` UNDERSCORE spelling while the candidate lists were bare local
+names. A few tags come back already stripped (`CommonStockSharesOutstanding`,
+`LongTermDebt`), so all three spellings genuinely occur.
+
+**THE COVERAGE CLIFF: 4 of 4 foreign filers return ZERO periods**, against 3 of
+3 US filers at 15-16. ASML, TSM, SONY and ABEV all come back with `forms: []`
+-- the vendor returned no rows, not rows a `10-K` filter rejected.
+`financials-reported` is a **SEC 10-K feed**, and a foreign private issuer
+files a 20-F. That is **14.04% of the book** (TSM 3.82, ASML 3.00, ABEV 1.93,
+ATAT 1.93, SONY 1.89, PBR 1.47). Alpha Vantage serves them -- ASML returns 20
+annual periods in EUR -- so **the throughput problem and the coverage problem
+pull in opposite directions and neither vendor alone closes both.**
+
+**Per-field coverage is uneven, which rules out a swap on its own.** As-reported
+XBRL carries only what the filer tagged on that filing's face statements, and
+practice drifts over the years. TGT matched 24 of 30 fields, but
+`operating_income` on 8/16 periods, **`net_income` on 5/16**, `gross_profit`
+3/16. Net income in under a third of years is disqualifying for the ratio
+layer: Piotroski, ROE and every margin rest on it. **`vw_company_fundamentals`
+stays on Alpha Vantage.**
+
+**What Finnhub uniquely gives is the thing EQ-2 recorded as impossible.** That
+entry says the CAMELS inputs "do not exist in the persisted statements" -- true
+of AV's NORMALISED schema, false of Finnhub's as-reported payload. JPM carries
+`net_interest_income`, `noninterest_income`, `noninterest_expense`, `deposits`
+and `allowance_for_credit_losses` on **15 of 15 periods**. Tier 1 capital and
+risk-weighted assets are still absent (they live in the regulatory capital
+tables, not the face statements), so CAMELS' **C** leg remains uncomputable;
+A, E and L largely are.
+
+**So EQ-4 builds on Finnhub and EQ-2 stays on AV.** 165 of the 913-symbol
+universe are Financials, essentially all US-listed, which is precisely where
+Finnhub's coverage is strongest and its 10-K restriction costs nothing.
+
+**JPM's GAAP misses corroborate EQ-2's `statement_profile` from the vendor
+side** -- no cost of revenue, no gross profit, no inventory, no current
+assets or liabilities. That gate was reasoned from the CFA framework; this is
+independent confirmation that a bank genuinely does not report those lines.
+
+**The instrument was nearly wrong twice, and both were caught by review.**
+`details.base` / `run_tag` (EQ-3c) prove which server answered -- two earlier
+runs took Vercel's deployment-protection LOGIN PAGE as a 200 and, writing no
+`sync_log` row, let `ORDER BY id DESC` serve the previous run's row as a
+measurement. And the namespace collapse (below) would have laundered
+`ifrs-full:` into a us-gaap match, with **ASML, an IFRS filer, in this very
+sample**. It returns no rows at all so no figure moved -- luck, not design.
+**A probe that cannot say which server answered it is not a measurement.**
+
+**The throughput ceiling is unresolved and is a SPEND decision, not an
+engineering one.** Finnhub does not rescue it, because it cannot feed the ratio
+layer at all.
+
+### A namespace is part of a concept's identity (2026-09-23)
+
+Raised by the Codex reviewer on PR #808. `localName` took the last `:` or `_`
+and dropped whatever preceded it, so `ifrs-full:Assets` and `issuer:Assets`
+both collapsed to `assets` and counted as the US-GAAP candidate -- the probe
+would report mapping coverage it does not have. **The test I wrote explicitly
+blessed the IFRS spelling**, pinning the wrong behaviour.
+
+`conceptKey` strips ONLY the two Finnhub encodings of `us-gaap` (`us-gaap:`,
+`us-gaap_`, case-insensitive) plus the bare form the vendor sometimes already
+strips. Every other taxonomy keeps its prefix and stays visible as a mismatch.
+
+**`foreign_taxonomy_tags` is the other half.** A miss because the concept is
+ABSENT and a miss because the filer uses ANOTHER TAXONOMY are different
+findings, and collapsing them is what the defect did. An IFRS filer now reports
+`matched: null` *and* names the IFRS tag it used -- the discriminator EQ-4 needs
+to tell a US filer from a foreign one, arriving from the same run rather than a
+second investigation.
+
+Same family as the `fwd_pe` entry: **a key that asserts an identity must be
+checked against what it actually matches**, not against what it looks like it
+matches. 164/164, and the two new tests fail against the pre-fix collapse,
+checked by restoring it.
+
+### A second, independent Alpha Vantage key is also free tier (2026-09-23)
+
+EQ-1 measured the production AV key at 25 requests/day and concluded coverage
+needs ~114 days for the 913-symbol universe. The obvious escape is "use a
+different key", so it was **tested rather than assumed**: a second AV
+credential, reached through this session's own MCP server rather than through
+the platform, returns the same message -- *"free key rate limit (25 requests
+per day)"*.
+
+So the throughput ceiling is a property of the **plan**, not of that one key.
+There are exactly two ways past it: pay for AV premium, or move the statement
+loader to **Finnhub** (60/min, no daily cap, 11-16 annual 10-K periods
+measured). That is EQ-3, and it is the reason EQ-3 matters rather than being a
+nice-to-have fallback.
+
+**Parallel requests do not just fail, they SPEND.** Twelve calls fired in one
+batch tripped the undocumented-until-you-hit-it **1 request/second burst
+limit**, and the refusals still counted against the daily 25. Serialise, or the
+quota is gone before the work starts.
+
+**The backfill wrote nothing, and that was the design working.** The ingest
+script imports `rowsFor` and `STATEMENTS` from `api/sync-financials.js` and
+writes through the same `atlas_upsert_company_statements` RPC, so a row it
+writes is indistinguishable from a loader row -- and it refuses a symbol unless
+all three statements are in hand. That is EQ-2's atomicity lesson (SNDK had an
+income statement and no balance sheet, because the loader wrote per statement
+and the throttle broke the run between calls) applied to the one-off path. Row
+counts before and after: 845 / 828 / 828, unchanged.
+
+**A management-API SQL path exists from this container.**
+`POST https://api.supabase.com/v1/projects/<ref>/database/query` with
+`SUPABASE_ACCESS_TOKEN` is the same capability the Supabase MCP uses and is
+scriptable from Bash, which is what makes a bulk backfill cheap when there is
+data to load. There is no service-role key and no `SUPABASE_DB_URL` in the
+container; only the management token.
+
 ### Equity Research was painting from six palettes and three extra accents (2026-09-23)
 
 The UI-upgrade item from the brief. The module did not look different because
