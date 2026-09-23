@@ -1,4 +1,5 @@
 import React from 'react';
+import { T, dim } from './equity/equityTheme.js';
 // ============================================================
 // ATLAS Terminal — Equity Research Screener (landing page)
 // Pre-loaded universe so you pick from what's available rather
@@ -71,7 +72,7 @@ function EquityRow({ s, onPick }) {
             )
         ),
         h('td', { style: { padding: '8px 10px', minWidth: 120 } }, h(CatBadge, { label: s.sector })),
-        numTd(s.current_price != null ? '$' + Number(s.current_price).toFixed(2) : '—', '#00d4ff', 600),
+        numTd(s.current_price != null ? '$' + Number(s.current_price).toFixed(2) : '—', T.cyan, 600),
         numTd(s.pe_ratio != null ? fmtN(s.pe_ratio, 1, 'x') : '—', peColor(s.pe_ratio)),
         numTd(s.ev_ebitda != null ? fmtN(s.ev_ebitda, 1, 'x') : '—'),
         numTd((s.div_yield_pct || 0) > 0 ? fmtN(s.div_yield_pct, 2, '%') : '—', (s.div_yield_pct || 0) > 0 ? '#1D9E75' : 'rgba(255,255,255,0.25)'),
@@ -87,8 +88,8 @@ function EquityRow({ s, onPick }) {
             h('button', {
                 onClick: function() { onPick(s.symbol); },
                 style: {
-                    background: 'rgba(0,212,255,0.1)', border: '1px solid rgba(0,212,255,0.35)',
-                    color: '#00d4ff', borderRadius: 5, padding: '5px 12px', fontSize: 11, fontWeight: 700,
+                    background: dim(T.cyan, 0.1), border: '1px solid ' + dim(T.cyan, 0.35),
+                    color: T.cyan, borderRadius: 5, padding: '5px 12px', fontSize: 11, fontWeight: 700,
                     cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', letterSpacing: 0.5,
                 }
             }, 'Research →')
@@ -224,7 +225,7 @@ export function EquityScreener({ onPick }) {
         // Header
         h('div', { style: { padding: '14px 4px 12px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' } },
             h('div', null,
-                h('div', { style: { fontSize: 13, fontWeight: 700, color: '#00d4ff', letterSpacing: 2, fontFamily: 'JetBrains Mono, monospace' } }, '◈ EQUITY SCREENER'),
+                h('div', { style: { fontSize: 13, fontWeight: 700, color: T.cyan, letterSpacing: 2, fontFamily: 'JetBrains Mono, monospace' } }, '◈ EQUITY SCREENER'),
                 h('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 } }, 'Pick a name to open its research dossier')
             ),
             // Universe toggle
@@ -234,9 +235,9 @@ export function EquityScreener({ onPick }) {
                     return h('button', {
                         key: u, onClick: function() { setUniverse(u); setSearch(''); setStyle('All'); setFilters({ sector: 'All', div: 'All' }); },
                         style: {
-                            background: active ? 'rgba(0,212,255,0.15)' : 'transparent',
-                            border: '1px solid ' + (active ? 'rgba(0,212,255,0.45)' : 'transparent'),
-                            color: active ? '#00d4ff' : 'rgba(255,255,255,0.45)',
+                            background: active ? dim(T.cyan, 0.15) : 'transparent',
+                            border: '1px solid ' + (active ? dim(T.cyan, 0.45) : 'transparent'),
+                            color: active ? T.cyan : 'rgba(255,255,255,0.45)',
                             borderRadius: 6, padding: '5px 14px', fontSize: 11, fontWeight: active ? 700 : 400,
                             cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', letterSpacing: 0.5,
                         }
@@ -244,7 +245,7 @@ export function EquityScreener({ onPick }) {
                 })
             ),
             h('div', { style: { flex: 1 } }),
-            enrichProg && h('div', { style: { fontSize: 10, color: '#00d4ff', fontFamily: 'JetBrains Mono, monospace', opacity: 0.8 } },
+            enrichProg && h('div', { style: { fontSize: 10, color: T.cyan, fontFamily: 'JetBrains Mono, monospace', opacity: 0.8 } },
                 'Enriching ' + enrichProg.done + ' / ' + enrichProg.total),
             h('input', {
                 type: 'text', value: search, onChange: function(e) { setSearch(e.target.value); },
@@ -262,9 +263,9 @@ export function EquityScreener({ onPick }) {
                 return h('button', {
                     key: style, onClick: function() { setStyle(style); },
                     style: {
-                        background: active ? (c ? c.bg : 'rgba(0,212,255,0.15)') : 'rgba(255,255,255,0.04)',
-                        border: '1px solid ' + (active ? (c ? c.border : 'rgba(0,212,255,0.4)') : 'rgba(255,255,255,0.1)'),
-                        color: active ? (c ? c.text : '#00d4ff') : 'rgba(255,255,255,0.5)',
+                        background: active ? (c ? c.bg : dim(T.cyan, 0.15)) : 'rgba(255,255,255,0.04)',
+                        border: '1px solid ' + (active ? (c ? c.border : dim(T.cyan, 0.4)) : 'rgba(255,255,255,0.1)'),
+                        color: active ? (c ? c.text : T.cyan) : 'rgba(255,255,255,0.5)',
                         borderRadius: 20, padding: '5px 14px', fontSize: 11, fontWeight: active ? 700 : 400,
                         cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', letterSpacing: 0.5,
                     }

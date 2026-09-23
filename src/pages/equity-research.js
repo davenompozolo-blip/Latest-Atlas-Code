@@ -1,4 +1,5 @@
 import React from 'react';
+import { T, dim } from './equity/equityTheme.js';
 import { fmt, fmtCurrency, cls, useChart } from './utils.js';
 import { Loading, EmptyState } from './components.js';
 import { sb } from './config.js';
@@ -143,10 +144,10 @@ function PortfolioChip({ pos, perf }) {
               : '')
         : null;
     return React.createElement('div', {
-        style: { background: 'rgba(0,212,184,0.08)', border: '1px solid rgba(0,212,184,0.28)', borderRadius: 7, padding: '9px 10px' }
+        style: { background: T.cyanDim, border: '1px solid ' + dim(T.cyan, 0.28), borderRadius: 7, padding: '9px 10px' }
     },
         React.createElement('div', {
-            style: { fontSize: 7.5, letterSpacing: 1.2, textTransform: 'uppercase', color: '#00d4b8', marginBottom: 6 }
+            style: { fontSize: 7.5, letterSpacing: 1.2, textTransform: 'uppercase', color: T.cyan, marginBottom: 6 }
         }, '◈ In Portfolio · Atlas Position'),
         React.createElement('div', {
             style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }
@@ -211,15 +212,15 @@ function Sidebar52WRange({ low, high, current }) {
             style: { position: 'relative', height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, margin: '0 0 6px' }
         },
             React.createElement('div', {
-                style: { position: 'absolute', top: 0, left: 0, height: '100%', width: pct + '%', borderRadius: 3, background: 'linear-gradient(90deg,rgba(34,197,94,0.4),rgba(0,212,184,0.6))' }
+                style: { position: 'absolute', top: 0, left: 0, height: '100%', width: pct + '%', borderRadius: 3, background: 'linear-gradient(90deg,' + dim(T.green, 0.4) + ',' + dim(T.cyan, 0.6) + ')' }
             }),
             React.createElement('div', {
-                style: { position: 'absolute', top: -5, left: pct + '%', width: 16, height: 16, borderRadius: '50%', background: '#00d4b8', border: '2px solid #07091a', marginLeft: -8, boxShadow: '0 0 8px rgba(0,212,184,0.5)' }
+                style: { position: 'absolute', top: -5, left: pct + '%', width: 16, height: 16, borderRadius: '50%', background: T.cyan, border: '2px solid ' + T.bg, marginLeft: -8, boxShadow: '0 0 8px ' + dim(T.cyan, 0.5) }
             })
         ),
         React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 7.5 } },
             React.createElement('span', { style: { color: 'rgba(255,255,255,0.3)' } }, '$' + low.toFixed(2)),
-            React.createElement('span', { style: { color: '#00d4b8', fontWeight: 600 } }, '$' + current.toFixed(0)),
+            React.createElement('span', { style: { color: T.cyan, fontWeight: 600 } }, '$' + current.toFixed(0)),
             React.createElement('span', { style: { color: 'rgba(255,255,255,0.3)' } }, '$' + high.toFixed(2))
         )
     );
@@ -298,7 +299,7 @@ function SidebarAnalystCard({ rawOverview, current }) {
                 style: { position: 'absolute', top: 0, left: Math.min(curPos, tgtPos) + '%', width: Math.abs(tgtPos - curPos) + '%', height: '100%', background: 'rgba(34,197,94,0.3)', borderRadius: 2 }
             }),
             React.createElement('div', {
-                style: { position: 'absolute', top: -5, left: curPos + '%', width: 2, height: 14, background: '#00d4b8', borderRadius: 1 }
+                style: { position: 'absolute', top: -5, left: curPos + '%', width: 2, height: 14, background: T.cyan, borderRadius: 1 }
             }),
             React.createElement('div', {
                 style: { position: 'absolute', top: -5, left: tgtPos + '%', width: 2, height: 14, background: '#22c55e', borderRadius: 1 }
@@ -308,7 +309,7 @@ function SidebarAnalystCard({ rawOverview, current }) {
             style: { display: 'flex', justifyContent: 'space-between', fontSize: 7.5, color: 'rgba(255,255,255,0.2)', marginTop: 6 }
         },
             React.createElement('span', null, '$' + Math.round(rangeLow) + ' low'),
-            React.createElement('span', { style: { color: '#00d4b8' } }, '$' + current.toFixed(0) + ' now'),
+            React.createElement('span', { style: { color: T.cyan } }, '$' + current.toFixed(0) + ' now'),
             React.createElement('span', { style: { color: '#22c55e' } }, '$' + target.toFixed(0) + ' target')
         )
     );
@@ -369,13 +370,13 @@ function EarningsSummary({ quarterly, snapshot }) {
             makeQCard(recent[1], 'q1'),
             React.createElement(EqCard, {
                 key: 'rev',
-                color: '#00d4b8', lc: 'rgba(0,212,184,0.7)',
+                color: T.cyan, lc: dim(T.cyan, 0.7),
                 label: 'Revenue Growth YoY',
                 value: revValid ? (revGrowth >= 0 ? '+' : '') + (revGrowth * 100).toFixed(1) + '%' : '—',
                 sub1: snapshot && snapshot.totalRevenue
                     ? '$' + (parseFloat(snapshot.totalRevenue) / 1e9).toFixed(1) + 'B TTM revenue' : null,
                 sub2: epsValid ? 'EPS growth ' + (epsGrowth >= 0 ? '+' : '') + (epsGrowth * 100).toFixed(1) + '%' : null,
-                bg: 'rgba(0,212,184,0.05)', bdr: 'rgba(0,212,184,0.18)',
+                bg: dim(T.cyan, 0.05), bdr: dim(T.cyan, 0.18),
             })
         )
     );
@@ -574,7 +575,7 @@ export function EquityResearch(props) {
             onClick: function() { analyse(input); },
             disabled: status === 'loading',
             style: {
-                background: 'linear-gradient(135deg,#00d4b8,#6366f1)', color: '#fff',
+                background: 'linear-gradient(135deg,' + T.cyan + ',' + T.violet + ')', color: T.text,
                 border: 'none', borderRadius: 6, padding: '8px 18px',
                 fontWeight: 600, cursor: status === 'loading' ? 'not-allowed' : 'pointer',
                 opacity: status === 'loading' ? 0.6 : 1,
@@ -593,8 +594,8 @@ export function EquityResearch(props) {
         status === 'ready' && symbol && React.createElement('button', {
             onClick: saveToScrapbook,
             style: {
-                background: 'rgba(139,92,246,0.15)', color: '#8b5cf6',
-                border: '1px solid rgba(139,92,246,0.35)', borderRadius: 6,
+                background: T.violetDim, color: T.violet,
+                border: '1px solid ' + dim(T.violet, 0.35), borderRadius: 6,
                 padding: '8px 14px', fontWeight: 600, cursor: 'pointer',
                 fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8,
             }

@@ -4692,6 +4692,83 @@ believing the panel. Test it with `{"symbols":["TGT"]}`, which returns in ~1.3s.
 "Total invocations 0" on that page is the dashboard's 24h-lagged analytics, not
 a claim about whether the function has run.
 
+### Equity Research was painting from six palettes and three extra accents (2026-09-23)
+
+The UI-upgrade item from the brief. The module did not look different because
+it was missing tokens -- it looked different because it never joined the ramp
+that the shell unification already established. `:root` in `globals.css` IS
+`.nexus-flagship`'s ramp (`--navy-2` == `--card` == `#121821`); the module
+simply painted from literals that predate it.
+
+**Six local `var T = {}` palettes, no two agreeing**, plus `equity-research.js`
+with no palette at all -- only literals:
+
+| file | green | red | text | muted2 |
+|---|---|---|---|---|
+| `equity-research-panels` | `#41d18a` | `#f76d6d` | `#e7eef5` | `#5a6573` |
+| `equity-background-tab` | `#22c55e` | -- | `#e6edf5` | `#63748c` |
+| `equity-financials-tab` | `#22c55e` | `#ef4444` | `#e6edf5` | `#63748c` |
+| `equity-valuation-tab` | `#22c55e` | `#ef4444` | `#e6edf5` | `#63748c` |
+| `equity-technicals` | `#22c55e` | `#ef4444` | `rgba(255,255,255,.88)` | -- |
+| ramp | `#22c55e` | `#ef4444` | `#e3e9f2` | `#51647b` |
+
+**And THREE accents beyond the ramp's cyan** -- `#00d4b8`, `#00d4ff` and
+`#3b82f6`. The shell entry above records the same shape one layer out ("The
+chrome carried two accents at once"); this module had three, and `#00d4b8` is
+the single literal most responsible for Equity Research reading as a different
+product. `src/pages/equity/equityTheme.js` is now the one palette.
+
+**RAW HEX, NOT `var(--token)`, AND THAT IS THE LOAD-BEARING DECISION.**
+`T.cyan` reaches Chart.js as `borderColor` (`equity-technicals.js:148`,
+`:232`), and **a canvas cannot resolve a CSS custom property** -- it would
+paint nothing and report no error, which is the dead-`var()` defect the shell
+entry records, in a place no screenshot would explain. The cost is that the
+values can drift from `globals.css`, so `src/lib/equityTheme.test.mjs` parses
+that file and asserts every one still matches. **"Move them together" is a CI
+gate here, not a comment.**
+
+**THE NAME TRAP: `--border` is `0.11` in `globals.css` and `0.07` in
+`nexus-flagship.css`** -- the same name, the two alpha steps swapped between
+the files. The module's `border` has always been the subtle one and `border2`
+the stronger, so they land on `0.07` and `0.11`. **Convert on VALUES, never on
+names**; taking the names at face value inverts every edge in the module.
+
+**Dim washes are DERIVED, never typed.** The six palettes carried them at .09,
+.13 and .15 for no stated reason. One `dim(hex, alpha)` at one alpha makes a
+wash that disagrees with its base impossible to write. `violetDim` .09 -> .13
+is a real, intended change.
+
+**Scope the scanner to the IMPORT CLOSURE, not a glob.** The first version
+globbed `src/pages/equity*.js` and over-reached into `equity-valuation.js`,
+`equity-risk.js` and the four `equity-dcf-*` files -- the **Valuation House**,
+a different page with its own chrome decision. A hardcoded list has the
+opposite fault: it goes stale exactly when a tab gains an import, which is when
+a new palette arrives unnoticed. The closure tracks the module as it is.
+
+**The scanner read its own documentation as code** -- `equityTheme.js` names
+the accents it removed, and the first run failed the module that fixed the
+problem. `pagerOrdering.test.mjs` hit the identical trap. Comments are stripped
+(`//` only when not preceded by `:`, so a URL survives) and **the stripping is
+itself tested**, both that it removes prose and that it does not blind the
+scanner to a live literal.
+
+**A mid-token replacement left `dim(T.cyan, 0.6))'`** -- a syntax error found
+by reading the patched region, not by the build. Same lesson as
+`perf-panels-top.js:477` and the `var` hoisting near-miss in `risk-v2.js`:
+**`vite build` is not a scope audit.**
+
+161/161, and the detector is proven by reverting -- reintroducing one local
+palette carrying `#00d4b8` fails 2 of 9.
+
+**Flagged, not fixed, and deliberately:** `equity-peers`' eight-colour chart
+series palette and `equity-screener`'s Value/Growth/Momentum bucket taxonomy
+are doing a different job from chrome, and **G-2 mirrored that taxonomy onto
+the holdings table** -- re-basing it re-bases a vocabulary shared with another
+surface. The Valuation House files above still carry `#00d4ff`. Also
+`equity-peers.js:121` calls `.replace(')', ',0.4)').replace('rgb','rgba')` on
+what are HEX strings, so it is a no-op returning the hex -- pre-existing, not
+touched here.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

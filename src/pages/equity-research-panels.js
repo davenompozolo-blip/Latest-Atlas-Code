@@ -1,4 +1,5 @@
 import React from 'react';
+import { T } from './equity/equityTheme.js';
 import { sb } from './config.js';
 import { PeerComparison } from './equity-peers.js';
 import { TechnicalsTab } from './equity-technicals.js';
@@ -11,19 +12,6 @@ var useState = React.useState;
 var useEffect = React.useEffect;
 var useMemo = React.useMemo;
 var useRef = React.useRef;
-
-// ── tokens ────────────────────────────────────────────────────────────────────
-var T = {
-    cyan: '#22d3ee',   cyanDim:   'rgba(34,211,238,.13)',
-    amber: '#f5b53d',  amberDim:  'rgba(245,181,61,.13)',
-    green: '#41d18a',  greenDim:  'rgba(65,209,138,.13)',
-    red: '#f76d6d',    redDim:    'rgba(247,109,109,.13)',
-    violet: '#a78bfa', violetDim: 'rgba(167,139,250,.09)',
-    text: '#e7eef5',   muted: '#7e8b99', muted2: '#5a6573',
-    card: 'rgba(17,23,31,.97)', card2: 'rgba(20,27,37,.97)',
-    border: 'rgba(255,255,255,.08)', border2: 'rgba(255,255,255,.13)',
-    mono: "'JetBrains Mono',monospace", display: "'Syne','DM Sans',sans-serif",
-};
 
 // ── tiny helpers ──────────────────────────────────────────────────────────────
 function nv(o, k) { var x = Number(o && o[k]); return fin(x) ? x : null; }
