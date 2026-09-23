@@ -338,6 +338,22 @@ export default async function handler(req, res) {
         scope: explicit.length ? 'explicit' : 'book+universe',
         mode: 'statements',
         source: SOURCE,
+        // WHICH HOST ANSWERED, and a caller-supplied tag for THIS run.
+        //
+        // Both exist because a run was read that never happened. A probe fired
+        // at a Vercel PREVIEW alias came back HTTP 200 carrying Vercel's
+        // deployment-protection login page — not this handler at all — so no
+        // sync_log row was written, and reading "the latest probe row" returned
+        // the PREVIOUS run's. Identical output read as "the fix changed
+        // nothing" when the fix had never executed.
+        //
+        // `base` is read off the request rather than a constant, so it names
+        // the deployment that actually served it. `run_tag` lets a caller
+        // prove the row it is reading is the one it fired, instead of trusting
+        // ORDER BY id DESC. Same reasoning as sync_log.details.base on the
+        // chain stages: without it, two layers are indistinguishable.
+        base: (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || null,
+        run_tag: String((req.query && req.query.run_tag) || '') || null,
         requested: 0, attempted: 0, symbols_written: 0, rows_written: 0,
         av_calls: 0, rate_limited: false, rate_limit_message: null,
         years: {}, failures: [], budget_exhausted: false,
