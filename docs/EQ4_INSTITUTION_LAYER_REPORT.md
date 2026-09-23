@@ -206,17 +206,145 @@ Both migrations hash identical to the live function bodies (`md5(prosrc)`
 
 ---
 
-## 7. What is not done
+## 7. The first real load, and the three things only it could show
 
-- **The lines are not loaded.** The loader is written and tested; running it
-  needs the handler deployed, and preview deployments on this project are
-  SSO-gated, so each measurement round costs a merge to `main`.
-- **The corrected candidate lists** for `underwriting_expense`,
-  `premiums_written_net` and `policyholder_benefits` wait on that load — after
-  which they are a SQL query against `company_reported_lines`, not another
-  vendor round trip.
-- **The ratio views** (CAMELS A/E/L, P&C loss ratio, L&H) follow the lists.
-  CAMELS · C is refused, not approximated.
-- **No cron entry.** Finnhub is 60/min with no daily cap, so ~165 symbols is
-  about three minutes of calls — the Alpha Vantage throughput ceiling does not
-  apply here. The schedule waits until the layer has a consumer.
+Eleven symbols loaded on 2026-09-23 — AFL, BAC, C, HUM, JPM, MET, PGR, PRU,
+TRV, UNH, WFC — **19,727 lines, 2010–2025**, 15–16 annual periods each. CB
+failed on a duplicate-year conflict and its fix (`pickOnePerYear`, EQ-4g) is
+committed; it is not yet re-run. Chubb returns 19 filings all tagged `10-K`
+with 2011, 2012 and 2013 each appearing twice, from the two predecessor
+registrants of the merged Chubb/ACE entity.
+
+The figures corroborate against published reality. Efficiency ratios FY2024:
+JPM **0.517**, BAC **0.656**, WFC **0.663**, C **0.665**. Short-duration loss
+ratios FY2024: TRV **0.645**, PGR **0.693**, UNH **0.855** — which *is* UNH's
+published 85.5% medical care ratio — and HUM **0.898** against ~89.8%.
+
+And three things were wrong that no single-filer probe could have shown.
+
+### 7.1 `pc_insurer` named a property the filers do not have
+
+UNH and HUM were classified `pc_insurer`. They write no property and no
+casualty business at all. What the view actually tests is **ASC 944's
+short-duration vs long-duration contract distinction** — and a health insurer
+files short-duration contract liabilities exactly as a P&C insurer does, which
+is why the *measurement* was right and the *label* was false. The `fwd_pe`
+defect, in a framework name.
+
+`short_duration_insurer` / `long_duration_insurer`, with `pc_applicable` and
+`lh_applicable` kept as aliases of the duration flags so no consumer breaks,
+and a test asserting they still track.
+
+### 7.2 The tag lists knew one spelling and the filings use several
+
+| symbol | classified before | after | cause |
+|---|---:|---:|---|
+| PRU | 3 of 16 years | **15** | combined FPB tag, 2010–2022 |
+| MET | 12 of 16 | **16** | after-reinsurance FPB tag, 2019–2022 |
+| UNH + HUM loss ratio | 4 filer-years | **32** | health-specific losses tag to 2023 |
+
+One liability, three tags, split across LDTI (ASU 2018-12) adoption — all three
+labelled *"Future policy benefits"* by the filers themselves:
+
+```
+LiabilityForFuturePolicyBenefits                              AFL 2012-25, MET 2010-18 + 2023-25, PRU 2023-25
+LiabilityForFuturePolicyBenefitAfterReinsurance               MET 2019-2022
+LiabilityForFuturePolicyBenefitsAndUnpaidClaims...Expense     PRU 2010-2022
+```
+
+And the health insurers tag losses `PolicyholderBenefitsAndClaimsIncurred`**`HealthCare`**
+through 2023, generically from 2024 — measured mutually exclusive across all
+32 UNH and HUM filer-years, so the preference order can never double count.
+
+**Every alias was verified by reading the filer's own `label`**, which is what
+`company_reported_lines` storing the long form buys. Two candidates were
+**rejected** on that reading: AFL's `LiabilityForUnpaidClaimsAndClaimsAdjustmentExpenseNet`
+is labelled `[Roll Forward]` — a reconciliation header, not a closing balance —
+and PRU's combined tag is accepted to *classify* and refused as a *measurement*
+(see 7.4).
+
+Unclassified is now **6 filer-years of 176**: AFL 2010–11 and PGR 2010–12 carry
+no such liability tag at all, and PRU 2014 carries no premiums line.
+
+### 7.3 CAMELS A is per row, not refusable as a class
+
+EQ-4f withheld it for every bank on the grounds that no loan-book denominator
+was measured. It is measured — on **48 of 62 bank filer-years**, under a legacy
+tag pair through 2019–2021 and the ASC 326 (CECL) pair from 2020–2022.
+
+The ratios corroborate rather than merely computing:
+
+| | loans / assets | allowance / loans |
+|---|---:|---:|
+| JPM | 0.28–0.34 | 0.0397 (2011) → 0.0165 (2015) → 0.0176 (2025) |
+| C | 0.28–0.35 | 0.0669 (2010) → 0.0186 (2019) → 0.0262 (2025) |
+| BAC | 0.33–0.42 | 0.0466 (2010) → 0.0097 (2019) → 0.0113 (2025) |
+| WFC | 0.45–0.58 | 0.0314 (2010) → 0.0100 (2019) |
+
+WFC is the loan-heavy bank of the four and JPM the most markets-weighted, which
+is what the loans/assets column says; and every allowance series traces the
+post-GFC credit normalisation down to a 2018–19 trough and back up after CECL.
+
+The **14 refusals** are exactly the years each filer straddles the tag change —
+BAC 2020–21, C 2020–22, JPM 2016–2020, WFC 2022–25 — and every one carries
+`camels_a_withheld` with NULL on both ratios. **No row carries the flag with an
+absent ratio**, checked rather than assumed.
+
+One correction of my own: the EQ-4h migration comment says *"41 of 62"*. That
+number came from a probe query written before the view existed, reading a
+narrower allowance list than the view ships. EQ-4i corrects the stored comments
+rather than editing EQ-4h, because EQ-4h is what the database ran and a file
+edited after the fact is the file/database divergence this codebase has now
+found five times. **A comment stating a coverage figure is a claim about the
+data, and it has to be measured against the object that carries it.**
+
+### 7.4 Good enough to classify is not good enough to measure
+
+PRU's `...AndUnpaidClaimsAndClaimsAdjustmentExpense` pools both contract
+durations. It establishes that the filer writes long-duration business — that
+much is true of a combined line — and it is deliberately **not** accepted as
+the numerator of `reserves_to_premiums`, which would publish a reserve adequacy
+figure over a book it does not describe. Asserted as its own test case, not
+left to a comment.
+
+### 7.5 `benefits_to_premiums` reads like a loss ratio and is not one
+
+FY2024: PRU **1.098**, MET **0.995**, AFL **0.554**; the mean across all 62
+long-duration filer-years is 0.889. A long-duration insurer earns most of its
+revenue as net investment income and policy fees, so premiums are a minority
+denominator and the figure says nothing about underwriting.
+`benefits_ratio_caveat` travels on the row — present on **62 of 62**, zero
+uncaveated — so the figure cannot be rendered without it. Same construction as
+`dispersion_basis` and `vol_basis`.
+
+### Proofs
+
+`supabase/tests/company_institution_profile_proof.sql` **12/12** and
+`company_institution_ratios_proof.sql` **12/12** against production, both
+rolling back, both including their happy paths. Cases 8–12 in each are EQ-4h
+and every one of them fails against the EQ-4e views. Ratio case 11 is the
+sharpest: the same bank, the same numbers, the two tag eras, asserted to agree
+*exactly* — if they disagreed the ratio would be a statement about XBRL
+practice rather than about the bank.
+
+---
+
+## 8. What is not done
+
+
+- **CB is not loaded.** `pickOnePerYear` is committed and untested against the
+  live duplicate-year payload that produced it.
+- **The wider cohort is not loaded** — 11 symbols of ~165 Financials. Finnhub
+  is 60/min with no daily cap, so that is about three minutes of calls; the
+  Alpha Vantage throughput ceiling does not apply to this layer.
+- **`underwriting_expense`, `premiums_written_net` and `policyholder_benefits`
+  are still unmapped**, so the combined ratio stays refused. The live lines now
+  make this a SQL label search rather than a vendor round trip: the search over
+  the loaded 19,727 rows returned only `OtherUnderwritingExpense` (PGR, 16
+  years — "other" in its own name) and DAC amortisation, which are components
+  and not the measure.
+- **CAMELS · C stays refused.** Tier 1 and RWA are in the regulatory capital
+  tables, not the face statements — absent on all four banks across 62
+  filer-years.
+- **No cron entry and no surface.** The schedule waits until the layer has a
+  consumer.

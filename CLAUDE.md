@@ -5013,6 +5013,78 @@ Finnhub measurement round costs a merge to `main`. Finnhub is 60/min with no
 daily cap, so the ~165-symbol cohort is about three minutes of calls -- the
 Alpha Vantage throughput ceiling does not apply to this layer.
 
+### A filer changes its tags, and the concept list knows one spelling (2026-09-23)
+
+The first real load of `company_reported_lines` — eleven financial filers,
+19,727 lines, 2010-2025. Full report in `docs/EQ4_INSTITUTION_LAYER_REPORT.md`
+§7. Three defects, and **not one of them is visible on a probe of one
+filer-year**, which is what every EQ-3 and EQ-4 measurement before this was.
+
+**`pc_insurer` named a property the filers do not have.** UNH and HUM were
+classified `pc_insurer` and write no property and no casualty business at all.
+What the view tests is **ASC 944's SHORT-DURATION vs LONG-DURATION contract
+distinction**, and a health insurer files short-duration contract liabilities
+exactly as a P&C insurer does — so the measurement was right and the label was
+false. The `fwd_pe` defect, in a framework name. `short_duration_*` /
+`long_duration_*`, with the old names kept as aliases and a test asserting they
+still track.
+
+**ONE LIABILITY, THREE TAGS, SPLIT BY ACCOUNTING ERA.** The future-policy-
+benefit liability is reported as `LiabilityForFuturePolicyBenefits`, as
+`...AfterReinsurance` (MET 2019-2022) and as `...AndUnpaidClaimsAndClaims-
+AdjustmentExpense` (PRU 2010-2022) across LDTI (ASU 2018-12) adoption — all
+three labelled *"Future policy benefits"* by the filers themselves. PRU read as
+having **no framework at all on 13 of its 16 years**. Health insurers tag
+losses `PolicyholderBenefitsAndClaimsIncurredHealthCare` through 2023 and
+generically from 2024, so UNH and HUM had a loss ratio on **4 filer-years of
+32**. After: PRU 15/16, MET 16/16, 32/32.
+
+**Verify an alias by the filer's own `label`, not by the tag's shape.** That is
+what storing the long form buys. Two candidates were REFUSED on that reading:
+AFL's `LiabilityForUnpaidClaimsAndClaimsAdjustmentExpenseNet` is labelled
+`[Roll Forward]` — a reconciliation header, not a closing balance — and PRU's
+combined tag pools both durations, so it is accepted to CLASSIFY and refused as
+a MEASUREMENT. **Good enough to classify is not good enough to measure**, and
+it is its own test case rather than a comment. Conversely BAC's legacy loan tag
+is labelled `[Abstract]` and its VALUE is a real loan book (0.40 of assets):
+**a bracketed label is a warning, not a verdict — corroborate the number.**
+
+**CAMELS A was refused as a class and is computable per row** — 48 of 62 bank
+filer-years, under a legacy tag pair through 2019-2021 and the ASC 326 (CECL)
+pair from 2020-2022. The 14 refusals are exactly the years each filer straddles
+that change (BAC 2020-21, C 2020-22, JPM 2016-2020, WFC 2022-25). It
+corroborates rather than merely computing: loans/assets 0.45-0.58 at WFC, the
+loan-heavy bank, against 0.28-0.34 at JPM, and every allowance series traces
+the post-GFC normalisation from 4.7% in 2010 to 1.0% in 2019 and back up after
+CECL. **A class refusal was hiding a measurement.**
+
+**I wrote a coverage figure before the object that carries it existed.** The
+EQ-4h comment says "41 of 62" — from a probe query reading a narrower allowance
+list than the view ships. It is 48. Corrected in EQ-4i as its own migration
+rather than by editing EQ-4h, because EQ-4h is what the database ran.
+**A comment stating a coverage figure is a claim about the data and has to be
+measured against the object that carries it.**
+
+`benefits_to_premiums` reads like a loss ratio and is not one — PRU 1.098, MET
+0.995, AFL 0.554 on FY2024 — because a long-duration insurer earns most revenue
+as net investment income and policy fees. `benefits_ratio_caveat` is present on
+**62 of 62** rows carrying the figure, zero uncaveated.
+
+The figures corroborate published reality throughout: JPM efficiency **0.517**
+(~52% reported), UNH loss ratio **0.855494** against a published **85.5%**
+medical care ratio, HUM **0.898** against ~89.8%, TRV 0.645, PGR 0.693.
+
+**Ratio proof case 11 is the sharpest test here**: the same bank, the same
+numbers, the two tag eras, asserted to agree EXACTLY. If they disagreed the
+ratio would be a statement about XBRL practice rather than about the bank.
+12/12 and 12/12 against production, both rolling back, both including their
+happy paths; cases 8-12 in each fail against the pre-fix views.
+
+**CB is the duplicate-year case.** It returns 19 filings all tagged `10-K` with
+2011, 2012 and 2013 each appearing twice — the two predecessor registrants of
+the merged Chubb/ACE entity — which is what `pickOnePerYear` (EQ-4g) exists
+for. Committed, not yet re-run.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
