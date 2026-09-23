@@ -5146,6 +5146,54 @@ effect body rollup does not emit. **What is proven is the shape builder against
 live rows and that the code ships; the render is not** — the browser in this
 container cannot reach Supabase.
 
+### Tab 5 is not blocked, and `industry` is a copy of `sector` (2026-09-23)
+
+I filed EQ-7 (industry and competitive positioning) as blocked on peer
+coverage. **That was wrong, and it was wrong because I reasoned from one peer
+source instead of looking.** `vw_company_fundamental_peers` is thin — it is
+derived from the Alpha Vantage statement load, which is 10 symbols behind a
+25-request/day ceiling — but it is not the only peer basis in the platform.
+
+`equity_screener_universe` carries **913 symbols, refreshed daily** (cached
+2026-09-23 12:31 UTC) with `market_cap_usd`, `forward_pe`, `ev_ebitda`,
+`price_to_book`, `price_to_sales`, `roe_ttm`, `roa_ttm`, `gross_margin`,
+`net_margin`, `rev_growth_yoy`, `rev_growth_3y`, `eps_growth_yoy`,
+`return_52w`, `return_13w`, `beta`, `vol_3m`, `roic_pct`, `wacc_pct` and
+`roic_wacc_spread_pct`. **None of that depends on the AV statement layer.**
+A positioning tab built on it is unblocked today.
+
+**AND THE COHORT COLUMN IS NOT WHAT ITS NAME SAYS.** `industry` and `sector`
+both hold 46 distinct values, and the reason is that **`industry` is a copy of
+`sector`**: 896 rows identical, 17 rows where `industry` is NULL, and
+**0 rows where both are present and differ**. There is no independent industry
+classification anywhere in this table. Building an "industry peer group" from
+it would publish a claim about granularity the data does not carry — the
+`fwd_pe` defect, in a cohort definition.
+
+**The granularity is also inverted from the names.** The 46 buckets are
+Finnhub's single-level `finnhubIndustry` taxonomy, and they mix GICS sector
+names (`Technology`, `Energy`, `Utilities`, `Real Estate`) with GICS *industry*
+names (`Semiconductors`, `Banking`, `Biotechnology`, `Pharmaceuticals`,
+`Aerospace & Defense`). It is neither level cleanly, so **name a cohort for the
+vendor taxonomy it comes from, never "industry" or "sector"**.
+
+Usable as a cohort basis: **30 of the 46 buckets carry 8 or more members,
+covering 854 of 913 symbols (93.5%)**. The smallest bucket is 1 and the largest
+67, so a floor is needed and the share below it has to be stated — the
+`peer_count` rule EQ-2 already established.
+
+**Per-field coverage is uneven inside a cohort and that is informative, not
+noise.** `ev_ebitda` is **0 of 63** on Banking — a third independent
+corroboration of EQ-2's `statement_profile` gate, after the CFA framework
+argument and Finnhub's own GAAP misses. Biotechnology carries `forward_pe` on
+18 of 44, because a pre-revenue biotech has no meaningful forward multiple.
+A cohort median must count members with a MEASURED value for that metric, never
+cohort size.
+
+**The lesson is the one this file keeps recording about itself:** a blocker I
+asserted from one source was removed by a single query against another. Check
+before filing something as blocked.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
