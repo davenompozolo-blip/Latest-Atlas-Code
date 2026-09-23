@@ -1,4 +1,5 @@
 import React from 'react';
+import { T } from './equity/equityTheme.js';
 import { Chart, registerables } from 'chart.js';
 import { useChart } from './utils.js';
 
@@ -10,16 +11,9 @@ var useRef    = React.useRef;
 var useMemo   = React.useMemo;
 var h         = React.createElement;
 
-var mono = "'JetBrains Mono', ui-monospace, monospace";
-var T = {
-    teal: '#00d4b8', green: '#22c55e', red: '#ef4444',
-    amber: '#f59e0b', blue: '#3b82f6', slate: '#64748b',
-    t1: 'rgba(255,255,255,0.88)', t2: 'rgba(255,255,255,0.5)',
-    t3: 'rgba(255,255,255,0.25)', border: 'rgba(255,255,255,0.08)',
-    bg: 'rgba(255,255,255,0.025)',
-};
+var mono = T.mono;
 
-var card = { background: T.bg, border: '1px solid ' + T.border, borderRadius: 10, padding: '16px 18px', marginBottom: 14 };
+var card = { background: T.card, border: '1px solid ' + T.border, borderRadius: 10, padding: '16px 18px', marginBottom: 14 };
 
 // ── Technical computation ──────────────────────────────────────────────────────
 function computeTechnicals(series) {
@@ -119,9 +113,9 @@ function computeTechnicals(series) {
 // ── Signal tile ────────────────────────────────────────────────────────────────
 function SignalTile(props) {
     return h('div', { style: Object.assign({}, card, { marginBottom: 0, textAlign: 'center', minWidth: 0 }) },
-        h('div', { style: { fontSize: 8.5, letterSpacing: 1.3, textTransform: 'uppercase', color: T.t3, fontFamily: mono, marginBottom: 6 } }, props.label),
-        h('div', { style: { fontSize: 22, fontWeight: 700, fontFamily: mono, color: props.color || T.t1 } }, props.value),
-        props.sub && h('div', { style: { fontSize: 9, color: props.subColor || T.t2, fontFamily: mono, marginTop: 4 } }, props.sub)
+        h('div', { style: { fontSize: 8.5, letterSpacing: 1.3, textTransform: 'uppercase', color: T.muted2, fontFamily: mono, marginBottom: 6 } }, props.label),
+        h('div', { style: { fontSize: 22, fontWeight: 700, fontFamily: mono, color: props.color || T.text } }, props.value),
+        props.sub && h('div', { style: { fontSize: 9, color: props.subColor || T.muted, fontFamily: mono, marginTop: 4 } }, props.sub)
     );
 }
 
@@ -145,7 +139,7 @@ function RSIChart(props) {
             data: {
                 labels: labels,
                 datasets: [{
-                    data: data, borderColor: T.teal, borderWidth: 1.5,
+                    data: data, borderColor: T.cyan, borderWidth: 1.5,
                     fill: false, tension: 0.3, pointRadius: 0, spanGaps: true,
                 }],
             },
@@ -155,18 +149,18 @@ function RSIChart(props) {
                     legend: { display: false },
                     tooltip: {
                         backgroundColor: 'rgba(10,14,26,0.92)', borderColor: T.border, borderWidth: 1,
-                        titleColor: T.t2, bodyColor: T.t1,
+                        titleColor: T.muted, bodyColor: T.text,
                         titleFont: { family: mono, size: 10 }, bodyFont: { family: mono, size: 11 },
                         callbacks: { label: function(ctx) { return ' RSI-14: ' + (ctx.parsed.y || 0).toFixed(1); } },
                     },
                     annotation: {},
                 },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: T.t3, font: { family: mono, size: 9 }, maxTicksLimit: 8 }, border: { display: false } },
+                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: T.muted2, font: { family: mono, size: 9 }, maxTicksLimit: 8 }, border: { display: false } },
                     y: {
                         min: 0, max: 100,
                         grid: { color: 'rgba(255,255,255,0.04)' },
-                        ticks: { color: T.t3, font: { family: mono, size: 9 }, callback: function(v) { return v; } },
+                        ticks: { color: T.muted2, font: { family: mono, size: 9 }, callback: function(v) { return v; } },
                         border: { display: false },
                     },
                 },
@@ -229,7 +223,7 @@ function MACDChart(props) {
                     },
                     {
                         type: 'line', label: 'MACD', data: macd,
-                        borderColor: T.teal, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true,
+                        borderColor: T.cyan, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.2, spanGaps: true,
                     },
                     {
                         type: 'line', label: 'Signal', data: signal,
@@ -243,13 +237,13 @@ function MACDChart(props) {
                     legend: { display: false },
                     tooltip: {
                         backgroundColor: 'rgba(10,14,26,0.92)', borderColor: T.border, borderWidth: 1,
-                        titleColor: T.t2, bodyColor: T.t1,
+                        titleColor: T.muted, bodyColor: T.text,
                         titleFont: { family: mono, size: 10 }, bodyFont: { family: mono, size: 11 },
                     },
                 },
                 scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: T.t3, font: { family: mono, size: 9 }, maxTicksLimit: 8 }, border: { display: false } },
-                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: T.t3, font: { family: mono, size: 9 } }, border: { display: false } },
+                    x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: T.muted2, font: { family: mono, size: 9 }, maxTicksLimit: 8 }, border: { display: false } },
+                    y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: T.muted2, font: { family: mono, size: 9 } }, border: { display: false } },
                 },
             },
         });
@@ -269,7 +263,7 @@ export function TechnicalsTab(props) {
     }, [series]);
 
     if (!tech) {
-        return h('div', { style: card }, h('div', { style: { color: T.t2, textAlign: 'center', padding: 24 } }, 'Need at least 30 days of price history to compute technical indicators.'));
+        return h('div', { style: card }, h('div', { style: { color: T.muted, textAlign: 'center', padding: 24 } }, 'Need at least 30 days of price history to compute technical indicators.'));
     }
 
     // Override with AV overview fields where available (more precise)
@@ -308,18 +302,18 @@ export function TechnicalsTab(props) {
             h(SignalTile, {
                 label: '52W Position',
                 value: tech.pct52.toFixed(0) + 'th %ile',
-                color: tech.pct52 > 80 ? T.amber : tech.pct52 > 40 ? T.teal : T.green,
+                color: tech.pct52 > 80 ? T.amber : tech.pct52 > 40 ? T.cyan : T.green,
                 sub: '$' + tech.low52.toFixed(0) + ' – $' + tech.high52.toFixed(0),
             })
         ),
 
         // Insight banner
-        h('div', { style: { padding: '10px 14px', background: 'rgba(0,212,184,0.05)', border: '1px solid rgba(0,212,184,0.2)', borderLeft: '3px solid ' + T.teal, borderRadius: '0 8px 8px 0', marginBottom: 14, fontSize: 11, color: T.t2, fontFamily: mono, lineHeight: 1.6 } }, insight),
+        h('div', { style: { padding: '10px 14px', background: T.cyanDim, border: '1px solid ' + T.cyanDim, borderLeft: '3px solid ' + T.cyan, borderRadius: '0 8px 8px 0', marginBottom: 14, fontSize: 11, color: T.muted, fontFamily: mono, lineHeight: 1.6 } }, insight),
 
         // RSI chart
         h('div', { style: card },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
-                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'RSI-14 — Relative Strength Index'),
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.text } }, 'RSI-14 — Relative Strength Index'),
                 h('div', { style: { display: 'flex', gap: 12 } },
                     h('div', { style: { fontSize: 8.5, color: 'rgba(239,68,68,0.7)', fontFamily: mono } }, '── 70 Overbought'),
                     h('div', { style: { fontSize: 8.5, color: 'rgba(34,197,94,0.7)', fontFamily: mono } }, '── 30 Oversold')
@@ -331,13 +325,13 @@ export function TechnicalsTab(props) {
         // MACD chart
         h('div', { style: card },
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
-                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.t1 } }, 'MACD (12, 26, 9)'),
+                h('div', { style: { fontSize: 11, fontWeight: 600, color: T.text } }, 'MACD (12, 26, 9)'),
                 h('div', { style: { display: 'flex', gap: 14 } },
-                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.teal, fontFamily: mono } },
-                        h('span', { style: { width: 12, height: 2, background: T.teal, display: 'inline-block' } }), 'MACD'),
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.cyan, fontFamily: mono } },
+                        h('span', { style: { width: 12, height: 2, background: T.cyan, display: 'inline-block' } }), 'MACD'),
                     h('div', { style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5, color: T.amber, fontFamily: mono } },
                         h('span', { style: { width: 12, height: 2, borderTop: '2px dashed ' + T.amber, display: 'inline-block' } }), 'Signal'),
-                    h('div', { style: { fontSize: 8.5, color: T.t3, fontFamily: mono } }, 'Histogram: green=bullish · red=bearish')
+                    h('div', { style: { fontSize: 8.5, color: T.muted2, fontFamily: mono } }, 'Histogram: green=bullish · red=bearish')
                 )
             ),
             h(MACDChart, { tech: tech })
