@@ -401,3 +401,161 @@ test('conceptSearch caps its result and the cap is bounded', () => {
     // A caller cannot ask for an unbounded scan of a 472-concept filing.
     assert.ok(conceptSearch(P_AND_C, 'us-gaap:', 100000).length <= 200);
 });
+
+// ============================================================
+// EQ-4 · the reported-lines loader.
+//
+// Every fixture here carries the shapes EQ-3 MEASURED against production, not
+// invented ones: a foreign filer the endpoint returns nothing for, a 10-K
+// alongside other forms, a concept the filer tags under IFRS, and a figure
+// filed in a currency that is not the dollar.
+// ============================================================
+import { reportedRowsFor, reportedSummary, isoDate, SOURCE_REPORTED }
+    from '../../api/sync-financials.js';
+
+const TEN_K = {
+    data: [{
+        year: 2025, form: '10-K', accessNumber: '0000027419-25-000012',
+        endDate: '2025-02-01 00:00:00', filedDate: '2025-03-12 16:04:00',
+        report: {
+            ic: [{ concept: 'us-gaap_PremiumsEarnedNet', label: 'Premiums earned, net', unit: 'usd', value: '100' }],
+            bs: [{ concept: 'us-gaap_LiabilityForClaimsAndClaimsAdjustmentExpense', label: 'Claim reserves', unit: 'usd', value: '900' }],
+            cf: [],
+        },
+    }],
+};
+
+test('a 10-K becomes one row per concept, with the tag the filer used', () => {
+    const rows = reportedRowsFor(TEN_K, 'TRV');
+    assert.equal(rows.length, 2);
+    const prem = rows.find(r => r.concept === 'us-gaap_PremiumsEarnedNet');
+    assert.equal(prem.source, SOURCE_REPORTED);
+    assert.equal(prem.symbol, 'TRV');
+    assert.equal(prem.fiscal_year, 2025);
+    assert.equal(prem.value, 100);
+    assert.equal(prem.label, 'Premiums earned, net');
+    assert.equal(prem.section, 'ic');
+    assert.equal(prem.accession, '0000027419-25-000012');
+    // The RAW tag, not a normalised one. A reader chasing a filing needs the
+    // string the filing actually used.
+    assert.equal(prem.concept, 'us-gaap_PremiumsEarnedNet');
+});
+
+test('the UNIT is carried — a value without it compares a euro to a dollar', () => {
+    const eur = reportedRowsFor({ data: [{ year: 2025, form: '10-K',
+        report: { bs: [{ concept: 'us-gaap:Assets', unit: 'eur', value: '5' }] } }] }, 'X');
+    assert.equal(eur[0].unit, 'eur');
+    // Absent is NULL, never a defaulted 'usd' — that would assert a currency
+    // the filing did not state.
+    const none = reportedRowsFor({ data: [{ year: 2025, form: '10-K',
+        report: { bs: [{ concept: 'us-gaap:Assets', value: '5' }] } }] }, 'X');
+    assert.equal(none[0].unit, null);
+});
+
+test('a FOREIGN taxonomy is recorded as such, not laundered into us-gaap', () => {
+    const rows = reportedRowsFor({ data: [{ year: 2025, form: '10-K', report: {
+        bs: [{ concept: 'ifrs-full:Assets', value: '1' }, { concept: 'us-gaap:Assets', value: '2' }] } }] }, 'X');
+    const ifrs = rows.find(r => r.concept === 'ifrs-full:Assets');
+    const gaap = rows.find(r => r.concept === 'us-gaap:Assets');
+    assert.equal(ifrs.taxonomy, 'ifrs-full');
+    assert.equal(gaap.taxonomy, null);          // us-gaap is the unmarked case
+    assert.equal(rows.length, 2);               // two concepts, not one
+});
+
+test('only 10-K filings are read, and a quarter is not a year', () => {
+    const mixed = { data: [
+        { year: 2025, form: '10-Q', report: { ic: [{ concept: 'A', value: '1' }] } },
+        { year: 2025, form: '8-K',  report: { ic: [{ concept: 'B', value: '2' }] } },
+        { year: 2025, form: '10-K', report: { ic: [{ concept: 'C', value: '3' }] } },
+    ] };
+    const rows = reportedRowsFor(mixed, 'X');
+    assert.deepEqual(rows.map(r => r.concept), ['C']);
+    // 10-K/A is an AMENDED annual report and still an annual report.
+    const amended = reportedRowsFor({ data: [{ year: 2025, form: '10-K/A',
+        report: { ic: [{ concept: 'C', value: '3' }] } }] }, 'X');
+    assert.equal(amended.length, 1);
+});
+
+test('a filing that cannot say which year it describes yields no rows', () => {
+    const noYear = { data: [{ form: '10-K', report: { ic: [{ concept: 'A', value: '1' }] } }] };
+    assert.equal(reportedRowsFor(noYear, 'X').length, 0);
+    const junkYear = { data: [{ year: 'FY25', form: '10-K', report: { ic: [{ concept: 'A', value: '1' }] } }] };
+    assert.equal(reportedRowsFor(junkYear, 'X').length, 0);
+});
+
+test('one row per (year, concept) even when a concept appears twice', () => {
+    // The table is keyed on it, so a duplicate would collide on insert and
+    // take the whole symbol's transaction down with it.
+    const dup = { data: [{ year: 2025, form: '10-K', report: {
+        bs: [{ concept: 'us-gaap:Assets', label: 'Total assets', value: '1' }],
+        cf: [{ concept: 'us-gaap:Assets', label: 'Total assets', value: '1' }],
+    } }] };
+    const rows = reportedRowsFor(dup, 'X');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].section, 'bs');        // the first occurrence wins
+});
+
+test('isoDate takes the date off a timestamp and refuses a malformed one', () => {
+    assert.equal(isoDate('2025-02-01 00:00:00'), '2025-02-01');
+    assert.equal(isoDate('2025-02-01'), '2025-02-01');
+    assert.equal(isoDate('2025-02-01T16:04:00Z'), '2025-02-01');
+    // Never a fabricated day. A malformed date is absent, not the first of
+    // some month.
+    assert.equal(isoDate('Feb 2025'), null);
+    assert.equal(isoDate(''), null);
+    assert.equal(isoDate(null), null);
+});
+
+test('NO FILINGS and NO 10-K are different findings', () => {
+    // EQ-3 measured ASML, TSM, SONY and ABEV all returning `data: []` —
+    // financials-reported is a SEC 10-K feed and a foreign private issuer
+    // files a 20-F. Reporting that as "0 rows" reads as a load that produced
+    // nothing, and the coverage finding disappears.
+    const foreign = { data: [] };
+    const s1 = reportedSummary(foreign, reportedRowsFor(foreign, 'ASML'));
+    assert.equal(s1.reason, 'no_filings');
+    assert.equal(s1.filings, 0);
+    assert.deepEqual(s1.forms, []);
+
+    const quarterlyOnly = { data: [{ year: 2025, form: '10-Q', report: { ic: [] } }] };
+    const s2 = reportedSummary(quarterlyOnly, reportedRowsFor(quarterlyOnly, 'X'));
+    assert.equal(s2.reason, 'no_10k_filings');
+    assert.equal(s2.filings, 1);
+    assert.deepEqual(s2.forms, ['10-Q']);       // names what WAS there
+
+    assert.notEqual(s1.reason, s2.reason);
+});
+
+test('a successful summary carries the span, and reports no reason', () => {
+    const s = reportedSummary(TEN_K, reportedRowsFor(TEN_K, 'TRV'));
+    assert.equal(s.reason, null);
+    assert.equal(s.periods, 1);
+    assert.equal(s.year_min, 2025);
+    assert.equal(s.year_max, 2025);
+    assert.equal(s.rows, 2);
+});
+
+test('`taxonomy is not null` IS the foreign test, across all three spellings', () => {
+    // The trap this column exists to avoid: taxonomyOf() returns the RAW
+    // prefix, so a bare `Assets` and a prefixed `us-gaap:Assets` would differ
+    // in a column whose whole job is to say "this filer is not on us-gaap".
+    // Then `taxonomy is distinct from 'us-gaap'` counts every bare tag as
+    // foreign, which is most of them.
+    const rows = reportedRowsFor({ data: [{ year: 2025, form: '10-K', report: { bs: [
+        { concept: 'Assets', value: '1' },
+        { concept: 'us-gaap:Liabilities', value: '2' },
+        { concept: 'us-gaap_Goodwill', value: '3' },
+        { concept: 'ifrs-full:Equity', value: '4' },
+        { concept: 'trv:UnderwritingExpense', value: '5' },
+    ] } }] }, 'X');
+    const tax = Object.fromEntries(rows.map(r => [r.concept, r.taxonomy]));
+    assert.equal(tax['Assets'], null);
+    assert.equal(tax['us-gaap:Liabilities'], null);
+    assert.equal(tax['us-gaap_Goodwill'], null);
+    assert.equal(tax['ifrs-full:Equity'], 'ifrs-full');
+    // A FILER-SPECIFIC extension is foreign too. It is not us-gaap, so the
+    // ratio layer must not match it against a us-gaap candidate.
+    assert.equal(tax['trv:UnderwritingExpense'], 'trv');
+
+    assert.equal(rows.filter(r => r.taxonomy !== null).length, 2);
+});

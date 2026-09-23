@@ -303,6 +303,68 @@ async function resolveSymbols(explicit, limit, refreshDays) {
     return ordered.slice(0, limit);
 }
 
+/**
+ * The symbols the institution layer is for: the Financials cohort, plus any
+ * symbol already carrying statements so a page can show both layers.
+ *
+ * SCOPED TO THE STATEMENT COHORT, NOT TO `assets`. `assets.sector` is
+ * `Other` for 6,879 of 7,921 active rows -- meaningful inside equity_cache
+ * (4 `Other`, 21 null out of 942) and not outside it. A cohort built from
+ * the whole table would be mostly unclassified names.
+ *
+ * `Financials` does NOT separate a bank from an insurer, and it is not asked
+ * to: the framework is chosen from the FILING (deposits and net interest
+ * income against premiums earned and loss reserves), which is a fact about
+ * what the company filed rather than a vendor's label. The sector only
+ * decides who is worth fetching -- and health insurers sit under
+ * `Healthcare`, so they are included by name rather than missed.
+ */
+async function resolveInstitutionSymbols(explicit, limit, refreshDays, extraSectors) {
+    if (explicit.length) return explicit;
+
+    const sectors = ['Financials'].concat(extraSectors || []);
+    const cohort = await sbSelect(
+        'equity_cache?select=symbol&limit=5000').catch(() => []);
+    const inCohort = new Set(cohort.map(r => r.symbol).filter(Boolean));
+    if (!inCohort.size) return [];
+
+    const classified = await sbSelect(
+        'assets?select=symbol,sector&listing_status=eq.active&sector=in.('
+        + sectors.map(x => '"' + x + '"').join(',') + ')&limit=5000').catch(() => []);
+
+    let fresh = new Set();
+    if (refreshDays > 0) {
+        const cutoff = new Date(Date.now() - refreshDays * 86400000).toISOString();
+        const recent = await sbSelect(
+            'company_reported_lines?select=symbol&source=eq.' + SOURCE_REPORTED
+            + '&loaded_at=gte.' + cutoff + '&limit=100000').catch(() => []);
+        fresh = new Set(recent.map(r => r.symbol));
+    }
+
+    const seen = new Set();
+    const ordered = [];
+    for (const a of classified) {
+        const sym = a.symbol;
+        if (!sym || seen.has(sym) || fresh.has(sym) || !inCohort.has(sym)) continue;
+        seen.add(sym);
+        ordered.push(sym);
+    }
+    return ordered.slice(0, limit);
+}
+
+/** One symbol's as-reported lines, written in ONE transaction. */
+async function sbUpsertReportedLines(rows) {
+    const res = await fetch(SB_URL + '/rest/v1/rpc/atlas_upsert_reported_lines', {
+        method: 'POST', headers: sbHeaders(SB_SERVICE),
+        body: JSON.stringify({ p_lines: rows }),
+    });
+    if (!res.ok) {
+        throw new Error('atlas_upsert_reported_lines ' + res.status + ' '
+            + (await res.text().catch(() => '')).slice(0, 300));
+    }
+    return res.json();
+}
+
 export default async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
@@ -311,14 +373,18 @@ export default async function handler(req, res) {
         if (auth !== 'Bearer ' + secret && token !== secret) return res.status(401).json({ error: 'Unauthorized' });
     }
     const wantProbe = String((req.query && req.query.probe) || '') === '1';
+    // The institution layer reads FINNHUB, like the probe, and writes
+    // company_reported_lines. It touches Alpha Vantage not at all.
+    const wantReported = String((req.query && req.query.mode) || '') === 'reported';
+    const wantFinnhub = wantProbe || wantReported;
     // The probe reads FINNHUB, not Alpha Vantage, so it must not be refused
     // for a key it never touches.
-    if (!wantProbe && !AV_KEY) {
+    if (!wantFinnhub && !AV_KEY) {
         console.error('sync_financials: ALPHA_VANTAGE_API_KEY unset — refusing to run');
         return res.status(500).json({ error: 'ALPHA_VANTAGE_API_KEY unset' });
     }
-    if (wantProbe && !FINNHUB_KEY) {
-        console.error('sync_financials: FINNHUB_API_KEY unset — refusing to probe');
+    if (wantFinnhub && !FINNHUB_KEY) {
+        console.error('sync_financials: FINNHUB_API_KEY unset — refusing to run', wantProbe ? 'probe' : 'reported');
         return res.status(500).json({ error: 'FINNHUB_API_KEY unset' });
     }
     if (!SB_SERVICE) {
@@ -374,6 +440,100 @@ export default async function handler(req, res) {
         if (ins.ok) { const j = await ins.json().catch(() => null); logId = j && j[0] && j[0].id; }
         else console.error('sync_financials: sync_log open refused', ins.status, await ins.text().catch(() => ''));
     } catch (e) { console.error('sync_financials: sync_log open threw', e && e.message); }
+
+    // ── REPORTED-LINES MODE — the institution layer's substrate ─────────
+    // Writes company_reported_lines from Finnhub's as-reported XBRL. One
+    // vendor call and one RPC per symbol, so a symbol is atomic against the
+    // interruption that actually happens.
+    if (wantReported) {
+        summary.mode = 'reported';
+        summary.source = SOURCE_REPORTED;
+        summary.scope = explicit.length ? 'explicit' : 'institution_cohort';
+        // NAMED SEPARATELY from av_calls. A run that made no Alpha Vantage
+        // calls and 40 Finnhub ones must not read as a run that made none.
+        summary.finnhub_calls = 0;
+        summary.symbols = [];
+        // A filer the vendor holds nothing for is not a failure and not a
+        // write: EQ-3 measured ASML, TSM, SONY and ABEV all returning zero
+        // because this endpoint is a SEC 10-K feed and they file 20-Fs.
+        summary.no_filings = [];
+
+        const extra = String(q.sectors || '').split(',').map(x => x.trim()).filter(Boolean);
+        let syms = [];
+        try {
+            syms = await resolveInstitutionSymbols(explicit, limit, refreshDays, extra);
+        } catch (e) {
+            console.error('sync_financials reported: symbol resolve failed', e && e.message);
+            summary.failures.push({ symbol: null, error: String(e.message).slice(0, 200) });
+        }
+        summary.requested = syms.length;
+
+        for (const sym of syms) {
+            if (Date.now() - started > budgetMs) { summary.budget_exhausted = true; break; }
+            summary.attempted++;
+            try {
+                const j = await finnhubGetJson('/stock/financials-reported?symbol='
+                    + encodeURIComponent(sym) + '&freq=annual');
+                summary.finnhub_calls++;
+                const rows = reportedRowsFor(j, sym);
+                const shape = reportedSummary(j, rows);
+                if (!rows.length) {
+                    // Recorded, never written. `reason` says which of the two
+                    // empties this is.
+                    summary.no_filings.push({ symbol: sym, reason: shape.reason, forms: shape.forms });
+                } else {
+                    const wrote = await sbUpsertReportedLines(rows);
+                    summary.rows_written += Number(wrote && wrote.rows) || 0;
+                    summary.symbols_written++;
+                    summary.symbols.push({
+                        symbol: sym, rows: Number(wrote && wrote.rows) || 0,
+                        periods: shape.periods, year_min: shape.year_min, year_max: shape.year_max,
+                    });
+                }
+            } catch (e) {
+                if (e instanceof RateLimited) {
+                    summary.rate_limited = true;
+                    summary.rate_limit_message = e.message;
+                    console.error('sync_financials reported: rate limited —', e.message);
+                    break;
+                }
+                summary.failures.push({ symbol: sym, error: String(e.message).slice(0, 200) });
+                console.error('sync_financials reported:', sym, e && e.message);
+            }
+            if (paceMs) await new Promise(r => setTimeout(r, paceMs));
+        }
+
+        // Three outcomes, never two. A run that wrote nothing because every
+        // symbol was already fresh is not the same as one that wrote nothing
+        // because the fetch produced nothing, and `success` for either is how
+        // a stopped feed stays invisible.
+        const rStatus = summary.rows_written > 0 ? 'success'
+            : (summary.requested === 0 || summary.no_filings.length) ? 'skipped'
+            : 'error';
+        if (logId != null) {
+            try {
+                const upd = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
+                    method: 'PATCH', headers: sbHeaders(SB_SERVICE),
+                    body: JSON.stringify({
+                        finished_at: new Date().toISOString(),
+                        status: rStatus,
+                        error_message: summary.rate_limit_message
+                            || (summary.failures.length ? summary.failures[0].error : null),
+                        details: summary,
+                    }),
+                });
+                // Never swallowed. A non-OK PATCH does not throw, and that is
+                // exactly how 41 sync_funddata_prices rows sat open for months.
+                if (!upd.ok) {
+                    console.error('sync_financials reported: sync_log close refused',
+                        upd.status, await upd.text().catch(() => ''));
+                }
+            } catch (e) {
+                console.error('sync_financials reported: sync_log close threw', e && e.message);
+            }
+        }
+        return res.status(rStatus === 'error' ? 500 : 200).json(summary);
+    }
 
     // ── PROBE MODE — measures, writes nothing ───────────────────────────
     // Answers the two questions CLAUDE.md records as load-bearing and
@@ -692,7 +852,14 @@ export function indexReport(report) {
         for (const item of arr) {
             const concept = item && item.concept;
             if (!concept || out[concept] !== undefined) continue;
-            out[concept] = { value: num(item.value), label: item.label || null, section };
+            out[concept] = {
+                value: num(item.value),
+                label: item.label || null,
+                // The UNIT is part of the figure. ASML files in EUR; reading a
+                // stored number without it compares a euro to a dollar.
+                unit: item.unit || null,
+                section,
+            };
         }
     }
     return out;
@@ -816,6 +983,106 @@ export function probeConcepts(reports, groups) {
         };
     }
     return out;
+}
+
+export const SOURCE_REPORTED = 'finnhub';
+
+/**
+ * One symbol's as-reported annual filings, flattened to company_reported_lines
+ * rows.
+ *
+ * ONE ROW PER (symbol, fiscal_year, concept), which is the table's key, so the
+ * dedupe inside indexReport is what keeps a concept reported in two sections of
+ * the same filing from colliding on insert.
+ *
+ * A filing with NO usable year yields nothing. `fiscal_year` is the key; a row
+ * that cannot say which year it describes is not a period, the same rule
+ * rowsFor() applies to a missing fiscalDateEnding.
+ */
+export function reportedRowsFor(json, symbol) {
+    const data = Array.isArray(json && json.data) ? json.data : [];
+    // 10-K only. A foreign private issuer files a 20-F and this endpoint
+    // returns nothing at all for one, which is a COVERAGE finding rather than
+    // a filter result -- see reportedSummary() below.
+    const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
+    const out = [];
+    for (const d of annuals) {
+        const year = Number(d.year);
+        if (!Number.isFinite(year)) continue;
+        const idx = indexReport(d.report);
+        for (const [concept, v] of Object.entries(idx)) {
+            out.push({
+                source: SOURCE_REPORTED,
+                symbol,
+                fiscal_year: year,
+                concept,
+                form: d.form || null,
+                period_end: isoDate(d.endDate),
+                filed_date: isoDate(d.filedDate),
+                accession: d.accessNumber || null,
+                section: v.section || null,
+                label: v.label,
+                taxonomy: foreignTaxonomyOf(concept),
+                value: v.value,
+                unit: v.unit,
+            });
+        }
+    }
+    return out;
+}
+
+/**
+ * The taxonomy a concept belongs to when that is NOT us-gaap, else null.
+ *
+ * NOT `taxonomyOf`, which returns the raw prefix and would give 'us-gaap' for
+ * `us-gaap:Assets` and NULL for the bare `Assets` the vendor sometimes already
+ * strips. Both are the same concept, so a column that separates them makes
+ * `taxonomy is distinct from 'us-gaap'` -- the obvious foreign-filer test --
+ * count every bare us-gaap tag as foreign.
+ *
+ * Here NULL means us-gaap in any of its three spellings and non-null means it
+ * is not, so `taxonomy is not null` IS the foreign test, in one predicate with
+ * no null handling to get wrong.
+ */
+export function foreignTaxonomyOf(concept) {
+    const key = conceptKey(concept);
+    const colon = key.indexOf(':');
+    return colon < 0 ? null : key.slice(0, colon);
+}
+
+/** A date the database will accept, or null. The vendor mixes plain dates and
+ *  timestamps, and a malformed one must not become a fabricated day. */
+export function isoDate(v) {
+    if (!v) return null;
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v));
+    return m ? m[1] : null;
+}
+
+/**
+ * What a symbol's fetch actually established, kept apart from what it wrote.
+ *
+ * NO ROWS AND NO FILINGS ARE DIFFERENT FINDINGS. `forms: []` means the vendor
+ * holds nothing for this filer -- EQ-3 measured ASML, TSM, SONY and ABEV all
+ * returning zero, because `financials-reported` is a SEC 10-K feed and a
+ * foreign private issuer files a 20-F. Reporting that as "0 rows written"
+ * reads as a load that produced nothing, which is the no-op-as-success shape
+ * this codebase has had to separate four times.
+ */
+export function reportedSummary(json, rows) {
+    const data = Array.isArray(json && json.data) ? json.data : [];
+    const forms = Array.from(new Set(data.map(d => d && d.form).filter(Boolean)));
+    const years = rows.map(r => r.fiscal_year);
+    return {
+        filings: data.length,
+        forms,
+        periods: new Set(years).size,
+        year_min: years.length ? Math.min(...years) : null,
+        year_max: years.length ? Math.max(...years) : null,
+        rows: rows.length,
+        reason: data.length === 0 ? 'no_filings'
+            : rows.length === 0 ? 'no_10k_filings'
+            : null,
+    };
 }
 
 /**
