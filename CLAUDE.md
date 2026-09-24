@@ -6178,6 +6178,35 @@ both ways for both accounts. **A plan that is fast only because the planner
 guessed well is a plan that fails the day the guess changes** -- the old read
 survived on a Hash Join it was never forced into.
 
+### Per-account nightly analytics start with what can be measured (MP-4e, 2026-09-24)
+
+**Atlas Secondary's whole history begins 2026-09-24 11:52 UTC** (first fill;
+2 equity-curve rows, 1 snapshot day). So "run the nightly analytics per
+account" divides by what the data can support, not by table:
+
+| analytic | per account now? | why |
+|---|---|---|
+| `book_risk_daily` vol / VaR / Euler shares | **yes** | `vw_book_mctr` + `vw_risk_analysis` are request-scoped and already right |
+| verdicts, segments | not yet | rest on the return engine's matviews (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) -- all default-book by construction -- and would grade every Secondary name not measurable for weeks |
+| factor betas, regime CVaR, VaR backtest | no | regress the account's own daily returns; there are none. `book_factor_betas` has **no writer in the database at all** -- B0/C3 estimated it outside |
+
+`book_risk_daily` is keyed `(portfolio_id, as_of, logic_version)`; the column
+defaults to the default account so `atlas_write_verdicts` is unchanged except
+its `ON CONFLICT` target, which **must** name the new key or every run fails
+with 42P10 -- patched in the same migration, atomically.
+`atlas_write_account_book_risk()` (cron 23:41 Mon-Fri) writes the live risk
+columns for each non-default account under its own header and leaves the
+return-engine columns NULL, which `bookBaseline.js` already renders as
+"Not yet computed". Dry run: Secondary vol 27.48%, VaR95 $42,085, Euler
+residual 0.000000, re-run `skipped`, anon on each account sees only its own
+rows.
+
+**Matviews cannot be refreshed per account by setting the header.** A refresh
+under Secondary's header would make `mv_position_returns` hold Secondary's
+book for everyone reading it until the next refresh -- the wrong-book defect
+by another route. The verdict engine needs per-account TABLES (the MP-4d
+shape), not per-account refreshes.
+
 ### Withholding made two old fallbacks visible on the first day (2026-09-24)
 
 Seen on Atlas Secondary's first screen, and neither is specific to it -- the
