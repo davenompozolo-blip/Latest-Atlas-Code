@@ -299,3 +299,50 @@ export function compositeCallView(engineFV, price) {
         tone: upside >= 0.15 ? 'good' : upside >= 0.03 ? 'ok' : upside >= -0.05 ? 'warn' : 'bad',
     };
 }
+
+// ── the Bull/Base/Bear scenario, and when it may leave its own card ─────────
+//
+// These three rows are the INITIAL STATE of the Valuation tab's sliders, not a
+// measurement and not even an assumption anyone made about this company: the
+// same 13% revenue CAGR, 44% terminal margin and 28x exit multiple for every
+// filer on the platform. On its own card that is fine -- it is captioned
+// "what-if - does not set the call" and the sliders are right there.
+//
+// It was ALSO pushed into the header verdict strip as `PROB-WEIGHTED EV`,
+// where on MSFT it read $1,036 beside a measured `COMPOSITE FV` of $376: two
+// figures 2.8x apart, side by side, one of them from constants, with nothing
+// saying which. That is the blend EQ-9 deleted from the composite -- a DCF on
+// a substituted growth rate and a substituted margin -- surviving one tile
+// over, and the header is the line a reader trusts at a glance.
+export const BBB_DEFAULTS = {
+    bull: { cagr: 0.16, margin: 0.47, mult: 32, prob: 25 },
+    base: { cagr: 0.13, margin: 0.44, mult: 28, prob: 50 },
+    bear: { cagr: 0.08, margin: 0.40, mult: 22, prob: 25 },
+};
+
+const BBB_LEGS = ['bull', 'base', 'bear'];
+const BBB_LEVERS = ['cagr', 'margin', 'mult', 'prob'];
+
+/**
+ * Has the reader actually asserted this scenario, or is it still the shipped
+ * constants? Compared by VALUE, never by identity: the sliders replace the
+ * object on every change, so a reference check would call an untouched
+ * scenario edited the moment anything re-rendered.
+ *
+ * @param {?Object} bbb the live scenario state
+ * @returns {boolean}
+ */
+export function scenarioEdited(bbb) {
+    if (!bbb || typeof bbb !== 'object') return false;
+    for (const leg of BBB_LEGS) {
+        const cur = bbb[leg], def = BBB_DEFAULTS[leg];
+        if (!cur || typeof cur !== 'object') return false;
+        for (const lever of BBB_LEVERS) {
+            // A non-finite lever is not an edit -- it cannot have been set by a
+            // slider, and treating it as one would publish an EV built on it.
+            if (!Number.isFinite(cur[lever])) return false;
+            if (cur[lever] !== def[lever]) return true;
+        }
+    }
+    return false;
+}

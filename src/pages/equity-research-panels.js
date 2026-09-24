@@ -10,6 +10,7 @@ import {
     piotroskiView, PIOTROSKI_OUT_OF, qualityGradeView, sloanView,
     capitalAllocationView, compositeCallView,
     ROW_GRADED, ROW_NO_MEASURE,
+    BBB_DEFAULTS, scenarioEdited,
 } from '../lib/equityVerdicts.js';
 
 var h = React.createElement;
@@ -350,7 +351,10 @@ export function VerdictStrip(p) {
         sep,
         vs('Up / Downside', fin(upside) ? fmtPct(upside) : '—', upsideColor),
         sep,
-        vs('Prob-weighted EV', fin(ev_pw) ? fmtDol(ev_pw) : '—'),
+        // NAMED FOR WHAT IT IS. "Prob-weighted EV" reads as a valuation
+        // beside `COMPOSITE FV`; it is a probability weighting of the reader's
+        // OWN Bull/Base/Bear scenario, and it is absent until they set one.
+        vs('Scenario EV', fin(ev_pw) ? fmtDol(ev_pw) : '—'),
         sep,
         // The grade is ABSENT from `qv` when the F-Score is incomplete, so
         // there is no value to print and no band to colour it with.
@@ -554,7 +558,11 @@ export function ThesisTab(p) {
     if (fin(blendedFV)) p.onBlendedFV && p.onBlendedFV(blendedFV);
 
     // ── Bull / Base / Bear ─────────────────────────────────────────────────
-    var _bbb = useState({ bull: { cagr: 0.16, margin: 0.47, mult: 32, prob: 25 }, base: { cagr: 0.13, margin: 0.44, mult: 28, prob: 50 }, bear: { cagr: 0.08, margin: 0.40, mult: 22, prob: 25 } });
+    // Lazy deep copy: handing the exported const straight to useState makes
+    // the module's own baseline the live state, so one in-place slider write
+    // anywhere would move the thing `scenarioEdited` compares against and
+    // the gate could never fire again.
+    var _bbb = useState(function () { return JSON.parse(JSON.stringify(BBB_DEFAULTS)); });
     var bbb = _bbb[0], setBBB = _bbb[1];
 
     function bbbFV(s) {
@@ -578,8 +586,17 @@ export function ThesisTab(p) {
     if (fin(bullFV) && fin(baseFV) && fin(bearFV)) {
         var tot = bbb.bull.prob + bbb.base.prob + bbb.bear.prob;
         ev_pw = (bullFV * bbb.bull.prob + baseFV * bbb.base.prob + bearFV * bbb.bear.prob) / tot;
-        if (p.onEVPW) p.onEVPW(ev_pw);
     }
+    // A SCENARIO NOBODY HAS SET IS NOT A SCENARIO. Until a slider moves, this
+    // EV is a DCF over `BBB_DEFAULTS` -- a 13% revenue CAGR, a 44% terminal
+    // margin and a 28x exit multiple, the same three constants for every
+    // company on the platform. It rendered in the header strip as
+    // `PROB-WEIGHTED EV $1,036` beside a measured `COMPOSITE FV $376` on MSFT,
+    // unlabelled, which is the fabrication EQ-9 removed from the composite one
+    // tile over. The card below keeps showing it, where it is captioned
+    // "what-if - does not set the call"; the header gets it only once the
+    // reader has actually asserted the inputs.
+    if (p.onEVPW) p.onEVPW(scenarioEdited(bbb) ? ev_pw : null);
     var rrRatio = (fin(bullFV) && fin(bearFV) && fin(price))
         ? Math.abs(bullFV - price) / Math.abs(price - bearFV) : null;
 
@@ -661,7 +678,7 @@ export function ThesisTab(p) {
                         ok ? 'Probabilities sum to 100% · EV computed on weights as-is.' : 'Probabilities sum to ' + ptot + '% — EV is normalized to the total.'),
                     h('button', {
                         onClick: function() {
-                            setBBB({ bull: { cagr: 0.16, margin: 0.47, mult: 32, prob: 25 }, base: { cagr: 0.13, margin: 0.44, mult: 28, prob: 50 }, bear: { cagr: 0.08, margin: 0.40, mult: 22, prob: 25 } });
+                            setBBB(JSON.parse(JSON.stringify(BBB_DEFAULTS)));
                         },
                         style: { fontFamily: T.mono, fontSize: 10, color: T.muted, background: 'transparent', border: '1px solid ' + T.border2, borderRadius: 6, padding: '5px 11px', cursor: 'pointer' }
                     }, 'Reset')

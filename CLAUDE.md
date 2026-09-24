@@ -5771,6 +5771,93 @@ two real defects. EQ-9, #819 and #820 all merged with no external review simply
 because nobody asked for one -- and EQ-9c, found by self-audit after the fact,
 was a live defect.
 
+### Storage vocabulary reached the screen, in a field meant to tell things apart (2026-09-24)
+
+Reported from the terminal against the Background tab: `INSTRUMENT us_equity`.
+The raw token was the visible half. **`assets.asset_class` carries EIGHT
+spellings for four kinds:**
+
+| kind | stored as | rows |
+|---|---|---:|
+| common stock | `Stock` / `us_equity` / `equity` | 7,847 / 72 / 24 |
+| option | `option` / `us_option` | 10 / 3 |
+| ETF, cash, crypto | `etf` / `cash` / `crypto` | 1 each |
+
+So the same instrument read `Stock` on one symbol and `us_equity` on the next,
+**in the field a reader uses to tell instruments apart**. The inconsistency was
+the defect; the underscore was how it got noticed.
+
+**The vendor prefix is provenance, not a property of the instrument.** `us_` is
+which API wrote the row. It cannot be rendered as a market scope either: the
+book holds ADRs and foreign listings (ASML, TSM, SONY) stored as plain `Stock`,
+so "US equity" would assert a domicile the field does not carry -- the `fwd_pe`
+rule, in a display label. `src/lib/instrumentLabel.js` maps to the KIND, and an
+unrecognised value is **humanised, never dropped and never guessed**: dropping
+it would hide a vocabulary the platform had started storing.
+
+Two other sites rendered the same field raw -- `utils.js`'s `Class` column
+(fixed) and `pcm.js:156` (**deliberately not**: those are SAA POLICY buckets, a
+different vocabulary where `us_equity` genuinely means US equities and mapping
+it to "Equity" would lose the scope. Its `.replace('_', ' ')` replaces only the
+FIRST underscore and it dereferences without a null guard -- flagged, not
+touched, because it is a different page and a different field.)
+
+### Prose at 2.94:1 is the sidebar defect again, one module over (2026-09-24)
+
+The same terminal report circled the Background tab's "Not sourced" card.
+Measured against the card surface rather than eyeballed:
+
+```
+T.text    #e3e9f2  14.60:1
+T.muted   #8aa0bb   6.64:1
+T.muted2  #51647b   2.94:1   <- the paragraph
+```
+
+**2.94:1 is the exact number this file already records** for the shell's nav
+labels -- "below WCAG AA and below even large-text 3:1" -- fixed there by
+moving to the 6.64:1 step. `muted2` is the right token for a 9px uppercase
+field LABEL and the wrong one for a paragraph of running text; six prose sites
+in that tab were on it. Raised to `T.muted`, measured 6.64:1.
+
+**Scoped deliberately.** `muted2` appears **84 times across five equity files**
+and every one of them is text that fails AA at 2.94:1. Restyling all of them --
+or raising `--text-3` in `globals.css`, which moves every surface in the
+terminal -- is a design decision with a blast radius, not a bug fix. Field
+labels are left as they are and the count is recorded here so the next session
+can take it as its own unit rather than rediscovering it.
+
+### A scenario nobody set is not a scenario (2026-09-24)
+
+Found while looking at the same screenshot. The verdict strip read
+**`PROB-WEIGHTED EV $1,036` beside `COMPOSITE FV $376`** on MSFT -- two
+valuations 2.8x apart, side by side, with the REDUCE call driven off the
+smaller one and nothing saying why they disagreed.
+
+`ev_pw` is a DCF over the Valuation tab's Bull/Base/Bear **slider defaults**:
+a 13% revenue CAGR, a 44% terminal EBITDA margin and a 28x exit multiple --
+**the same three constants for every filer on the platform**, initial state
+rather than anything measured or even asserted.
+
+**That is the blend EQ-9 deleted from the composite, surviving one tile over.**
+EQ-9 removed a fair value built on "a SUBSTITUTED 10% revenue growth rate and a
+SUBSTITUTED 20% operating margin"; this is the same construction, and it
+reached the header -- the line a reader trusts at a glance -- while its own
+card was honestly captioned *"what-if · does not set the call"*. **A caption on
+one surface does not travel to another.**
+
+`scenarioEdited()` compares the live state to `BBB_DEFAULTS` **by value, never
+by reference**: the sliders replace the object on every change, so an identity
+check would call an untouched scenario edited the first time anything
+re-rendered. The header gets the figure only once a lever has actually moved,
+and the tile is named **`Scenario EV`** rather than `Prob-weighted EV`, which
+read as a valuation next to a composite.
+
+Two hazards closed in passing: the exported const was handed straight to
+`useState`, so one in-place slider write would have moved the baseline the gate
+compares against and the gate could never fire again (lazy deep copy); and
+Reset re-typed the three rows as literals, a second copy of the defaults free
+to drift from the first.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

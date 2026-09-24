@@ -1,5 +1,6 @@
 import Chart from 'chart.js/auto';
 import React from 'react';
+import { instrumentLabel } from '../lib/instrumentLabel.js';
 // ============================================================
 // ATLAS Terminal — Shared Utilities
 // ------------------------------------------------------------
@@ -121,7 +122,10 @@ export function cellValue(p, key) {
         case 'quality_score': return Math.round(p.quality_score || 0);
         case 'annualised_vol': return fmtPct(p.annualised_vol);
         case 'sharpe_approx': return fmt(p.sharpe_approx);
-        case 'asset_class': return p.asset_class || '\u2014';
+        // Storage vocabulary, not a label: the field holds three
+        // spellings for common stock alone, so the same instrument
+        // rendered differently row to row in this column.
+        case 'asset_class': return instrumentLabel(p.asset_class) || '\u2014';
         case 'sector': return p.sector || '\u2014';
         default: return '\u2014';
     }

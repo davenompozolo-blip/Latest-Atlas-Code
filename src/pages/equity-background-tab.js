@@ -23,6 +23,7 @@ import { loadCompanyProfile } from './equity/companyProfile.js';
 import {
     buildProfileView, fiscalYearEndLabel, PROFILE_LOADED, PROFILE_FAILED,
 } from '../lib/companyProfileView.js';
+import { instrumentLabel } from '../lib/instrumentLabel.js';
 
 const { useState, useEffect } = React;
 const h = React.createElement;
@@ -159,7 +160,11 @@ export function BackgroundTab({ symbol, rawOverview }) {
                     label: 'Theme',
                     value: theme === undefined ? '…' : theme,
                 }),
-                h(Field, { label: 'Instrument', value: (asset && asset.asset_class) || null, mono: true })
+                // STORAGE VOCABULARY IS NOT A LABEL. This printed
+                // `asset_class` verbatim -- `us_equity` -- and the field holds
+                // eight spellings for four kinds, so the same instrument read
+                // `Stock` on one symbol and `us_equity` on the next.
+                h(Field, { label: 'Instrument', value: instrumentLabel(asset && asset.asset_class) })
             ),
             // Theme is NULL for an unmapped name and is never coalesced to
             // sector: they are two taxonomies and conflating them is a mistake
@@ -168,21 +173,21 @@ export function BackgroundTab({ symbol, rawOverview }) {
             // different sentences. Never let a transport failure render as a
             // statement about the company.
             profile && !prof.industry && h('div', {
-                style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2 },
+                style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.7 },
             }, prof.state === PROFILE_FAILED
                 ? 'The classification feed did not answer, so no industry is shown. That is a '
                   + 'statement about the feed, not about this company.'
                 : 'No SEC filer profile loaded for this symbol, so no industry is shown. The '
                   + 'vendor sector is kept as its own field and is never shown as an industry.'),
             prof.industry && (prof.filerCategory || prof.fiscalYearEnd || prof.stateOfIncorporation) && h('div', {
-                style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2, lineHeight: 1.7 },
+                style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.7 },
             }, [
                 prof.sicCode ? 'SIC ' + prof.sicCode : null,
                 prof.filerCategory,
                 prof.stateOfIncorporation ? 'Incorporated in ' + prof.stateOfIncorporation : null,
                 prof.fiscalYearEnd ? 'Fiscal year ends ' + fiscalYearEndLabel(prof.fiscalYearEnd) : null,
             ].filter(Boolean).join('  ·  ')),
-            theme === null && h('div', { style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2 } },
+            theme === null && h('div', { style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.7 } },
                 'No theme mapped for this name. Theme is a hand-kept taxonomy and is deliberately '
               + 'not defaulted to the sector — they answer different questions.')
         ),
@@ -190,7 +195,7 @@ export function BackgroundTab({ symbol, rawOverview }) {
         // ── phase, derived ──────────────────────────────────────────────────
         h(Card, { title: 'Company phase', style: null },
             rows == null
-                ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted2 } }, 'Reading the statements…')
+                ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted } }, 'Reading the statements…')
                 : !rows.length
                     ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: rowsState === STATE_FAILED ? T.amber : T.muted, lineHeight: 1.7 } },
                         rowsState === STATE_FAILED
@@ -214,7 +219,7 @@ export function BackgroundTab({ symbol, rawOverview }) {
                                 h(Field, { label: 'Reinvestment', value: pct(phase.evidence.reinvestmentRate), mono: true }),
                                 h(Field, { label: 'Profitable', value: phase.evidence.profitable == null ? null : (phase.evidence.profitable ? 'Yes' : 'No') })
                             ),
-                            h('div', { style: { marginTop: 14, fontFamily: T.mono, fontSize: 10, color: T.muted2, lineHeight: 1.6 } },
+                            h('div', { style: { marginTop: 14, fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.6 } },
                                 'Derived from the filed statements, not from a vendor tag. Bands are absolute and fixed: '
                               + 'growth above ' + Math.round(phase.bands.highGrowth * 100) + '% revenue CAGR, mature below '
                               + Math.round(phase.bands.lowGrowth * 100) + '% with a payout above '
@@ -242,7 +247,7 @@ export function BackgroundTab({ symbol, rawOverview }) {
               + 'profile carries identity only and its description field is empty for every symbol — '
               + 'and so is EDGAR\'s, which publishes a `description` key and leaves it blank on every '
               + 'filer measured. Classification and filer identity ARE sourced, from the SEC; prose is not.'),
-            h('div', { style: { marginTop: 10, fontFamily: T.mono, fontSize: 10, color: T.muted2, lineHeight: 1.7, maxWidth: 720 } },
+            h('div', { style: { marginTop: 10, fontFamily: T.mono, fontSize: 10, color: T.muted, lineHeight: 1.7, maxWidth: 720 } },
                 'The route that exists is the 10-K: segment tables, the geographic breakdown and the '
               + 'business description are all in Item 1 and the segment footnote, and the thesis '
               + 'synthesiser already fetches filings from EDGAR. That is its own unit. Showing an '
