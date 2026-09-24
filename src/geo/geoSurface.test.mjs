@@ -6,7 +6,7 @@ import {
 import {
     exposureFrom, coverageState, fillFor, binOf, WEIGHT_BINS, gaps, footerStats, contributorsOf,
     flowsFrom, venuesFrom, makeCuller, parseGeoState, geoQuery, throttle, rankCountries,
-    screenByDomicile, isFallback, COVERAGE_FLOOR, legendFor, CHOKEPOINTS,
+    screenByDomicile, isFallback, COVERAGE_FLOOR, legendFor, CHOKEPOINTS, pct,
 } from './geoCompute.js';
 
 // ── Fixtures mirror the resolver's ROW SHAPES ──────────────────────────────
@@ -36,11 +36,13 @@ const domSummary = { book_coverage: 1, n_positions: 66, concentration_hhi: 0.689
 
 // ── Registry ───────────────────────────────────────────────────────────────
 
-test('the registry declares the eight phase-1/2 layers and is frozen', () => {
+test('the registry declares the phase-1/2 layers plus the Holdings points, and is frozen', () => {
     assert.deepEqual(LAYERS.map((l) => l.key), [
         'revenue-source', 'domicile', 'active-weight', 'coverage',
-        'listing-venues', 'revenue-flows', 'fx-sensitivity', 'chokepoints',
+        'listing-venues', 'book-positions', 'revenue-flows', 'fx-sensitivity', 'chokepoints',
     ]);
+    assert.equal(availability(layerByKey('book-positions'), 'flat', []).available, false,
+        'unavailable where the candidate universe is not loaded -- with a reason, never hidden');
     assert.ok(Object.isFrozen(LAYERS));
     assert.ok(LAYERS.every((l) => Object.isFrozen(l) && Object.isFrozen(l.renderers)));
     assert.throws(() => { LAYERS[0].label = 'x'; });
@@ -243,4 +245,13 @@ test('screening reads recorded domicile only, ranked', () => {
     assert.deepEqual(screenByDomicile(members, dom, 'TW').map((m) => m.symbol), ['A', 'B']);
     // A name with no recorded domicile is never screened in by default.
     assert.deepEqual(screenByDomicile([{ symbol: 'Z' }], dom, 'US'), []);
+});
+
+test('a dust weight prints as <0.1%, never as 0.0%; a true zero stays 0.0%', () => {
+    assert.equal(pct(3.2e-9), '<0.1%');
+    assert.equal(pct(0.0004), '<0.1%');
+    assert.equal(pct(0.0005), '0.1%');
+    assert.equal(pct(0), '0.0%');
+    assert.equal(pct(0.004, 0), '<1%');
+    assert.equal(pct(null), '—');
 });

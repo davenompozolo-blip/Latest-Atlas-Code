@@ -5365,6 +5365,36 @@ filters by symbol (5.9 ms), so nothing is at risk today. A seq scan over a
 growing table is a clock, not a constant.
 
 
+### The globe froze on a hover nobody was making (2026-09-24)
+
+Reported as "hover over the rotating globe and it stops and freezes". Full audit
+in `docs/GEO_SURFACE_REPORT.md` (follow-up section).
+
+**globe.gl raycasts from the LAST pointer position on every render**, not only
+on pointer moves. After the pointer leaves the canvas the globe keeps turning,
+a new country slides under that stale point, and it is reported as hovered.
+The first version turned `autoRotate` off on every hover report -- so the globe
+stopped under a cursor that was nowhere near it, and no event ever restarted
+it. A hover counts only while the pointer is inside; pointer interaction is
+disabled on `pointerleave`.
+
+**Never drive rotation straight from events.** Any missed "back on" (release
+outside the canvas, a hover-null that never arrives) leaves it stopped for
+good. `src/geo/renderers/rotationController.js` evaluates a predicate every
+frame, is restored by default, and has watchdogs on a stale hover and a stale
+press. Hover slows to a crawl rather than halting: a globe that stops dead
+under the cursor is indistinguishable from a frozen one.
+
+**`globe._destructor()` does not release the WebGL context.** After ~16
+renderer switches Chromium drops the OLDEST context, which can be the one on
+screen. Dispose the renderer and `forceContextLoss()` on unmount. MapLibre's
+`remove()` already does this.
+
+**A headless browser here cannot measure frame time** -- SwiftShader manages
+two frames in 1.5 s with the globe idle. The globe publishes `data-rotation`
+(`full | hover | held | settling | focus | off | reduced`) on change, and
+interaction tests assert that, never pixels or frame gaps.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

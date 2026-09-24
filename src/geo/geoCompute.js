@@ -134,7 +134,12 @@ function capitalise(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 export function pct(x, d = 1) {
     const n = num(x);
-    return n == null ? '—' : (n * 100).toFixed(d) + '%';
+    if (n == null) return '—';
+    // A real but tiny weight (a dust position) must not print as 0.0%, which
+    // reads as "nothing here" -- or as a bug.
+    const floor = 0.5 * Math.pow(10, -d) / 100;
+    if (n > 0 && n < floor) return '<' + Math.pow(10, -d).toFixed(d) + '%';
+    return (n * 100).toFixed(d) + '%';
 }
 
 export function pp(x, d = 1) {
@@ -275,12 +280,15 @@ export const CHOKEPOINTS = Object.freeze([
 // ── Regions ────────────────────────────────────────────────────────────────
 // View presets. Bounds are [west, south, east, north]; a preset is a camera,
 // never a filter — the exposure outside the view still exists.
+// `pov` is the same camera for the globe: a point to face and an altitude in
+// globe radii. Without it the chips did nothing at all on the globe -- five
+// buttons that read as working and changed nothing.
 export const REGIONS = Object.freeze([
-    Object.freeze({ key: 'world',    label: 'WORLD',    bounds: [-170, -58, 190, 80] }),
-    Object.freeze({ key: 'emea',     label: 'EMEA',     bounds: [-25, -36, 62, 72] }),
-    Object.freeze({ key: 'apac',     label: 'APAC',     bounds: [60, -48, 180, 55] }),
-    Object.freeze({ key: 'americas', label: 'AMERICAS', bounds: [-170, -56, -30, 72] }),
-    Object.freeze({ key: 'africa',   label: 'AFRICA',   bounds: [-20, -36, 55, 38] }),
+    Object.freeze({ key: 'world',    label: 'WORLD',    bounds: [-170, -58, 190, 80], pov: Object.freeze({ lat: 20, lng: 10, altitude: 2.4 }) }),
+    Object.freeze({ key: 'emea',     label: 'EMEA',     bounds: [-25, -36, 62, 72],   pov: Object.freeze({ lat: 28, lng: 18, altitude: 1.7 }) }),
+    Object.freeze({ key: 'apac',     label: 'APAC',     bounds: [60, -48, 180, 55],   pov: Object.freeze({ lat: 12, lng: 115, altitude: 1.8 }) }),
+    Object.freeze({ key: 'americas', label: 'AMERICAS', bounds: [-170, -56, -30, 72], pov: Object.freeze({ lat: 12, lng: -85, altitude: 1.9 }) }),
+    Object.freeze({ key: 'africa',   label: 'AFRICA',   bounds: [-20, -36, 55, 38],   pov: Object.freeze({ lat: 2, lng: 20, altitude: 1.6 }) }),
 ]);
 
 // ── Viewport culling with a content key ────────────────────────────────────

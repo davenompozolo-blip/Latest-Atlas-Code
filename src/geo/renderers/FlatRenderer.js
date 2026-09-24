@@ -63,7 +63,7 @@ function firstSymbolLayerId(map) {
     return s ? s.id : undefined;
 }
 
-export default function FlatRenderer({ exposure, byKind, scale, selected, overlays, viewBounds, onSelect, onHover }) {
+export default function FlatRenderer({ exposure, byKind, scale, selected, overlays, view, onSelect, onHover }) {
     const hostRef = useRef(null);
     const mapRef = useRef(null);
     const overlayRef = useRef(null);
@@ -152,11 +152,14 @@ export default function FlatRenderer({ exposure, byKind, scale, selected, overla
     }, [zoomRes]);
 
     // Camera requests from the consumer (region presets).
+    // Keyed on the nonce, so repeating a request (WORLD after panning away)
+    // re-centres instead of being swallowed as "unchanged".
     useEffect(() => {
         const map = mapRef.current;
-        if (!ready || !map || !viewBounds) return;
-        map.fitBounds([[viewBounds[0], viewBounds[1]], [viewBounds[2], viewBounds[3]]], { padding: 12, duration: 600 });
-    }, [ready, viewBounds && viewBounds.join(',')]);
+        const bb = view && view.bounds;
+        if (!ready || !map || !bb) return;
+        map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 12, duration: 600 });
+    }, [ready, view && view.nonce]);
 
     // A data or style change bumps the version, so getFillColor re-runs.
     useEffect(() => { version.current += 1; }, [exposure, scale.mode, scale.muted]);
@@ -223,6 +226,23 @@ export default function FlatRenderer({ exposure, byKind, scale, selected, overla
                         getLineColor: [...CYAN, 230],
                         lineWidthUnits: 'pixels', getLineWidth: 1.5,
                         pickable: false,
+                    }));
+                } else if (l.key === 'book-positions') {
+                    const pts = overlays.bookPoints || [];
+                    // Candidates underneath as dots, the book on top as rings
+                    // sized by weight -- the same encoding as the positioning map.
+                    layers.push(new ScatterplotLayer({
+                        id: 'book-candidates', beforeId, data: pts.filter((d) => d.candCount > 0),
+                        getPosition: (d) => [d.lon, d.lat], radiusUnits: 'pixels',
+                        getRadius: (d) => 2.5 + 2.2 * Math.sqrt(d.candCount),
+                        getFillColor: [139, 152, 168, 170], pickable: false,
+                    }));
+                    layers.push(new ScatterplotLayer({
+                        id: 'book-held', beforeId, data: pts.filter((d) => d.heldCount > 0),
+                        getPosition: (d) => [d.lon, d.lat], radiusUnits: 'pixels',
+                        getRadius: (d) => 4 + 4.5 * Math.sqrt(d.heldWeightPct),
+                        stroked: true, filled: true, getFillColor: [...CYAN, 30], getLineColor: [...CYAN, 235],
+                        lineWidthUnits: 'pixels', getLineWidth: 1.6, pickable: false,
                     }));
                 } else if (l.key === 'chokepoints') {
                     layers.push(new ScatterplotLayer({
