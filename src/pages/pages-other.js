@@ -11,6 +11,7 @@ import React from 'react';
 import { sb, loadView, MOCK_COMMAND, normalizeCommand } from './config.js';
 import { fmt, fmtPct, fmtCurrency, cls, badgeCls, healthCls, useChart, returnStatus, sharpeStatus, ddStatus } from './utils.js';
 import { Loading, EmptyState, HeroCard } from './components.js';
+import { buildAccountSyncView, statusTone, ACCOUNT_SYNC_LOADED, ACCOUNT_SYNC_EMPTY } from '../lib/accountSyncView.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -927,12 +928,15 @@ function AccountBalances() {
     );
 }
 
+var CC_TONE_COLOR = { green: 'var(--green)', amber: 'var(--amber)', red: 'var(--red)', grey: 'var(--text-3)' };
+
 export function CommandCentre() {
     const [command, setCommand] = useState(null);
     const [navData, setNavData] = useState(null);
     const [homeData, setHomeData] = useState(null);
     const [freshness, setFreshness] = useState(null);
     const [validationLog, setValidationLog] = useState([]);
+    const [accountSync, setAccountSync] = useState(null);
     const [alerts, setAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -944,6 +948,13 @@ export function CommandCentre() {
             const validationPromise = sb
                 ? sb.from('atlas_validation_log').select('*').order('checked_at', { ascending: false }).limit(20).then(function(r) { return r.data || []; })
                 : Promise.resolve([]);
+            // Per-account sync health (MP-4c). The raw result is kept so a
+            // transport failure is told apart from an empty answer.
+            const accountSyncPromise = sb
+                ? sb.rpc('atlas_account_sync_health').then(
+                    function(r) { return buildAccountSyncView(r); },
+                    function(e) { return buildAccountSyncView({ data: null, error: e }); })
+                : Promise.resolve(null);
             const alertsPromise = sb
                 ? sb.from('atlas_memory').select('*').eq('category', 'bug').order('created_at', { ascending: false }).limit(10).then(function(r) { return r.data || []; })
                 : Promise.resolve([]);
@@ -954,6 +965,7 @@ export function CommandCentre() {
                 freshnessPromise,
                 validationPromise,
                 alertsPromise,
+                accountSyncPromise,
             ]).then(function(res) {
                 setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
                 setNavData(res[1]);
@@ -961,6 +973,7 @@ export function CommandCentre() {
                 setFreshness(res[3]);
                 setValidationLog(res[4] || []);
                 setAlerts(res[5] || []);
+                setAccountSync(res[6]);
                 setLoading(false);
             });
         }
@@ -1075,6 +1088,39 @@ export function CommandCentre() {
                 )
             )
         ),
+        // Broker accounts (MP-4c): each account graded on its own syncs and
+        // its own book, so one healthy account cannot hide another.
+        accountSync ? React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+            React.createElement('div', { className: 'card-title' }, 'Broker Accounts'),
+            accountSync.state === ACCOUNT_SYNC_LOADED
+                ? React.createElement('table', { className: 'data-table' },
+                    React.createElement('thead', null,
+                        React.createElement('tr', null,
+                            ['Account', 'Position sync', 'Positions', 'NAV drift', 'Status', 'Why'].map(function(h) {
+                                return React.createElement('th', { key: h }, h);
+                            })
+                        )
+                    ),
+                    React.createElement('tbody', null,
+                        accountSync.rows.map(function(r) {
+                            var col = CC_TONE_COLOR[r.tone];
+                            return React.createElement('tr', { key: r.id },
+                                React.createElement('td', null, r.name + (r.isDefault ? ' · default' : '')),
+                                React.createElement('td', null, 'ageLabel' in r ? r.ageLabel + ' ago' : 'never'),
+                                React.createElement('td', null, 'positions' in r ? r.positions : '—'),
+                                React.createElement('td', null, 'driftLabel' in r ? r.driftLabel : 'not reconciled'),
+                                React.createElement('td', null, React.createElement('span', { className: 'badge', style: { color: col } }, (r.status || 'unknown').toUpperCase())),
+                                React.createElement('td', { style: { fontSize: 11, color: 'var(--text-2)' } }, r.reasons.length ? r.reasons.join('; ') : '—')
+                            );
+                        })
+                    )
+                )
+                : React.createElement('div', { style: { color: 'var(--text-2)', fontSize: 13, padding: '12px 0' } },
+                    accountSync.state === ACCOUNT_SYNC_EMPTY
+                        ? 'No broker account is registered for syncing.'
+                        : 'Account sync health did not answer (' + accountSync.reason + '). This says nothing about whether the accounts are syncing.'
+                )
+        ) : null,
         // Data Freshness tile
         React.createElement('div', { className: 'card', style: { marginTop: 16 } },
             React.createElement('div', { className: 'card-title' }, 'Data Freshness'),
@@ -1136,13 +1182,13 @@ export function CommandCentre() {
                     ),
                     React.createElement('tbody', null,
                         validationLog.map(function(row, i) {
-                            var ok = row.status === 'pass' || row.status === 'ok';
-                            var warn = row.status === 'warn';
-                            var cls = ok ? 'green' : warn ? 'amber' : 'red';
+                            // The database writes passed / warning / failed;
+                            // this used to test only pass / ok / warn.
+                            var tone = statusTone(row.status);
                             var ts = row.checked_at ? new Date(row.checked_at).toLocaleString() : '—';
                             return React.createElement('tr', { key: i },
                                 React.createElement('td', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, color: '#00d4ff' } }, row.check_name || row.check || '—'),
-                                React.createElement('td', null, React.createElement('span', { className: 'badge ' + cls }, (row.status || '—').toUpperCase())),
+                                React.createElement('td', null, React.createElement('span', { className: 'badge', style: { color: CC_TONE_COLOR[tone] } }, (row.status || '—').toUpperCase())),
                                 React.createElement('td', { style: { fontSize: 11, color: 'rgba(255,255,255,0.55)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, row.message || '—'),
                                 React.createElement('td', { style: { fontSize: 11, color: 'rgba(255,255,255,0.35)' } }, ts)
                             );
