@@ -18,6 +18,10 @@ import {
     loadStatementLayer, STATE_LOADED, STATE_NOT_LOADED, STATE_FAILED,
 } from './equity/equityStatements.js';
 import {
+    statementPeriodAvailability, periodAbsentReason,
+    NOT_LOADED, PERIOD_ABSENT, INCOMPLETE, COVERAGE_DISAGREES,
+} from '../lib/statementPeriodAvailability.js';
+import {
     INCOME_LINES, BALANCE_LINES, CASHFLOW_LINES,
     buildColumns, visibleLines, visibleRatioGroups,
     periodChange, finite, numOrNull, indexPeers, peerComparison,
@@ -258,19 +262,56 @@ function CashFlowBridge({ columns }) {
 }
 
 // ── absent / failed states, kept apart ───────────────────────────────────────
-function NotLoaded({ symbol, coverage }) {
-    const partial = coverage && coverage.statements_present > 0 && !coverage.is_complete;
+function NotLoaded({ symbol, coverage, period, onPeriod }) {
+    // "This symbol is not loaded" and "this symbol has nothing on THIS period
+    // basis" are different facts. The old code tested only
+    // `statements_present > 0 && !is_complete`, which is FALSE for a symbol
+    // that is complete on the other basis -- so switching AAPL to Quarterly
+    // fell through to the generic unloaded copy and blamed an Alpha Vantage
+    // quota that never applied to it: AAPL carries 19 annual periods, loaded
+    // from EDGAR, which has no key and no daily cap. 43 of the loaded symbols
+    // are annual-only, so the wrong sentence was the modal one.
+    const view = statementPeriodAvailability(coverage, period);
+
+    const title = view.state === PERIOD_ABSENT
+            ? 'No ' + view.requested + ' statements for ' + symbol
+        : view.state === INCOMPLETE
+            ? 'Statements for ' + symbol + ' are incomplete'
+        : view.state === COVERAGE_DISAGREES
+            ? 'The ' + view.requested + ' statements for ' + symbol + ' did not come back'
+        : 'Statements for ' + symbol + ' are not loaded yet';
+
+    const body = view.state === PERIOD_ABSENT
+            ? periodAbsentReason(view)
+        : view.state === INCOMPLETE
+            ? ('Only ' + view.statementsPresent + ' of the three statements landed, and no single fiscal '
+               + 'period carries all three, so no ratio can be computed. The loader retries incomplete '
+               + 'symbols rather than treating them as done.')
+        : view.state === COVERAGE_DISAGREES
+            // Coverage claims periods on the very basis asked for, and the view
+            // returned none. That is two objects disagreeing, not an absence,
+            // and saying "not loaded" would be this panel's own defect again.
+            ? ('Coverage reports ' + view.requestedCount + ' ' + view.requested + ' period'
+               + (view.requestedCount === 1 ? '' : 's') + ' for this symbol and the ratio view returned '
+               + 'none. Those two disagree, so this is a fault to chase rather than a symbol to load.')
+        : ('This is an absence, not a failure. The statement layer is loaded per symbol; the EDGAR '
+           + 'reader has no key and no daily cap, and the Alpha Vantage key is on the free tier '
+           + '— 25 requests a day against three per symbol. Held names are loaded first.');
+
     return h(Card, { title: 'Financial statements' },
-        h('div', { style: { fontFamily: T.display, fontSize: 15, color: T.text, marginBottom: 8 } },
-            partial ? 'Statements for ' + symbol + ' are incomplete' : 'Statements for ' + symbol + ' are not loaded yet'),
-        h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.7, maxWidth: 680 } },
-            partial
-                ? ('Only ' + coverage.statements_present + ' of the three statements landed, and no single fiscal '
-                   + 'period carries all three, so no ratio can be computed. The loader retries incomplete '
-                   + 'symbols rather than treating them as done.')
-                : ('This is an absence, not a failure. The statement layer is loaded per symbol and the '
-                   + 'Alpha Vantage key is on the free tier — 25 requests a day against three per symbol, '
-                   + 'so roughly eight symbols a day. Held names are loaded first.')),
+        h('div', { style: { fontFamily: T.display, fontSize: 15, color: T.text, marginBottom: 8 } }, title),
+        h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.7, maxWidth: 680 } }, body),
+        // Offered ONLY when the other basis genuinely carries periods --
+        // `available` is absent from the shape otherwise, so a switch to an
+        // equally empty basis cannot be rendered.
+        view.available && onPeriod && h('button', {
+            onClick: function () { onPeriod(view.available); },
+            style: {
+                marginTop: 14, cursor: 'pointer', fontFamily: T.mono, fontSize: 11,
+                color: T.cyan, background: T.cyanDim, border: '1px solid ' + T.cyan,
+                borderRadius: 6, padding: '7px 13px', letterSpacing: '.04em',
+            },
+        }, 'Show the ' + view.available + ' statements →'),
         h('div', { style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2 } },
             'Nothing on this tab is estimated or defaulted while statements are missing.')
     );
@@ -530,7 +571,7 @@ export function FinancialsTab({ symbol }) {
             h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted2 } }, 'Loading statements…'));
     }
     if (state.state === STATE_FAILED)     return h(Failed, { symbol, error: state.error });
-    if (state.state === STATE_NOT_LOADED) return h(NotLoaded, { symbol, coverage: state.coverage });
+    if (state.state === STATE_NOT_LOADED) return h(NotLoaded, { symbol, coverage: state.coverage, period, onPeriod: setPeriod });
 
     const profile = columns[0] && columns[0].row.statement_profile;
 
