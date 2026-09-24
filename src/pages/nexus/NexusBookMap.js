@@ -17,6 +17,8 @@ import { supabase } from '../../lib/supabase.js';
 import * as tradeData from '../../lib/trade/tradeData.js';
 import { computeBookImpact } from '../../lib/trade/bookImpact.js';
 import { covarianceIsMeasurable, coverageSentence } from '../../lib/trade/covarianceCoverage.js';
+import { NexusBookGeo, useGeoBook, useGeoContext } from './NexusBookGeo.js';
+import { heldCountriesBySymbol, filterByCountry } from './nexusBookGeoCompute.js';
 import {
     normaliseRow, placement, extents, bookCentroid, quadrantOf, rankCandidates,
     facetCounts, applyMapFilters, sectorOptions, candidateLine, isRankable,
@@ -352,12 +354,32 @@ export function NexusBookMap() {
     const [sectors, setSectors] = useState(() => new Set());
     const [search, setSearch] = useState('');
     const [picked, setPicked] = useState(null);
+    // Geography projection. The country is SHARED state: set on the globe or
+    // the flat map, it filters the positioning scatter too.
+    const [projection, setProjection] = useState('positioning');
+    const [basis, setBasis] = useState('revenue');
+    const [renderer, setRenderer] = useState('flat');
+    const [country, setCountry] = useState(null);
+    const geo = useGeoBook(projection === 'geography' || country != null);
+    const geoCtx = useGeoContext(geo);
+    const countryCtx = useMemo(() => (geoCtx ? {
+        heldCountries: heldCountriesBySymbol(basis === 'domicile' ? geoCtx.domicileDetail : geoCtx.revenueDetail),
+        domicileBySymbol: geoCtx.domicileBySymbol,
+    } : null), [geoCtx, basis]);
 
     const rows = data.rows || [];
     const place = useMemo(() => placement(rows), [rows]);
     const centroid = useMemo(() => bookCentroid(place.placed), [place]);
-    const shown = useMemo(() => applyMapFilters(place.placed, { facets, sectors, search }),
-        [place, facets, sectors, search]);
+    const shown = useMemo(() => {
+        const f = applyMapFilters(place.placed, { facets, sectors, search });
+        return country && countryCtx ? filterByCountry(f, country, countryCtx) : f;
+    }, [place, facets, sectors, search, country, countryCtx]);
+    // Geography places every row, including held names the positioning map
+    // cannot (no correlation to plot): a domicile needs no correlation.
+    const geoRows = useMemo(() => {
+        const f = applyMapFilters(rows, { facets, sectors, search });
+        return country && countryCtx ? filterByCountry(f, country, countryCtx) : f;
+    }, [rows, facets, sectors, search, country, countryCtx]);
     const ext = useMemo(() => extents(shown.length ? shown : place.placed), [shown, place]);
     const ranking = useMemo(() => rankCandidates(place.placed), [place]);
     const counts = useMemo(() => facetCounts(place.placed), [place]);
@@ -404,7 +426,38 @@ export function NexusBookMap() {
                     secs.map((s) => e('option', { key: s.label, value: s.label }, `${s.label} (${s.count})`)))
                 : null),
 
-        e('div', { className: 'nbmap-body' },
+        e('div', { className: 'nbmap-bar nbgeo-bar' },
+            e('span', { className: 'nbmap-pk' }, 'PROJECTION'),
+            e('span', { className: 'nbgeo-seg', role: 'group', 'aria-label': 'Projection' },
+                [['positioning', 'POSITIONING'], ['geography', 'GEOGRAPHY']].map(([k, l]) => e('button', {
+                    key: k, type: 'button', className: 'nf-viewbtn' + (projection === k ? ' is-on' : ''),
+                    'aria-pressed': projection === k, onClick: () => { setProjection(k); setPicked(null); },
+                }, l))),
+            projection === 'geography' ? e('select', {
+                className: 'nbmap-sel', 'aria-label': 'Geographic basis', value: basis,
+                onChange: (ev) => setBasis(ev.target.value),
+            },
+                e('option', { value: 'revenue' }, 'BASIS · REVENUE SOURCE'),
+                e('option', { value: 'domicile' }, 'BASIS · DOMICILE')) : null,
+            country ? e('button', {
+                type: 'button', className: 'nbmap-facet is-on nbgeo-country',
+                onClick: () => setCountry(null), title: 'Clear the country filter',
+            }, e('b', null, country), (geoCtx && geoCtx.names.get(country)) || '', ' ×') : null,
+            projection === 'geography' ? e('span', { className: 'nbgeo-seg nbgeo-right', role: 'group', 'aria-label': 'Renderer' },
+                ['flat', 'globe'].map((r) => e('button', {
+                    key: r, type: 'button', className: 'nf-viewbtn' + (renderer === r ? ' is-on' : ''),
+                    'aria-pressed': renderer === r, onClick: () => setRenderer(r),
+                }, r.toUpperCase()))) : null),
+
+        projection === 'geography'
+            ? (geo.loading
+                ? e('div', { className: 'nbmap-note' }, 'Resolving the book’s geography…')
+                : geo.failed || !geoCtx
+                    ? e('div', { className: 'nbmap-absent' }, e('b', null, 'GEOGRAPHY UNAVAILABLE'),
+                        'The geographic resolver did not answer. That is a statement about the connection, not about where the book earns.')
+                    : e('div', { className: 'nbmap-body' },
+                        e(NexusBookGeo, { ctx: geoCtx, rows: geoRows, basis, country, onCountry: setCountry, renderer })))
+            : e('div', { className: 'nbmap-body' },
             e('div', { className: 'nbmap-plot' },
                 e(Scatter, { rows: shown, centroid, ext, onPick: setPicked, selected: picked }),
                 e('div', { className: 'nbmap-legend' },

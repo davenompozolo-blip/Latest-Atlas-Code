@@ -48,6 +48,8 @@ export function TradeGeographic({ universe, onOpenTicket }) {
     const [active, setActive] = useState(initial.layers || defaultLayers());
     const [selected, setSelected] = useState(initial.selected);
     const [region, setRegion] = useState('world');
+    // Bumped on every chip click, so repeating a region re-centres.
+    const [viewNonce, setViewNonce] = useState(0);
     const [hover, setHover] = useState(null);
     const [screenOpen, setScreenOpen] = useState(false);
     const [book, setBook] = useState(null);
@@ -71,6 +73,19 @@ export function TradeGeographic({ universe, onOpenTicket }) {
     }, [renderer, active.join(','), selected]);
 
     useEffect(() => { setScreenOpen(false); }, [selected]);
+
+    // Esc releases a selection. On the globe a selection holds rotation, so
+    // there has to be a way out that does not depend on finding empty ocean.
+    useEffect(() => {
+        const onKey = (ev) => {
+            if (ev.key !== 'Escape') return;
+            const t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            setSelected(null);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     const names = useMemo(() => {
         const m = new Map();
@@ -133,7 +148,9 @@ export function TradeGeographic({ universe, onOpenTicket }) {
         flows: flowsFrom(revDetail, centroids),
     }), [venueInfo, revDetail, centroids]);
     const stats = footerStats({ revenue: rev, domicile: dom, revenueSummary: revSummary, domicileSummary: domSummary });
-    const regionBounds = (REGIONS.find((r) => r.key === region) || REGIONS[0]).bounds;
+    const regionDef = REGIONS.find((r) => r.key === region) || REGIONS[0];
+    const view = useMemo(() => ({ bounds: regionDef.bounds, pov: regionDef.pov, nonce: region + ':' + viewNonce }),
+        [regionDef, region, viewNonce]);
 
     const onToggle = useCallback((key) => setActive((a) => toggleLayer(a, key)), []);
 
@@ -151,7 +168,7 @@ export function TradeGeographic({ universe, onOpenTicket }) {
                     e('div', { className: 'geo-chips' },
                         REGIONS.map((r) => e('button', {
                             key: r.key, type: 'button', className: 'geo-chip' + (region === r.key ? ' on' : ''),
-                            onClick: () => setRegion(r.key),
+                            onClick: () => { setRegion(r.key); setViewNonce((n) => n + 1); },
                             title: 'A camera, not a filter — exposure outside the view still counts',
                         }, r.label))),
                     e('div', { className: 'geo-chips' },
@@ -179,7 +196,8 @@ export function TradeGeographic({ universe, onOpenTicket }) {
                                 onSelect: setSelected,
                                 onHover: setHover,
                                 overlays,
-                                viewBounds: renderer === 'flat' ? regionBounds : null,
+                                view,
+                                centroids,
                             }),
                         hover && names.get(hover) ? e('div', { className: 'geo-hover' },
                             names.get(hover), ' · ',

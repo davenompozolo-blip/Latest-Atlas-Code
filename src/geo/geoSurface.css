@@ -1,0 +1,43 @@
+/* <GeoSurface>'s own chrome: loading and error states, the basemap note and
+ * the globe controls. It ships with the surface rather than with any one
+ * consumer, because the surface renders in Trade AND in Nexus and a style
+ * scoped to one module leaves the other unstyled. Every colour falls back to a
+ * literal, so a consumer that defines none of the --geo-* tokens still gets a
+ * legible surface; a consumer that wants to theme it sets them.
+ */
+.geo-surface {
+  --geo-mono: var(--tr-mono, 'JetBrains Mono', ui-monospace, monospace);
+  --geo-fs: 9px;
+  --geo-tx: #dde5ed;
+  --geo-tx-2: #8b98a8;
+  --geo-tx-3: #5a6675;
+  --geo-cyan: #48b9c4;
+  --geo-amber: #d99b3f;
+  --geo-panel: rgba(10, 13, 18, .85);
+  --geo-line: rgba(255, 255, 255, .12);
+  background: #0a0d12;
+}
+.geo-surface-loading, .geo-surface-error {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--geo-mono); font-size: 10.5px; letter-spacing: .12em; color: var(--geo-tx-3);
+}
+.geo-surface-error { color: var(--geo-amber); }
+.geo-basemap-note {
+  position: absolute; left: 10px; top: 10px; z-index: 2; pointer-events: none;
+  font-family: var(--geo-mono); font-size: 10.5px; color: var(--geo-tx-2);
+  background: var(--geo-panel); border: 1px solid var(--geo-line); border-radius: 3px; padding: 4px 8px;
+}
+.geo-surface .maplibregl-ctrl-attrib { background: rgba(10, 13, 18, .7); }
+.geo-surface .maplibregl-ctrl-attrib a { color: var(--geo-tx-3); }
+
+/* Globe controls: bottom-left, clear of the hover label and the attribution. */
+.geo-globe-ctl { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: flex; gap: 8px; align-items: center; }
+.geo-globe-btn, .geo-globe-why {
+  font-family: var(--geo-mono); font-size: var(--geo-fs); letter-spacing: .12em;
+  background: var(--geo-panel); border: 1px solid var(--geo-line); border-radius: 3px; padding: 5px 9px; color: var(--geo-tx-2);
+}
+.geo-globe-btn { cursor: pointer; }
+.geo-globe-btn:hover { color: var(--geo-tx); }
+.geo-globe-btn.on { color: var(--geo-cyan); border-color: rgba(72, 185, 196, .45); }
+.geo-globe-btn:focus-visible { outline: 2px solid var(--geo-cyan); outline-offset: 1px; }
+.geo-globe-why { color: var(--geo-amber); border-color: rgba(217, 155, 63, .35); }

@@ -1770,3 +1770,37 @@
 }
 .nbmap-verdict { font: 500 11px/1.6 'JetBrains Mono', monospace; color: var(--text1, #e6edf5); margin: 9px 0 0; }
 .nbmap-foot { font: 400 9px/1.6 'JetBrains Mono', monospace; color: #5a6675; margin-top: 12px; border-top: 1px solid rgba(255,255,255,.05); padding-top: 8px; }
+
+/* ── Holdings · geography projection ─────────────────────────────────────
+ * The surface itself is styled by src/geo/geoSurface.css; these rules are
+ * only the Holdings chrome around it, in the positioning map's own grammar
+ * (nbmap-*) so the two projections read as one panel. */
+.nbgeo-bar { margin-top: -2px; }
+.nbgeo-seg { display: inline-flex; gap: 4px; }
+.nbgeo-right { margin-left: auto; }
+.nbgeo-country b { margin-right: 4px; }
+.nbgeo { display: contents; }
+.nbgeo-plot { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.nbgeo-regions { display: flex; gap: 4px; flex-wrap: wrap; }
+.nbgeo-map { position: relative; height: 440px; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; }
+.nbgeo-hover {
+    position: absolute; right: 10px; top: 10px; z-index: 2; pointer-events: none;
+    font: 400 10px/1.4 'JetBrains Mono', monospace; color: var(--text1, #e6edf5);
+    background: rgba(8,11,14,.85); border: 1px solid rgba(255,255,255,.10); border-radius: 3px; padding: 4px 8px;
+}
+.nbgeo-gate {
+    font: 400 11px/1.55 'JetBrains Mono', monospace; color: var(--text2, #b9c7d9);
+    border: 1px solid rgba(245,158,11,.35); background: rgba(245,158,11,.07); border-radius: 4px; padding: 8px 10px;
+}
+.nbgeo-gate b { color: #f59e0b; font-weight: 600; letter-spacing: .12em; }
+.nbgeo-sw { display: inline-block; width: 16px; height: 8px; border-radius: 2px; }
+.nbmap-k.is-muted .nbgeo-sw { opacity: .45; }
+.nbgeo-ring { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #22d3ee; }
+.nbmap-rank.is-on { background: rgba(34,211,238,.10); }
+.nbmap-rr.is-pos { color: #22d3ee; }
+.nbmap-rr.is-neg { color: #f59e0b; }
+.nbgeo-foot {
+    grid-column: 1 / -1; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.07);
+    font: 400 11px/1.6 'JetBrains Mono', monospace; color: var(--text2, #b9c7d9);
+}
+.nbmap-rr.is-neutral { color: var(--text2, #b9c7d9); }
