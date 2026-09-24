@@ -5626,91 +5626,102 @@ permanently absent. Correct, and worth writing down: it is a gate that can
 never pass in the benign direction, and the next reader should not hunt for a
 bug behind an empty tile.
 
-### Every book read is scoped before a second book exists (2026-09-24)
+### "Not loaded" was a claim about the symbol; the gap was the PERIOD (2026-09-24)
 
-MP-0, phase 0 of multi-portfolio support. A second Alpaca paper account (Atlas
-Secondary) now exists under its own key pair (`ATLAS_ALPACA_API_KEY` /
-`ATLAS_ALPACA_API_SECRET`, Vercel Production and Supabase function secrets).
-Nothing reads or writes it yet, **and nothing may until the writers are
-account-aware (MP-1).**
+Reported from the terminal: switching AAPL from Annual to Quarterly renders
+*"Statements for AAPL are not loaded yet"*, above a sentence blaming the Alpha
+Vantage free tier.
 
-**The four book tables carry `portfolio_id`; almost nothing filtered on it.**
-25 views and 5 functions read `positions` / `account_snapshots` /
-`transactions` / `portfolio_equity_curve` unscoped, and so did 10 call sites in
-`src/` and `api/`. With a second account's rows present, every one would have
-**summed two books** -- NAV, weights, risk, verdicts -- with nothing on screen
-to say so. Some would be wrong in subtler ways: `vw_positions_current` took
-`max(as_of_date)` across ALL portfolios and `vw_sleeve_headroom` the newest
-equity snapshot from ANY account.
+**Both halves are false for that symbol.** AAPL carries **19 complete annual
+periods**, and it was loaded from **EDGAR**, which has no key and no daily cap
+-- so the copy blamed a quota that never applied to it. Measured over the
+loaded set: **9 symbols carry quarterly (all Alpha Vantage), 43 carry annual
+only** (the EDGAR cohort), so the wrong sentence was the MODAL one, not an
+edge case.
 
-**The writers are worse, and are MP-1's job.** `sync_alpaca_positions` and
-`sync_alpaca_transactions` read ONE global key pair and write the result into
-EVERY Alpaca portfolio row. Registering Secondary as a portfolio today would
-copy Primary's book into it. **Do not insert a second `portfolios` row until
-MP-1 has shipped.**
+**The panel had every fact and never looked at the period.**
+`vw_company_statement_coverage` publishes `aligned_annual_periods`,
+`income_quarterly`, `is_complete` and `source` per symbol. `NotLoaded` tested
+only `statements_present > 0 && !is_complete` -- **false for a symbol that is
+complete on the OTHER basis** -- so it fell through to the generic unloaded
+copy. Same shape as the EQ-4j / EQ-8b split: *not loaded*, *no framework* and
+*failed* need different sentences, and here a fourth was missing.
 
-**One choke point.** `atlas_active_portfolio()` returns the portfolio every
-book-scoped reader shows; it is `portfolios.is_default` today (at most one row,
-by unique partial index). `vw_active_positions`, `vw_active_account_snapshots`,
-`vw_active_transactions` and `vw_active_equity_curve` filter the base tables
-to it. **Read those, never the base table, for anything that means "my book".**
-The account switcher (MP-2) changes that function's body and nothing else.
-Call it as `(select public.atlas_active_portfolio())` so it is one InitPlan,
-not a per-row call. It is SECURITY DEFINER because a function inside a view runs
-as the QUERYING role and `portfolios` is under RLS.
+`src/lib/statementPeriodAvailability.js` returns four states.
+`available` / `availableCount` are **absent from the shape** unless the other
+basis genuinely carries periods, so a switch to an equally empty basis cannot
+be rendered.
 
-**A single-table view owned by `postgres` is auto-updatable.** Supabase's
-default grants would have let anon INSERT/UPDATE/DELETE `positions` THROUGH
-`vw_active_positions` with RLS bypassed. All four are revoked and granted
-SELECT only; verified by a real anon POST refused with `42501`.
+**`COVERAGE_DISAGREES` is the state that stops this recurring one level down.**
+The function is only reached with an empty row set, so reaching it while
+coverage reports periods on the very basis asked for is two objects
+disagreeing, not an absence -- and calling that "not loaded" would be the exact
+defect being fixed. It is a fault to chase, and it says so.
 
-**Three readers stay a union on purpose** -- "held anywhere" is the right
-meaning: `atlas_check_universe_price_coverage`, `atlas_refresh_asset_sectors`,
-`refresh_universe_correlations`. The last still takes a GLOBAL
-`max(as_of_date)`, so a lagging account's names would drop out of the matrix;
-**make it per-portfolio in MP-1.**
+**EDGAR's quarterly facts are in the same payload, unfetched.**
+`edgarFacts.js` filters to `ANNUAL_FORMS` and requires a 330-400 day duration,
+so quarterly is **not requested** rather than unavailable -- one filter, no
+extra API calls, no quota. "Not loaded yet" invited waiting for something that
+would never arrive on its own; the copy now says the reader takes annual
+filings only. **Loading it is its own unit and is NOT done.**
 
-The rewrite is textual against the live definitions, each bare reference
-aliased back to the table's own name so qualified columns
-(`account_snapshots.equity`) still resolve, with every replacement count
-asserted and a re-patch refused. The SQL rewrite and an independent Python one
-agree byte-for-byte on all 33 definitions. **Proven by `EXCEPT ALL` both ways
-over 36 objects** -- the 25 rewritten views, 8 downstream (`vw_nexus_holdings`,
-`vw_risk_analysis`, `vw_book_mctr`, `vw_position_nav_daily` at 11,717 rows ...)
-and 3 function outputs -- in one REPEATABLE READ transaction so the 5-minute
-sync cannot produce a false diff: **0 rows differ either way.** Timings level
-within noise. `vw_earnings_calendar` is `security_invoker=on` and keeps it.
+10 tests, **5 of which fail against the shipped predicate**, checked by
+reverting. The live coverage rows are the fixtures, not invented shapes.
 
-Two unfiltered `positions.select('asset_id')` reads (`advanced-chart.js`,
-`NexusRealized.js`) were also a 1,000-row-cap defect: 10,963 rows of history
-for a "held" set. They read `vw_positions_current` now.
-`src/lib/bookTableReads.test.mjs` fails any direct book-table read in `src/` or
-`api/`; it finds exactly the 10 pre-fix sites when they are restored. **No CI
-workflow runs the node suite** -- run it with `node --test`.
+### An income-statement count stood in for "this basis renders" (2026-09-24)
 
-### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
+EQ-9c, found by auditing the 2026-09-24 period fix above **because no external
+reviewer ran on it** -- CodeRabbit declines this repo and the Codex connector
+was out of quota again. Same circumstance as EQ-9, same outcome: the audit
+found a live defect in what had just merged.
 
-Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`
-exports `null` when `VITE_SUPABASE_ANON_KEY` is absent at BUILD time, and this
-container has none. `sb` is then a constant, and rollup deletes everything after
-`if (!sb) return` -- which is why a `console.log` at the top of an effect shipped
-and the query eight lines below it did not.
+`statementPeriodAvailability` read `income_quarterly` as "the quarterly basis
+carries periods". **It is one statement's row count.**
+`vw_company_fundamentals` INNER JOINs the three statements, so a basis renders
+only where three share a fiscal date -- which is exactly why the coverage view
+publishes `aligned_annual_periods` and not `income_annual`. There was no
+quarterly equivalent, so the module read the only quarterly number on offer
+and it was the wrong one. **The `fwd_pe` rule, in a coverage column.**
 
-Measured: a local build without the key carries `vw_active_positions` **0**
-times; the same source built with the key carries it **2** times. The **live
-production bundle** carries `equity_fundamentals_derived` **2** times and
-`compute_ticker_derived` once. **EQ-5b's "0 in the bundle, so `derived` has
-always been null in the deployed app" was measured against a keyless local
-build and is wrong**; the code path has shipped. Its fix (reading the statement
-layer directly) stands on its own merits. The control string EQ-9 used
-(`equity_fundamentals_derived` = 0) proved nothing for the same reason.
+**Live on SNDK** -- the half-loaded symbol EQ-2 already records, income
+statement only:
 
-**Build with the key before grepping `dist/`**, or grep the deployed bundle:
+| | income_quarterly | aligned quarterly | is_complete |
+|---|---:|---:|---|
+| SNDK | **12** | **0** | false |
+| the other 8 quarterly symbols | 81 | 81 | true |
 
-```bash
-VITE_SUPABASE_ANON_KEY=<publishable key> npx vite build
-curl -s https://<host>/ | grep -o 'assets/[^"]*\.js'   # then fetch and grep
-```
+The eight align exactly, which is why the wrong field looked right. On SNDK
+the panel offered *"Show the quarterly statements ->"*, the switch returned no
+rows, and the module then called the empty result **a fault to chase** --
+`COVERAGE_DISAGREES` -- for a state `is_complete = false` declares on the same
+row. **A dead-end button and a phantom fault, in the module written to stop
+exactly that sentence.**
+
+Two corrections, and the second is the general one:
+
+- `aligned_quarterly_periods` is added to `vw_company_statement_coverage`
+  (EQ-9c, `CREATE OR REPLACE` appending last, so all twelve existing columns
+  keep name, position and type and no consumer moves; 60 rows unchanged).
+- **INCOMPLETE is tested BEFORE the period branches.** A symbol whose
+  statements did not all land cannot satisfy the join on *any* basis, so
+  offering a switch is offering a dead end and a contradiction claim is false.
+  Ordering was the whole defect: a correct branch sat below two that claimed
+  its rows first -- the unreachable-gate shape, inverted.
+
+`present === 0` keeps the INCOMPLETE branch off a genuinely quarterly-only
+symbol: `statements_present` is **annual-scoped**, so absence of annual
+statements is not evidence of a half-loaded one. That has its own test.
+
+**`bigint` reaches the browser as a JSON number, measured not recalled.**
+`count()` gates on `typeof v === 'number'`, which would read every counter as
+zero if PostgREST quoted them. `json_typeof(to_json(aligned_annual_periods))`
+is `number` and `row_to_json` emits them unquoted -- so the gate is right. The
+file's own rule: a fact about a database is measured in that database.
+
+6 new tests, **4 of which fail against the merged module**, checked by
+reverting. One of the two that pass either way is deliberate -- it asserts the
+precedence change did not swallow the AAPL case the first fix existed for.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

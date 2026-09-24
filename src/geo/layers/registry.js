@@ -45,6 +45,12 @@ export const LAYERS = Object.freeze([
         key: 'listing-venues', label: 'Listing venues', group: 'universe', kind: 'point',
         renderers: ['flat', 'globe'], basis: null, requires: [], defaultOn: true,
     }),
+    // The book and its candidate universe, one marker pair per domicile.
+    // Needs a consumer that has loaded the candidate map (Nexus -> Holdings).
+    def({
+        key: 'book-positions', label: 'Book and candidates', group: 'universe', kind: 'point',
+        renderers: ['flat', 'globe'], basis: null, requires: ['candidate-universe'], defaultOn: false,
+    }),
     def({
         key: 'revenue-flows', label: 'Revenue flows', group: 'universe', kind: 'arc',
         renderers: ['flat', 'globe'], basis: 'revenue', requires: [], defaultOn: false,
@@ -63,6 +69,7 @@ export const LAYERS = Object.freeze([
 export const UNMET_REASON = Object.freeze({
     'benchmark-geo': 'No benchmark geographic breakdown on file, so there is nothing to be active against.',
     'fx-sensitivity': 'No per-country currency sensitivity on file, and the reporting currency is an open decision.',
+    'candidate-universe': 'This view does not load the candidate universe. It lives on Nexus -> Holdings -> MAP -> GEOGRAPHY.',
 });
 
 export const GROUPS = Object.freeze([

@@ -6,7 +6,7 @@
 // it. Same shape as the Nexus panel-provider lift — the surface is dumb, the
 // provider above it is not.
 //
-// Props (the spec's contract, plus `overlays` and `viewBounds`):
+// Props (the spec's contract, plus `overlays`, `view` and `centroids`):
 //   exposure    Map<iso2, {weight, coverage, contributors}> | null — already resolved
 //   layers      active layer keys, already filtered by the consumer
 //   renderer    'flat' | 'globe'
@@ -16,7 +16,12 @@
 //   onHover     (iso2 | null) => void — throttled to 60 ms here
 //   height      number | 'fill'
 //   overlays    { venues: [], chokepoints: [], flows: [] } — point and arc data
-//   viewBounds  [w, s, e, n] | null — a camera request, not a filter
+//   view        { bounds, pov, nonce } | null — a camera request, not a filter.
+//               `nonce` makes the same request repeatable: clicking WORLD
+//               after panning away must re-centre even though WORLD is
+//               already the active region.
+//   centroids   Map<iso2, [lon, lat]> — lets a renderer bring a selection
+//               into view (the globe turns to it)
 //
 // Both renderers are lazy chunks. The flat one (MapLibre + deck.gl) loads
 // when the surface first mounts; the globe (globe.gl over three.js) loads on
@@ -24,6 +29,7 @@
 // initial bundle.
 
 import React from 'react';
+import './geoSurface.css';
 import { layerByKey } from './layers/registry.js';
 import { throttle } from './geoCompute.js';
 
@@ -38,7 +44,7 @@ export const HOVER_THROTTLE_MS = 60;
 export function GeoSurface(props) {
     const {
         exposure = null, layers = [], renderer = 'flat', scale = { mode: 'weight', muted: false },
-        selected = null, onSelect, onHover, height = 'fill', overlays = {}, viewBounds = null,
+        selected = null, onSelect, onHover, height = 'fill', overlays = {}, view = null, centroids = null,
     } = props;
 
     // Resolve keys to definitions once, and split them by kind: the
@@ -70,7 +76,7 @@ export function GeoSurface(props) {
     return e('div', { className: 'geo-surface', style, 'data-renderer': renderer },
         e(Suspense, { fallback: e('div', { className: 'geo-surface-loading' }, renderer === 'globe' ? 'Loading globe…' : 'Loading map…') },
             e(Renderer, {
-                exposure, byKind, scale, selected, overlays, viewBounds,
+                exposure, byKind, scale, selected, overlays, view, centroids,
                 onSelect: (iso) => { if (onSelect) onSelect(iso || null); },
                 onHover: throttledHover,
             })));

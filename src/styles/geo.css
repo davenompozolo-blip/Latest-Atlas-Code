@@ -72,19 +72,12 @@
 
 .tr-root .geo-mapcard { border: 1px solid var(--tr-line); border-radius: 6px; background: var(--tr-card); overflow: hidden; }
 .tr-root .geo-mapwrap { position: relative; height: 430px; background: #0a0d12; }
-.tr-root .geo-surface-loading, .tr-root .geo-surface-error {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-family: var(--tr-mono); font-size: var(--tr-fs-2); color: var(--tr-tx-3); letter-spacing: var(--tr-tr-2);
-}
-.tr-root .geo-surface-error { color: var(--tr-amber); }
-.tr-root .geo-basemap-note, .tr-root .geo-hover {
+.tr-root .geo-hover {
   position: absolute; left: 10px; top: 10px; z-index: 2; pointer-events: none;
   font-family: var(--tr-mono); font-size: var(--tr-fs-2); color: var(--tr-tx-2);
   background: rgba(10, 13, 18, .82); border: 1px solid var(--tr-line); border-radius: 3px; padding: 4px 8px;
 }
 .tr-root .geo-hover { left: auto; right: 10px; color: var(--tr-tx); }
-.tr-root .geo-surface .maplibregl-ctrl-attrib { background: rgba(10, 13, 18, .7); }
-.tr-root .geo-surface .maplibregl-ctrl-attrib a { color: var(--tr-tx-3); }
 
 .tr-root .geo-legend {
   display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 9px 12px;
