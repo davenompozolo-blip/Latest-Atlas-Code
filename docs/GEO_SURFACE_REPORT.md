@@ -138,6 +138,8 @@ resize, flat click/pan/zoom-past-4).
 | 6 | Clicking the active region again did nothing | The camera effect was keyed on the region, which had not changed | Camera requests carry a nonce |
 | 7 | A selected country rotated away | Rotation continued after selection | Selection focuses the globe: it turns to face the country and holds |
 | 8 | Every click restarted the arc animation | Selection shared an effect with the data layers | Selection has its own effect |
+| 9 | **Hover throttle threw in the browser** (`Illegal invocation`) | The default timer stored `setTimeout` bare and called it as `timer.set(...)`; browsers reject a foreign `this`, Node does not, and the unit test injected its own timer. Every trailing hover call — usually the one saying the hover ended — threw, so hover labels lingered | Timer functions wrapped; a new test simulates the browser's receiver check and fails on the old default |
+| 10 | Clicking the ocean did not clear a flat-map selection | deck.gl calls a layer's `onClick` only when an object is hit | The overlay's own `onClick` clears on an empty-space click |
 
 Also added: an explicit AUTO-ROTATE switch, Esc to release a selection, and a
 live `prefers-reduced-motion` listener (it was read once at mount).
@@ -154,9 +156,14 @@ change, and the probe asserts that instead of pixels.
 
 ### Verified (`geo_probe2`, live rows replayed)
 
-All globe flows pass: G1–G22, including drag released outside, ghost hover
-after a layer toggle mid-hover (G18), and 20 renderer round trips with zero
-context warnings (G19–G21). One observation outside our code:
+All 22 globe flows and 6 of 7 flat flows pass on the final build, with zero
+page errors: drag released outside, ghost hover after a layer toggle mid-hover
+(G18), 20 renderer round trips with zero context warnings (G19–G21), flat
+click, re-centre after a pan (checked on the published camera, `data-view`),
+and the 1:50m swap. The one timing-sensitive flow is the flat ocean click:
+deck.gl picks from the last rendered frame, and at SwiftShader's frame rate a
+click fired right after a move can be picked against the previous frame. It
+passes once a frame has rendered; on a GPU the window is ~16 ms. One observation outside our code:
 three-render-objects listens for `pointerup` only on its own container, so a
 drag released outside leaves its internal "dragging" flag set; the next click
 was still delivered correctly in every run (C1–C4), so no workaround was added.
