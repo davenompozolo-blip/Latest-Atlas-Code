@@ -6200,6 +6200,8 @@ return-engine columns NULL, which `bookBaseline.js` already renders as
 "Not yet computed". Dry run: Secondary vol 27.48%, VaR95 $42,085, Euler
 residual 0.000000, re-run `skipped`, anon on each account sees only its own
 rows.
+Applied 2026-09-24 through the SQL editor; ledger row backfilled and hashed
+against the file (`b895522a`), function body identical to `prosrc` (`bf471e1f`).
 
 **Matviews cannot be refreshed per account by setting the header.** A refresh
 under Secondary's header would make `mv_position_returns` hold Secondary's
