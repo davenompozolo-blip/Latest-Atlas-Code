@@ -418,7 +418,7 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, engine, 
 
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 } },
         // verdict strip
-        React.createElement(VerdictStrip, { inputs: inp, price, compositeFV: engineFV, ev_pw, derived, style: { margin: '8px 14px 0' } }),
+        React.createElement(VerdictStrip, { inputs: inp, price, compositeFV: engineFV, ev_pw, derived, symbol, style: { margin: '8px 14px 0' } }),
         // tab bar
         React.createElement('div', {
             style: { display: 'flex', background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, flexWrap: 'wrap' }

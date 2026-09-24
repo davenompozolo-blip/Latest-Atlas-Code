@@ -5365,35 +5365,266 @@ filters by symbol (5.9 ms), so nothing is at risk today. A seq scan over a
 growing table is a clock, not a constant.
 
 
-### The globe froze on a hover nobody was making (2026-09-24)
+### Sector and industry were the same field, and the SEC publishes the other one (2026-09-24)
 
-Reported as "hover over the rotating globe and it stops and freezes". Full audit
-in `docs/GEO_SURFACE_REPORT.md` (follow-up section).
+EQ-8b. `company_profile` / `src/lib/edgarProfile.js` /
+`src/lib/companyProfileView.js`, 52 symbols loaded from EDGAR submissions.
 
-**globe.gl raycasts from the LAST pointer position on every render**, not only
-on pointer moves. After the pointer leaves the canvas the globe keeps turning,
-a new country slides under that stale point, and it is reported as hovered.
-The first version turned `autoRotate` off on every hover report -- so the globe
-stopped under a cursor that was nowhere near it, and no event ever restarted
-it. A hover counts only while the pointer is inside; pointer interaction is
-disabled on `pointerleave`.
+The Background tab rendered **`SECTOR Technology` / `INDUSTRY Technology`**
+for Apple. Not a display bug -- `mapFinnhubOverview` in `api/equity.js` sets
+both from one field:
 
-**Never drive rotation straight from events.** Any missed "back on" (release
-outside the canvas, a hover-null that never arrives) leaves it stopped for
-good. `src/geo/renderers/rotationController.js` evaluates a predicate every
-frame, is restored by default, and has watchdogs on a stale hover and a stale
-press. Hover slows to a crawl rather than halting: a globe that stops dead
-under the cursor is indistinguishable from a frozen one.
+```js
+Sector:   p.finnhubIndustry || '',
+Industry: p.finnhubIndustry || '',
+```
 
-**`globe._destructor()` does not release the WebGL context.** After ~16
-renderer switches Chromium drops the OLDEST context, which can be the one on
-screen. Dispose the renderer and `forceContextLoss()` on unmount. MapLibre's
-`remove()` already does this.
+So the card asserted a two-level taxonomy the vendor does not have. EQ-7
+measured the identical copy one layer down in `equity_screener_universe`;
+this is its origin in the app layer.
 
-**A headless browser here cannot measure frame time** -- SwiftShader manages
-two frames in 1.5 s with the globe idle. The globe publishes `data-rotation`
-(`full | hover | held | settling | focus | off | reduced`) on change, and
-interaction tests assert that, never pixels or frame gaps.
+**EDGAR publishes the SEC's own SIC classification, free and with no key, and
+it is a genuine level below sector.** Measured over the 52 loaded symbols:
+
+| | |
+|---|---:|
+| distinct EDGAR SIC industries | **33** |
+| distinct vendor industries | 17 |
+| vendor industry == its own sector | **10 of 52** |
+| **EDGAR industry == vendor sector** | **0 of 52** |
+
+MSFT, TGT and XOM carried **no vendor industry at all**. JPM resolves to
+`National Commercial Banks` and MS to `Security Brokers, Dealers & Flotation
+Companies` -- both `Financials` to the vendor, and that separation is the
+discriminator EQ-4's institution layer picks its framework with.
+
+**The taxonomy is named on the field, never assumed.** The label reads
+`Industry · SEC SIC`, because EQ-7 measured that the vendor buckets mix GICS
+sector names with GICS industry names and are neither level cleanly. An
+industry rendered bare invites a comparison that is invalid.
+
+**EDGAR HAS NO BUSINESS PROSE EITHER.** `description`, `website` and
+`investorWebsite` are present as KEYS and **empty on every filer measured**,
+so `''` would render as a loaded-but-blank field -- indistinguishable from one
+that failed. Every text column is NULL when blank, enforced by CHECK rather
+than by convention, and the view shape omits the key entirely. The Background
+tab's own "not sourced" note stands and now says which half IS sourced:
+classification and filer identity, from the SEC; prose, from nowhere. Item 1
+of the 10-K remains the only route.
+
+**A transport failure and an unloaded symbol get different sentences**, the
+`not_loaded` / `failed` split EQ-4j established -- never let a dead feed
+render as a statement about the company.
+
+**`fiscalYearEnd` is stored as MMDD verbatim and rendered as "September 26",
+never as a fiscal-year NAME**, for the reason recorded above: Target calls the
+year ending Feb 2025 FY2024 and NVIDIA calls the year ending Jan 2025 FY2025,
+so a label says WHEN the year ends and claims nothing about what the filer
+calls it.
+
+**I walked straight into this file's own `select *` trap.** The first write
+was `insert into company_profile select * from jsonb_populate_recordset(...)`
+and died on `23502: null value in column "loaded_at"` -- exactly what the
+2026-09-23 entry records about `atlas_upsert_company_statements`. A NOT NULL
+DEFAULT column reads as optional and under `select *` is mandatory and
+unstated. Naming the columns and stamping `now()` in the statement is the fix,
+and it is the more correct reading anyway: when the DATABASE received the row.
+**Reading the entry is not the same as remembering it at the keyboard.**
+
+24 tests across the two modules, each verified by reverting: industry falling
+back to sector, an industry rendered without its taxonomy, EDGAR's empty
+description reaching the shape, and a failure reading as "not loaded" all fail
+the suite. The path is confirmed in `dist/` by a string only it can produce --
+the EQ-5b rule, because this module's sibling `equity-research.js` still has
+an effect body rollup does not emit (`equity_fundamentals_derived`: 0
+occurrences in the bundle, re-confirmed as the control for this check).
+
+**No cron job yet, deliberately.** A filer's SIC and identity change on the
+order of years, and the loader is one EDGAR call per symbol with no cap, so
+this wants a refresh cadence measured in months rather than a nightly slot
+burned on data that does not move. Coverage is the 52 symbols carrying
+statements; the rest of the universe is the same call again.
+
+
+### A supplementary read took the whole statement layer down (2026-09-24)
+
+Reported from the terminal, on every ticker tested: the Financials tab read
+*"The statement feed did not answer — canceling statement due to statement
+timeout"*, and the Background tab, one panel away, read *"Statements for AAPL
+are not loaded."* Two different sentences, one cause, and neither of them
+true — AAPL carries 19 complete annual periods.
+
+**`vw_company_fundamentals` was never the problem: 4.7 ms symbol-filtered.**
+The failure was `vw_company_fundamental_peers` at **6,938 ms** against anon's
+3,000 ms cap — a 100% failure rate on a query nobody had timed, because EQ-2
+flagged it as *"trivial at ten symbols ... not measured at scale"* and EQ-8a
+then took the statement layer from 10 symbols to 62. **A growth-linked node is
+a clock, not a constant**, and this one crossed the cap between two units of
+the same week.
+
+**The cost was not the cohort, it was re-deriving it per row.** `long` holds
+the whole universe (46,159 rows) because a peer median needs the cohort and
+the symbol filter can only apply after it; the per-row LATERAL then scanned
+that entire CTE once for each of AAPL's 589 output rows — **27.2M rows
+filtered, `temp read=286,356` blocks spilling to disk**. Grouping the cohort
+once into ordered `(value, symbol)` arrays makes the lateral unnest ~9
+elements: **6,938 → 392 ms**, semantics identical, proven by `EXCEPT ALL` both
+ways over AAPL (589), JPM (3,131, the financial profile) and SONY+CPER (930) —
+4,650 rows, 0 differences in either direction.
+
+**And EQ-8a's own precedence subquery was the base's cost.** The correlated
+`WHERE i.source = (SELECT ...)` is evaluated PER ROW: 19 times on a
+symbol-filtered read (invisible), **1,615 times inside the peer view, for
+157,545 of its 163,745 buffers**. Hoisted to a grouped CTE joined once; 1,489
+rows, 0 mixed-source symbols, `EXCEPT ALL` clean both ways over the whole view.
+Third instance of this exact shape here, after `atlas_counterfactual_frozen`
+(once per CALL) and `vw_position_nav_daily` (once per REFERENCE). **Compute it
+once and hand it down.**
+
+**A supplementary read must not be able to refuse the primary one.** The three
+reads were one `Promise.all`, so the peers' rejection discarded fundamentals
+that had already succeeded in 4.7 ms. `coverage` had a `.catch` and `peers` did
+not — the asymmetry was never a decision. The peer medians now fail alone, are
+logged at error level, and say so on the result: a silently empty peer set is
+indistinguishable from a cohort nobody else is in, which is a real and
+different answer.
+
+**The Background tab collapsed three states into two.**
+`setRows(res.state === STATE_LOADED ? res.rows : [])` turned a transport
+failure into an empty array, and the panel printed *"statements are not
+loaded"* — a claim about the company, on a query that was cancelled. The
+module publishes `loaded` / `not_loaded` / `failed` precisely so that cannot
+happen, and one consumer threw two of them away. **Fifth layer for "never let
+a transport failure render as a statement about the data."**
+
+### The panels graded on evidence they did not have (2026-09-24)
+
+EQ-9. `src/lib/equityVerdicts.js` is the one place that decides what the
+Equity Research surfaces may SAY. Five fabrications, each measured against the
+52 symbols carrying statements.
+
+**1. A 9-point F-Score formed from fewer than nine criteria.** `piotroski()`
+returned `determinable ? passed : null`, so a reading from three tests was
+emitted as a score out of nine and read under bands defined over nine. Live on
+**29 of 52 symbols**: SONY and CPER resolve THREE criteria and published
+**"2 / 9 · WEAK"** — where 2 of the 3 that resolved had passed. TSM, ABEV, HMY,
+PBR and TM printed the same on four.
+
+**The panel had a guard for exactly this and it was dead.** `pfPartial` was
+`!pfFromTable && pfKnown < 9`, and `pfFromTable` was `piotroski_f != null`,
+which the statement path satisfies for every symbol — so on the one case it
+was written for it evaluated false, `pfKnown` was set to a literal 9, and the
+definitive band rendered. Sixth instance of a gate that can never pass.
+
+**2. The Sloan fallback reconstructed a balance sheet out of a market
+multiple.** `mktCap / (pb || 3) + totalDebt` as "total assets" — equity plus
+debt is not assets, and `pb || 3` SUBSTITUTES a price-to-book of 3 when none is
+on file. The same algebra deleted from the Altman card on PR #806, still live
+one card across, feeding the sentence *"Earnings are high-quality"*.
+
+**3. Capital Allocation graded two rows from the existence of a row.**
+`grade: capGrade ? 'C+' : null` for buyback accretion and `capGrade ? 'A−' :
+null` for the M&A record — no input of any kind, on either. The `'RISK-ON'`
+string literal G-4 removed from the chrome, in a letter grade. ROIC was
+`inp.roe * 0.6`, a made-up factor then differenced against a WACC to publish
+*"value-creating"*; `bbYield` was `-(fcf - cash) / mktCap` under the name
+"buyback yield"; and `overallGrade` ended `: 'B'`, so a filer with nothing
+measured got a B in 64-point type.
+
+**4. The header ran a second fair-value blend that violated the rule the first
+one states.** `fairValueComposite.js` says in its own header: *"when an input
+can't be trusted, drop it. If nothing survives, return null — never fabricate
+a number."* The strip's fallback ran a ten-year DCF on a substituted 10% growth
+rate and 20% operating margin, a multiple leg on a substituted 18× EV/EBITDA,
+and a leg that was trailing EPS × a flat 20 — then averaged the survivors and
+drove BUY / ACCUMULATE / HOLD / REDUCE off the result.
+
+**A ladder of `>` comparisons falls through to its last rung on a null**, and
+that rung was `REDUCE · overvalued`. So a ticker the engine could not value
+rendered the most negative verdict on the board, in red, indistinguishable
+from a measured one. The same shape as Altman's `null > 2.60` falling into
+DISTRESS, which PR #806 fixed one card away.
+
+**5. The header read a table that does not ship.** It took `p.derived` from
+`equity_fundamentals_derived`, which EQ-5b measured at **0 occurrences in the
+production bundle** — so the live path was always
+`roe > 0.20 ? 'B+' : '—'`: a letter grade on the same scale, from one ratio,
+marked only "prov.". It reads the statement layer now.
+
+**`{ key: undefined }` IS NOT AN ABSENT KEY**, and my own module shipped that
+bug for twenty minutes. `'spread' in out` is true for it and `Object.keys`
+lists it, so a consumer testing presence — the very check the module exists to
+enable — sees a figure nobody measured. **Found by the test, not by reading**:
+the absence assertion failed on the first run. Assign the key only when there
+is a value.
+
+**`vite build` is not a scope audit, twice over.** It reported clean while
+`VerdictStrip` called `useStatementDerived(p.symbol)` and **`symbol` was not
+among its props** — a hook that could never resolve, which is the dead-gate
+shape again and invisible to the bundler. Caught by grepping the call site.
+
+20 tests, and **11 of them fail against the shipped behaviour**, checked by
+restoring it rather than assumed. Every new path confirmed in `dist/` by a
+string only it can produce, with `equity_fundamentals_derived` (0) as the
+control — the EQ-5b rule, because this module's sibling `equity-research.js`
+still has an effect body rollup does not emit.
+
+### The self-audit found three, and the worst was the one I had just fixed elsewhere (2026-09-24)
+
+EQ-9 merged with **no external review**: CodeRabbit declines this repo (fewer
+than 10 stars, not the draft state as first reported) and the Codex connector
+was out of quota. Four of this file's entries are defects CodeRabbit caught in
+my own work, so the merged diff was audited against the recorded failure modes
+instead. Three findings, all in what I had just written.
+
+**1. `useStatementDerived` swallowed the failure state.** It read
+`if (cancelled || res.state !== STATE_LOADED) return;`, so a cancelled query
+left `fromStatements` null and every panel downstream printed a claim about
+the COMPANY: *"no financial statements are loaded for this symbol"*, *"no
+statements loaded ... so no Z″ can be formed"*, *"nothing in the scorecard
+could be measured for this filer"*. **I fixed precisely this in the Background
+tab in the same change and left it in the module the change was about** — the
+same asymmetry PR #783 records between two guards written minutes apart, and
+the sixth layer for *never let a transport failure render as a statement about
+the data*. The flag is **non-enumerable** (`Object.defineProperty`) because
+`mergeDerived` copies keys and a consumer iterating the derived object must
+not meet a transport flag among the measures.
+
+**2. My own migration anchor could not fire.** EQ-9b guarded with
+`position('LEFT JOIN LATERAL' in v_def) >= 1` — which the REPLACEMENT text
+also satisfies, so the guard passed on an already-patched view and a re-run
+was stopped only by Postgres rejecting the duplicate `grp` CTE name. Luck, not
+design: this file's recurring *gate that can never pass*, inverted into a gate
+that can never fire. **Assert on what only the OLD body contains**, and refuse
+outright when the new one is already there. Proven by re-running: it now fails
+on my own RAISE rather than on a Postgres accident.
+
+**3. Both EQ-9 migrations were absent from the ledger**, because they were
+applied over the management API's `database/query` rather than through
+`apply_migration` — the exact path CLAUDE.md warns leaves no ledger row.
+Backfilled.
+
+**The ledger/file correspondence is broadly broken and it is NOT EQ-9's doing:
+190 migration files carry no ledger row and 247 ledger rows name no file.**
+Measured while checking my own two. Pre-existing, unfixed, and its own unit —
+recorded here so the next session does not mistake the scale of it for
+something a single change caused.
+
+**What the audit cleared, stated so it is not re-derived:** non-finite input
+(NaN, ±Infinity) is refused at every entry point of `equityVerdicts.js`,
+because `Number.isFinite` is the gate rather than a one-sided bound — the
+PR #783 shape does not reach this module. A genuine zero is still a
+measurement. Grade-point ties round up, deterministically. No other verdict
+ladder in `src/` falls through an unguarded `else`, and the four other
+consumers of `loadStatementLayer` handle `failed` explicitly.
+
+**`wacc_est` and `buyback_yield` are emitted by nothing.**
+`derivedFromStatements` does not produce them and `equity_fundamentals_derived`
+does not ship, so the Capital Allocation WACC is always the platform constant
+(labelled `assumed`, which is honest) and the buyback-yield tile is
+permanently absent. Correct, and worth writing down: it is a gate that can
+never pass in the benign direction, and the next reader should not hunt for a
+bug behind an empty tile.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

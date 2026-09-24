@@ -264,8 +264,17 @@ export function piotroski(cur, prev) {
     };
     const vals = Object.keys(d).map(k => d[k]);
     const determinable = vals.filter(v => v !== null).length;
-    const score = vals.reduce((n, v) => n + (v === true ? 1 : 0), 0);
-    return { score: determinable ? score : null, detail: d, determinable };
+    const passed = vals.reduce((n, v) => n + (v === true ? 1 : 0), 0);
+    const complete = determinable === vals.length;
+    // A 9-POINT SCORE IS PUBLISHED ONLY WHEN NINE CRITERIA RESOLVED.
+    // This used to return `determinable ? passed : null`, so a reading formed
+    // from three tests was emitted as an F-Score out of nine and read under
+    // bands defined over nine. Live on 29 of the 52 symbols carrying
+    // statements: SONY and CPER resolve THREE criteria and published
+    // "2 / 9 · WEAK", where 2 of the 3 that resolved had in fact passed.
+    // `passed` and `determinable` carry the partial reading so a surface can
+    // state its own denominator; `score` is the composite and is absent.
+    return { score: complete ? passed : null, passed, detail: d, determinable, complete };
 }
 
 /**
@@ -363,6 +372,11 @@ export function derivedFromStatements(rows) {
         piotroski_f: p.score,
         piotroski_detail: p.detail,
         piotroski_determinable: p.determinable,
+        // Same shape as `altman_refused`: a REFUSAL to form the composite,
+        // not an absence of data. `mergeDerived` must not let a 9-point score
+        // from `equity_fundamentals_derived` stand in for one the statements
+        // declined to form.
+        piotroski_partial: p.complete !== true,
 
         altman_z: a.z,
         altman_components: a.components,
@@ -415,6 +429,12 @@ export function mergeDerived(fromTable, fromStatements) {
     if (fromStatements.altman_refused === true) {
         delete out.altman_z;
         delete out.altman_components;
+    }
+    // And the same for a partial F-Score, for the same reason: the table
+    // publishes a 9-point composite whether or not nine criteria resolved,
+    // and the card's bands are defined over nine.
+    if (fromStatements.piotroski_partial === true) {
+        delete out.piotroski_f;
     }
     return out;
 }

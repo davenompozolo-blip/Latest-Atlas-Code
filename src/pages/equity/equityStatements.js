@@ -63,23 +63,43 @@ export function loadCoverage(symbol) {
  * about a dead feed rendering as a statement about the data.
  */
 export async function loadStatementLayer(symbol, period) {
-    if (!symbol) return { state: STATE_NOT_LOADED, symbol: symbol || null, rows: [], peers: [], coverage: null };
+    if (!symbol) return { state: STATE_NOT_LOADED, symbol: symbol || null, rows: [], peers: [], peersFailed: false, coverage: null };
     try {
+        // A COMPANION READ MUST NOT BE ABLE TO REFUSE THE STATEMENTS.
+        //
+        // These three were one `Promise.all`, so the slowest of them decided
+        // whether any of them arrived. `vw_company_fundamental_peers` then
+        // crossed anon's 3,000 ms cap (6,938 ms measured, EQ-9b) and every
+        // rejection took the fundamentals down with it — a 4.7 ms read that
+        // had already succeeded. The whole module reported "the statement feed
+        // did not answer" and, one consumer along, "statements are not
+        // loaded": a `57014` cancellation on a SUPPLEMENTARY query rendering
+        // as a statement about the company.
+        //
+        // The peer medians are context beside the ratios, never the ratios.
+        // They fail on their own now, are logged at error level, and say so on
+        // the result — a silent empty peer set is indistinguishable from a
+        // cohort nobody else is in, which is a real and different answer.
+        let peersFailed = false;
         const [rows, peers, coverage] = await Promise.all([
             loadFundamentals(symbol, period),
-            loadPeerMedians(symbol, period),
+            loadPeerMedians(symbol, period).catch(function (e) {
+                console.error('equityStatements: peer medians failed for ' + symbol, e);
+                peersFailed = true;
+                return [];
+            }),
             loadCoverage(symbol).catch(() => null),
         ]);
         if (!rows.length) {
-            return { state: STATE_NOT_LOADED, symbol, rows: [], peers: [], coverage };
+            return { state: STATE_NOT_LOADED, symbol, rows: [], peers: [], peersFailed, coverage };
         }
-        return { state: STATE_LOADED, symbol, rows, peers, coverage };
+        return { state: STATE_LOADED, symbol, rows, peers, peersFailed, coverage };
     } catch (e) {
         // Logged at error level: a silent failure here is indistinguishable
         // from a symbol that simply has not been loaded yet, and the two need
         // completely different actions from whoever is looking at the page.
         console.error('equityStatements: load failed for ' + symbol, e);
-        return { state: STATE_FAILED, symbol, rows: [], peers: [], coverage: null, error: (e && e.message) || String(e) };
+        return { state: STATE_FAILED, symbol, rows: [], peers: [], peersFailed: false, coverage: null, error: (e && e.message) || String(e) };
     }
 }
 
