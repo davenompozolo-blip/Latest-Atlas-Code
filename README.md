@@ -1,102 +1,46 @@
-# Latest-Atlas-Code
+# ATLAS Terminal
 
-## Supabase backend scaffolding
+Institutional-grade portfolio analytics over a live Alpaca paper book: risk and
+regime analysis, a valuation and equity-research house, performance
+attribution, and an order ticket. Multi-account: the terminal's account
+switcher moves every book-level panel between Alpaca accounts.
 
-This repository now includes Supabase scaffolding for persistent portfolio data while keeping existing Alpaca sync/business logic untouched.
+## Stack
 
-### What was added
+| Layer | Technology | Where |
+|---|---|---|
+| Terminal | React 18 + Vite single-page app | `src/`, deployed to Vercel |
+| API routes | Vercel Node functions | `api/*.js` |
+| Database & compute | Supabase Postgres — views, materialised views, nightly SQL jobs | `supabase/migrations/` |
+| Syncs & loaders | Supabase edge functions (Deno) | `supabase/functions/` |
+| Scheduler | `pg_cron` — the only scheduler | `cron.job` |
+| Data sources | Alpaca, Yahoo, FRED, Finnhub, Alpha Vantage, SEC EDGAR | |
 
-- `supabase/config.toml` for local Supabase project configuration.
-- `supabase/migrations/20260306211500_initial_portfolio_schema.sql` with initial schema for:
-  - `portfolios`
-  - `assets`
-  - `positions`
-  - `transactions`
-  - `price_history`
-- JavaScript modules:
-  - `services/supabaseClient.js`
-  - `services/portfolioQueries.js`
-  - `services/portfolioDataService.js`
-- Python Alpaca ingestion modules:
-  - `services/supabase_client.py`
-  - `services/data_normalizer.py`
-  - `services/alpaca_sync.py`
-- Environment variable support in `config/config.py` for:
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
+Most analytics are computed **in the database** and read by the browser over
+PostgREST; the React layer renders them and holds the pure compute that is
+tested in `src/lib/*.test.mjs`.
 
-## Setup
-
-### 1. Install dependencies
+## Running locally
 
 ```bash
-pip install -r requirements.txt
-npm install @supabase/supabase-js
+npm install
+export VITE_SUPABASE_ANON_KEY=<publishable key>   # required: a keyless build omits most queries
+npm run dev        # pages on http://localhost:3000; /api/* routes need `vercel dev`
+npm run build      # production build into dist/
+node --test $(find src -name '*.test.mjs' -not -path '*/node_modules/*')
 ```
 
-### 2. Configure environment variables
+## Where to read next
 
-```bash
-SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
-SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY"
-ALPACA_API_KEY="YOUR_ALPACA_KEY"
-ALPACA_API_SECRET="YOUR_ALPACA_SECRET"
-ALPACA_PAPER="true"
-```
+- **`CLAUDE.md`** — architecture, conventions, and the running record of every
+  data-integrity decision and why it was made. Read it before changing a view,
+  a sync or a scheduled job.
+- **`docs/`** — one report per unit of work (A0…H4, EQ1…EQ9, MP-*).
 
-### 3. Apply migrations in Supabase
+## Legacy
 
-Apply `supabase/migrations/20260306211500_initial_portfolio_schema.sql` via Supabase SQL Editor or deployment pipeline.
-
-## Python Alpaca → Supabase pipeline
-
-Run manually:
-
-```bash
-python -m services.alpaca_sync --order-limit 200 --log-level INFO
-```
-
-Pipeline stages:
-
-1. `connect_to_alpaca()`
-2. `fetch_data()` (account, positions, orders)
-3. `normalize_data()`
-4. `write_to_supabase()`
-
-### Idempotency strategy
-
-- Portfolios: upsert by `external_id`.
-- Assets: upsert by `symbol`.
-- Positions: upsert by `(portfolio_id, asset_id, as_of_date)`.
-- Transactions: upsert by `(portfolio_id, external_id)`; synthetic external IDs are generated when absent.
-
-### Normalization guarantees
-
-`services/data_normalizer.py` enforces:
-
-- uppercase symbols
-- numeric quantities/prices
-- ISO 8601 timestamps
-
-## Manual verification scripts
-
-### Node demo (insert + fetch with example rows)
-
-```bash
-SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co" \
-SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY" \
-node scripts/supabaseDemo.mjs
-```
-
-### Python demo (read rows from Supabase REST API)
-
-```bash
-SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co" \
-SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_PUBLIC_KEY" \
-python scripts/supabase_fetch_demo.py
-```
-
-## Notes
-
-- Supabase integration is modular so Claude Code can extend it without refactoring existing Atlas analytics modules.
-- Existing Alpaca sync functionality was not modified.
+The original Streamlit build and its FastAPI companion (`atlas_app.py`, `core/`,
+`ui/`, `navigation/`, `scheduler/`, `api/main.py`, `requirements*.txt`, Docker
+files) are **retired and not deployed**. They remain in the repository until
+`scripts/retire-streamlit.sh` archives and removes them; do not use them to
+understand how Atlas works today.
