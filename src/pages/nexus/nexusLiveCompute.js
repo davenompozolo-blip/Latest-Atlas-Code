@@ -224,32 +224,46 @@ export function buildConcentration(rows) {
     }, 0);
     const effectiveN = hhi > 0 ? 1 / hhi : nominalN;
 
-    const totalVar = rows.reduce((a, r) => a + (num(r.var_contribution_pct) || 0), 0) || 1;
-    const sectorVar = new Map();
-    for (const r of rows) {
-        const t = r.sector || 'Unclassified';
-        sectorVar.set(t, (sectorVar.get(t) || 0) + (num(r.var_contribution_pct) || 0));
-    }
-    const [topSector, topVar] = [...sectorVar.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
-    const topFactorPct = Math.round((topVar / totalVar) * 100);
-    const fragilityCluster = rows
-        .filter(r => (r.sector || 'Unclassified') === topSector)
-        .sort((a, b) => (num(b.var_contribution_pct) || 0) - (num(a.var_contribution_pct) || 0))
-        .slice(0, 4)
-        .map(r => r.symbol);
-
+    // Factor-risk share from MEASURED contributions only. `var_contribution_pct`
+    // is book-level analytics: absent for a name bought since the nightly
+    // refresh, and absent for every name on a non-default account (MP-2). The
+    // old `|| 0` read that absence as "carries 0% of factor risk", and sorted
+    // the "fragility cluster" on a column of zeros -- an arbitrary four names
+    // published as a finding. Unmeasured names are excluded, and when nothing
+    // is measured the factor fields are ABSENT from the result, not zero.
+    const measured = rows.filter(r => num(r.var_contribution_pct) != null);
+    const out = {
+        effectiveN: +effectiveN.toFixed(1),
+        nominalN,
+        factorMeasuredN: measured.length,
+    };
     // Fragile when the book concentrates into few effective bets
     // relative to its nominal breadth.
     const fragile = nominalN >= 10 && effectiveN < nominalN * 0.35;
-    return {
-        effectiveN: +effectiveN.toFixed(1),
-        nominalN,
-        topFactorPct,
-        fragilityCluster,
-        verdictChip: fragile ? 'Fragile' : 'Diversified',
-        note: `Effective N of ${effectiveN.toFixed(0)} against ${nominalN} names — ` +
-              `${topSector} carries ${topFactorPct}% of factor risk.`,
-    };
+    out.verdictChip = fragile ? 'Fragile' : 'Diversified';
+    if (!measured.length) {
+        out.note = `Effective N of ${effectiveN.toFixed(0)} against ${nominalN} names — ` +
+                   'factor risk is not measured for this book.';
+        return out;
+    }
+    const totalVar = measured.reduce((a, r) => a + num(r.var_contribution_pct), 0) || 1;
+    const sectorVar = new Map();
+    for (const r of measured) {
+        const t = r.sector || 'Unclassified';
+        sectorVar.set(t, (sectorVar.get(t) || 0) + num(r.var_contribution_pct));
+    }
+    const [topSector, topVar] = [...sectorVar.entries()].sort((a, b) => b[1] - a[1])[0];
+    out.topFactorPct = Math.round((topVar / totalVar) * 100);
+    out.fragilityCluster = measured
+        .filter(r => (r.sector || 'Unclassified') === topSector)
+        .sort((a, b) => num(b.var_contribution_pct) - num(a.var_contribution_pct))
+        .slice(0, 4)
+        .map(r => r.symbol);
+    const partial = measured.length < nominalN
+        ? ` (${measured.length} of ${nominalN} names measured)` : '';
+    out.note = `Effective N of ${effectiveN.toFixed(0)} against ${nominalN} names — ` +
+               `${topSector} carries ${out.topFactorPct}% of factor risk${partial}.`;
+    return out;
 }
 
 // ── Risk gauge — measured VaR against a CONFIGURED cap ─────────
@@ -810,8 +824,11 @@ export function buildRead({ macro = null, concentration = null, holdings = [], s
         // Phase D: this opened with the quadrant label ("is pricing reflation
         // — ..."). The label is gone and the sentence now leads with what is
         // actually priced, which is measured rather than classified.
-        html: '<strong>The market</strong> is pricing ' + pricedBits + '. Your book runs <strong>' + concentration.topFactorPct + '% of factor risk in ' +
-              topTheme + '</strong> (' + concentration.effectiveN + ' effective bets across ' +
+        html: '<strong>The market</strong> is pricing ' + pricedBits + '. Your book runs ' +
+              (concentration.topFactorPct != null
+                  ? '<strong>' + concentration.topFactorPct + '% of factor risk in ' + topTheme + '</strong> ('
+                  : '<strong>factor risk not measured</strong> for this book (') +
+              concentration.effectiveN + ' effective bets across ' +
               concentration.nominalN + ' names). The read: <strong>' +
               (fragile
                   ? 'hold the core, keep trimming the ' + topTheme + ' tail'
@@ -822,7 +839,9 @@ export function buildRead({ macro = null, concentration = null, holdings = [], s
         dotTone: fragile ? 'bad' : 'warn',
         html: '<strong>Higher-for-longer</strong> is the tail to stress: if the 2Y holds near ' +
               d2.latest.toFixed(2) + '%' + (inverted ? ' with the curve still inverted' : '') +
-              ', the ' + topTheme + ' cluster (' + concentration.topFactorPct + '% of factor risk) re-rates together' +
+              ', the ' + topTheme + ' cluster' +
+              (concentration.topFactorPct != null ? ' (' + concentration.topFactorPct + '% of factor risk)' : '') +
+              ' re-rates together' +
               (fragile ? ' — that’s the fragility the concentration gauge is flagging' : '') + '. The read: <strong>' +
               (trims.length
                   ? 'take the ' + trims.join(' / ') + ' trim' + (trims.length > 1 ? 's' : '')

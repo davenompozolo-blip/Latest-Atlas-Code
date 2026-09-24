@@ -86,8 +86,8 @@
  * @typedef {Object} ConcGauge
  * @property {number} effectiveN
  * @property {number} nominalN
- * @property {number} topFactorPct
- * @property {string[]} fragilityCluster
+ * @property {number} [topFactorPct]      ABSENT when no name's factor risk is measured
+ * @property {string[]} [fragilityCluster] ABSENT when no name's factor risk is measured
  * @property {string} verdictChip
  * @property {string} note
  */

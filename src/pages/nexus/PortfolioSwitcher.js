@@ -11,7 +11,8 @@
 // contribution) are computed for the DEFAULT portfolio only until MP-4, and
 // the database withholds them rather than attach them to the wrong book.
 // Without the banner those withheld panels would read as "no data" with
-// nothing to say why.
+// nothing to say why. It also names the account an order will execute in:
+// since MP-3, trading follows the switch.
 
 import React from 'react';
 import { sb } from '../config.js';
@@ -143,6 +144,5 @@ export function PortfolioBanner() {
         'Positions, P&L, account and live risk are this account’s. ',
         'Nightly analytics — verdicts, segments, conviction, contribution, factor betas and the VaR backtest — ',
         'are computed for the default account only, and are withheld here rather than shown against the wrong book. ',
-        e('strong', null, 'Trading is off on this account'),
-        ' until orders are routed per account \u2014 switch to the default account to trade.');
+        e('strong', null, 'Orders from this screen go to ' + st.active.name + '.'));
 }

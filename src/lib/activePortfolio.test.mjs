@@ -135,7 +135,10 @@ test('on the default account nothing is installed: requests are exactly as befor
     assert.equal(win.fetch, f);
 });
 
-test('api/trading refuses every ACCOUNT action for a non-default portfolio before touching the broker', async () => {
+// MP-3 routes these to the chosen account; with no way to RESOLVE it (here:
+// no Supabase service key in this process) every one must still be refused
+// before the broker is contacted. tradingRouting.test.mjs covers the routed path.
+test('api/trading refuses every ACCOUNT action it cannot route, before touching the broker', async () => {
     const { default: handler } = await import('../../api/trading.js');
     const realFetch = globalThis.fetch;
     let brokerCalls = 0;
