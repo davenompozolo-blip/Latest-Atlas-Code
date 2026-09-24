@@ -6,6 +6,11 @@ import { TechnicalsTab } from './equity-technicals.js';
 import {
     loadStatementLayer, STATE_LOADED, derivedFromStatements, mergeDerived,
 } from './equity/equityStatements.js';
+import {
+    piotroskiView, PIOTROSKI_OUT_OF, qualityGradeView, sloanView,
+    capitalAllocationView, compositeCallView,
+    ROW_GRADED, ROW_NO_MEASURE,
+} from '../lib/equityVerdicts.js';
 
 var h = React.createElement;
 var useState = React.useState;
@@ -280,55 +285,50 @@ export function parseInputs(rawOverview, snap, price) {
 // ── VERDICT STRIP ─────────────────────────────────────────────────────────────
 export function VerdictStrip(p) {
     var inp = p.inputs;
-    var derived = p.derived; // from equity_fundamentals_derived
+    // READS THE STATEMENT LAYER, not `equity_fundamentals_derived`. EQ-5b
+    // measured that table as ABSENT FROM THE PRODUCTION BUNDLE (0 occurrences
+    // in `dist/`), so `p.derived` has always been null in the deployed app and
+    // every figure here came from a fallback.
+    var derived = useStatementDerived(p.symbol, p.derived);
 
     if (!inp) return null;
 
-    // Headline composite — prefer the canonical engine composite (the SAME blend
-    // the Valuation House and Scrapbook show, so the verdict can't disagree with
-    // them). Fall back to a local quick blend only when the engine could not run
-    // for this ticker (unhydrated fundamentals).
-    var compositeFV = fin(p.compositeFV) && p.compositeFV > 0 ? p.compositeFV : null;
-    if (compositeFV == null) {
-        var fvs = [];
-        var n = inp.horizon, wacc = inp.wacc, g = inp.termGrowth;
-        var gr = fin(inp.revGrowth) ? inp.revGrowth : 0.10;
-        var margin = fin(inp.operM) ? inp.operM : 0.20;
-        if (inp.revenue && inp.shares) {
-            var fv1 = dcfFV(inp.revenue, gr, margin, inp.taxRate, wacc, g, n, inp.netDebt, inp.shares);
-            if (fin(fv1) && fv1 > 0) fvs.push(fv1);
-            if (inp.ebitda && inp.shares) {
-                var peerMult = fin(inp.evEbitda) ? inp.evEbitda * 0.9 : 18;
-                var fv2 = (inp.ebitda * peerMult - inp.netDebt) / inp.shares;
-                if (fin(fv2) && fv2 > 0) fvs.push(fv2);
-            }
-        }
-        if (inp.trailEps && inp.trailEps > 0) fvs.push(inp.trailEps * 20);
-        compositeFV = fvs.length ? fvs.reduce(function(a, b) { return a + b; }, 0) / fvs.length : null;
-    }
-    var upside = (compositeFV && p.price) ? (compositeFV / p.price - 1) : null;
+    // THE LOCAL FAIR-VALUE BLEND IS GONE, AND WITH IT THE CALL IT DROVE.
+    //
+    // `fairValueComposite.js` states this product's governing rule in its own
+    // header: "when an input can't be trusted, drop it. If nothing survives,
+    // return null — never fabricate a number." The blend that stood here did
+    // the opposite. It ran a ten-year DCF on a SUBSTITUTED 10% revenue growth
+    // rate and a SUBSTITUTED 20% operating margin, a multiple leg on a
+    // SUBSTITUTED 18x EV/EBITDA, and a third leg that was simply trailing EPS
+    // times a flat 20 — then averaged whatever came out and published
+    // BUY / ACCUMULATE / HOLD / REDUCE off it, with nothing on screen saying
+    // which inputs were measured and which were typed. (`inp.taxRate` falls
+    // back to 0.21 and `inp.wacc` is a fixed 0.085, so even the "measured"
+    // legs carried assumptions.)
+    //
+    // There is one composite in this product and it is the canonical engine's.
+    // Where the engine did not run there is no fair value, and therefore no
+    // upside and no call.
+    var cv = compositeCallView(p.compositeFV, p.price);
+    var compositeFV = cv.fv == null ? null : cv.fv;
+    var upside = cv.upside == null ? null : cv.upside;
 
     // Prob-weighted EV from Bull/Base/Bear (defaults)
     var ev_pw = p.ev_pw;
 
-    // Quality grade. A real grade needs the precomputed Piotroski score; without
-    // it we fall back to a single ROE heuristic, which must NOT be presented as an
-    // authoritative forensic grade (ER-09) — the tile is labelled provisional.
-    var qualFromPiotroski = !!(derived && derived.piotroski_f != null);
-    var qualGrade = qualFromPiotroski
-        ? (derived.piotroski_f >= 7 ? 'A−' : derived.piotroski_f >= 5 ? 'B' : 'C')
-        : (inp.roe && inp.roe > 0.20 ? 'B+' : '—');
+    // Quality grade — the complete F-Score or nothing. It used to band a
+    // PARTIAL score ("piotroski_f >= 5 ? 'B' : 'C'") and, when the table was
+    // absent, fall through to `roe > 0.20 ? 'B+' : '—'`: a letter on the same
+    // scale derived from one ratio, marked only "prov.".
+    var pv = piotroskiView(derived && derived.piotroski_detail);
+    var qv = qualityGradeView(pv);
 
     var forensicClean = (derived && derived.beneish_m != null) ? derived.beneish_m < -1.78 : null;
     var upsideColor = upside == null ? T.muted : upside >= 0.10 ? T.green : upside >= -0.05 ? T.amber : T.red;
 
-    // Call
-    var call, callColor, callDim;
-    if (upside == null)              { call = 'REVIEW DATA'; callColor = T.muted;  callDim = T.border; }
-    else if (upside >= 0.15)         { call = 'BUY · meaningful MoS'; callColor = T.green; callDim = T.greenDim; }
-    else if (upside >= 0.03)         { call = 'ACCUMULATE · narrow MoS'; callColor = T.cyan;  callDim = T.cyanDim; }
-    else if (upside >= -0.05)        { call = 'HOLD · limited MoS'; callColor = T.amber; callDim = T.amberDim; }
-    else                             { call = 'REDUCE · overvalued'; callColor = T.red;   callDim = T.redDim; }
+    var callColor = cv.tone === 'good' ? T.green : cv.tone === 'ok' ? T.cyan : cv.tone === 'warn' ? T.amber : T.red;
+    var callDim   = cv.tone === 'good' ? T.greenDim : cv.tone === 'ok' ? T.cyanDim : cv.tone === 'warn' ? T.amberDim : T.redDim;
 
     var sep = h('div', { style: { width: 1, height: 34, background: T.border, flexShrink: 0 } });
     function vs(label, value, color) {
@@ -352,18 +352,40 @@ export function VerdictStrip(p) {
         sep,
         vs('Prob-weighted EV', fin(ev_pw) ? fmtDol(ev_pw) : '—'),
         sep,
-        vs(qualFromPiotroski ? 'Quality' : 'Quality · prov.', qualGrade, qualGrade.startsWith('A') ? T.green : qualGrade.startsWith('B') ? T.cyan : T.amber),
+        // The grade is ABSENT from `qv` when the F-Score is incomplete, so
+        // there is no value to print and no band to colour it with.
+        vs('Quality', qv.grade || '—', qv.grade ? (qv.grade.charAt(0) === 'A' ? T.green : qv.grade.charAt(0) === 'B' ? T.cyan : T.amber) : null),
         sep,
         vs('Forensic flag', forensicClean == null ? '—' : forensicClean ? 'Clean' : 'Flag', forensicClean == null ? null : forensicClean ? T.green : T.red),
-        h('div', {
-            style: {
-                marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 9,
-                border: '1px solid ' + callColor, borderRadius: 8, padding: '9px 15px', background: callDim,
-            }
-        },
-            h('span', { style: { width: 8, height: 8, borderRadius: '50%', background: callColor, flexShrink: 0 } }),
-            h('b', { style: { fontFamily: T.mono, fontSize: 13, color: callColor, letterSpacing: '.05em' } }, call)
-        )
+        cv.call
+            ? h('div', {
+                style: {
+                    marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 9,
+                    border: '1px solid ' + callColor, borderRadius: 8, padding: '9px 15px', background: callDim,
+                }
+            },
+                h('span', { style: { width: 8, height: 8, borderRadius: '50%', background: callColor, flexShrink: 0 } }),
+                h('b', { style: { fontFamily: T.mono, fontSize: 13, color: callColor, letterSpacing: '.05em' } }, cv.call)
+            )
+            // NO CALL WITHOUT A FAIR VALUE. The old chain ended
+            // `else { call = 'REDUCE · overvalued' }`, and every ladder of `>`
+            // comparisons against a null falls through to its last rung — so a
+            // ticker the engine could not value rendered the most negative
+            // verdict on the board, in red, as though it had been measured.
+            : h('div', {
+                style: {
+                    marginLeft: 'auto', maxWidth: 380, fontFamily: T.mono, fontSize: 10,
+                    color: T.muted2, lineHeight: 1.6, textAlign: 'right',
+                }
+            }, cv.reason),
+        // An em dash in a slot that looks like every other slot is
+        // indistinguishable from a measurement, so say what is withheld.
+        (!qv.grade || forensicClean == null) && h('div', {
+            style: { flexBasis: '100%', fontFamily: T.mono, fontSize: 9.5, color: T.muted2, lineHeight: 1.7, marginTop: 2 },
+        }, [
+            qv.grade ? null : 'Quality: ' + qv.reason,
+            forensicClean == null ? 'Forensic flag: the Beneish M-Score needs receivables, PPE and SG&A, which the fundamentals view does not publish.' : null,
+        ].filter(Boolean).join('  ·  '))
     );
 }
 
@@ -711,36 +733,30 @@ export function QualityTab(p) {
     var derived = useStatementDerived(p.symbol, p.derived);
     var s = snap || {};
 
-    // Piotroski — compute what we can from AV data; prefer derived table
+    // Piotroski. `piotroskiView` is the ONE place that decides what this card
+    // may say, and it withholds the composite and the band on a partial
+    // reading rather than scaling them — see src/lib/equityVerdicts.js.
+    //
+    // THE GUARD THAT STOOD HERE WAS DEAD. `pfPartial` was
+    // `!pfFromTable && pfKnown < 9` and `pfFromTable` was
+    // `derived.piotroski_f != null`, which the statement path satisfies for
+    // every symbol — so on the one case it was written for (a reading formed
+    // from fewer than nine criteria) it evaluated false, `pfKnown` was set to
+    // a literal 9, and the card printed a 9-point score with a definitive
+    // band. Measured on the 52 symbols carrying statements: only 23 resolve
+    // all nine, and SONY and CPER resolve THREE, printing "2 / 9 · WEAK"
+    // where 2 of the 3 tests that resolved had passed.
+    //
+    // The six trend criteria need a prior year, so without statements only
+    // the three single-period checks can resolve at all.
     var pd = derived && derived.piotroski_detail ? derived.piotroski_detail : null;
-    var pf_score = derived && derived.piotroski_f != null ? derived.piotroski_f : null;
-
-    var niPos      = pd ? pd.niPos      : (inp && fin(inp.netIncome)  ? inp.netIncome > 0  : null);
-    var cfoPos     = pd ? pd.cfoPos     : (inp && fin(inp.cfo)        ? inp.cfo > 0        : null);
-    var cfoGtNi    = pd ? pd.cfoGtNi    : (inp && fin(inp.cfo) && fin(inp.netIncome) ? inp.cfo > inp.netIncome : null);
-    var roaRising  = pd ? pd.roaRising  : null;
-    var levFalling = pd ? pd.levFalling : null;
-    var crRising   = pd ? pd.crRising   : null;
-    var noNewShares= pd ? pd.noNewShares: null;
-    var gmRising   = pd ? pd.gmRising   : null;
-    var atRising   = pd ? pd.atRising   : null;
-
-    // How many of the 9 criteria are actually determinable. Without the
-    // precomputed multi-year table only the single-period checks (net income,
-    // operating CF, accruals) resolve; the rest are null. Counting those nulls
-    // as fails produced a misleading "2 / 9 WEAK" when 7 inputs were simply
-    // unknown, not failing (ER-09). When partial, score against the known set
-    // and label it PARTIAL rather than a definitive weak grade.
-    var pfInputs = [niPos, cfoPos, cfoGtNi, roaRising, levFalling, crRising, noNewShares, gmRising, atRising];
-    var pfFromTable = derived && derived.piotroski_f != null;
-    var pfKnown = pfFromTable ? 9 : pfInputs.filter(function(v) { return v === true || v === false; }).length;
-    var pfPartial = !pfFromTable && pfKnown < 9;
-    if (pf_score == null) {
-        pf_score = pfInputs.filter(function(v) { return v === true; }).length;
-    }
-
-    var pfColor = pfPartial ? T.muted : pf_score >= 7 ? T.green : pf_score >= 5 ? T.cyan : T.amber;
-    var pfTag   = pfPartial ? 'PARTIAL' : pf_score >= 7 ? 'STRONG' : pf_score >= 5 ? 'GOOD' : 'WEAK';
+    var pv = piotroskiView(pd || {
+        niPos:   (inp && fin(inp.netIncome)) ? inp.netIncome > 0 : null,
+        cfoPos:  (inp && fin(inp.cfo))       ? inp.cfo > 0       : null,
+        cfoGtNi: (inp && fin(inp.cfo) && fin(inp.netIncome)) ? inp.cfo > inp.netIncome : null,
+    });
+    var pfColor = !pv.complete ? T.muted
+        : pv.band === 'STRONG' ? T.green : pv.band === 'GOOD' ? T.cyan : T.amber;
 
     // Altman Z'' (service/non-manufacturing model)
     // X1=WC/TA, X2=RE/TA, X3=EBIT/TA, X4=BV_equity/TL
@@ -787,14 +803,23 @@ export function QualityTab(p) {
     var bmDetail = derived && derived.beneish_detail ? derived.beneish_detail : null;
     var bmFlag = bm != null ? bm > -1.78 : null;
 
-    // Sloan accrual quality
-    var sloan = derived ? derived.sloan_accrual : null;
+    // Sloan accrual quality — STATEMENTS ONLY.
+    //
+    // THE FALLBACK THAT STOOD HERE RECONSTRUCTED A BALANCE SHEET OUT OF A
+    // MARKET MULTIPLE:
+    //
+    //     approxAssets = mktCap / (pb || 3) + totalDebt
+    //     sloan        = (netIncome - cfo) / approxAssets
+    //
+    // `mktCap / pb` is approximate BOOK EQUITY, and equity plus debt is not
+    // total assets — it omits payables, deferred revenue and leases, which for
+    // a retailer is most of the balance sheet. Worse, `pb || 3` SUBSTITUTES a
+    // price-to-book of 3 when none is on file, so a name with no P/B got a
+    // denominator nobody measured. That is the same algebra deleted from the
+    // Altman card on PR #806, still live one card across — and the result went
+    // straight into "Earnings are high-quality", which is a verdict.
+    var sv = sloanView(derived ? derived.sloan_accrual : null);
     var accrualQ = derived ? derived.accrual_quality : null;
-    // Approximate from available: (NI - CFO) / approx avg assets
-    if (sloan == null && inp && fin(inp.netIncome) && fin(inp.cfo)) {
-        var approxAssets = inp.mktCap ? inp.mktCap / (inp.pb || 3) + inp.totalDebt : null;
-        if (approxAssets && approxAssets > 0) sloan = (inp.netIncome - inp.cfo) / approxAssets;
-    }
 
     // CCC
     var cccHistory = derived && derived.ccc_history ? derived.ccc_history : null;
@@ -804,24 +829,35 @@ export function QualityTab(p) {
             // Piotroski
             h(Card, { title: 'Piotroski F-Score', badge: 'REWORKED' },
                 h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 } },
-                    h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: pfColor } }, pf_score),
-                    h('div', { style: { color: T.muted } }, '/ ' + (pfPartial ? pfKnown : 9)),
-                    h(Pill, { text: pfTag, color: pfColor, dim: pfColor === T.green ? T.greenDim : pfColor === T.cyan ? T.cyanDim : pfColor === T.muted ? T.border : T.amberDim, style: { marginLeft: 'auto' } })
+                    // A determinable count of zero must not render as a score
+                    // of zero: printing '0' there is a measurement nobody made.
+                    h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: pfColor } },
+                        pv.determinable ? pv.passed : '—'),
+                    h('div', { style: { color: T.muted } },
+                        pv.complete ? '/ ' + PIOTROSKI_OUT_OF
+                            : pv.determinable ? 'of ' + pv.determinable + ' resolved' : ''),
+                    h(Pill, {
+                        text: pv.complete ? pv.band : pv.determinable ? 'PARTIAL' : 'NO DATA',
+                        color: pfColor,
+                        dim: pfColor === T.green ? T.greenDim : pfColor === T.cyan ? T.cyanDim : pfColor === T.muted ? T.border : T.amberDim,
+                        style: { marginLeft: 'auto' },
+                    })
                 ),
-                [
-                    ['Positive net income',        niPos,       null],
-                    ['Positive operating CF',      cfoPos,      null],
-                    ['Rising ROA',                 roaRising,   roaRising == null],
-                    ['CF > net income (accruals)', cfoGtNi,     null],
-                    ['Falling leverage',           levFalling,  levFalling == null],
-                    ['Rising current ratio',       crRising,    crRising == null],
-                    ['No new shares issued',       noNewShares, noNewShares == null],
-                    ['Rising gross margin',        gmRising,    gmRising == null],
-                    ['Rising asset turnover',      atRising,    atRising == null],
-                ].map(function(r) {
-                    return h(CkRow, { key: r[0], label: r[0], pass: r[1], na: r[2] });
+                // `na` comes from the criterion being unresolved, for every
+                // row. It used to be passed only for the six trend rows, so an
+                // absent net income or operating cash flow rendered as a
+                // FAILED test — a red dot and a '0' where nothing was known.
+                pv.rows.map(function(r) {
+                    return h(CkRow, { key: r.key, label: r.label, pass: r.pass, na: !r.resolved });
                 }),
-                pfPartial && h(Note, { style: { marginTop: 8, fontSize: 10 } }, '※ Scored on ' + pfKnown + ' of 9 criteria — the multi-year ratios (ROA, leverage, margin, turnover trends) need precomputation. Not a definitive weak score; run sync_fundamentals to complete it.')
+                !pv.complete && h(Note, { style: { marginTop: 8, fontSize: 10 } },
+                    pv.determinable
+                        ? '※ ' + pv.determinable + ' of ' + PIOTROSKI_OUT_OF + ' criteria resolved, so there is NO F-Score '
+                          + 'and no band: the STRONG / GOOD / WEAK thresholds are defined over all nine, and a count of '
+                          + 'fewer tests is a different statistic rather than a lower score. Unresolved: '
+                          + pv.withheld.join(', ') + '.'
+                        : '※ No criteria resolved — no financial statements are loaded for this symbol, and the '
+                          + 'six trend criteria need a prior year in any case.')
             ),
 
             // Altman Z
@@ -882,13 +918,11 @@ export function QualityTab(p) {
             // Accruals
             h(Card, { title: 'Earnings Quality — Accruals', badge: 'NEW', meta: 'Sloan / Dechow-Dichev' },
                 h(Grid, { style: { gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 } },
-                    h(StatBox, { label: 'Sloan accrual ratio', value: fin(sloan) ? (sloan * 100).toFixed(1) + '%' : '—', color: fin(sloan) && Math.abs(sloan) < 0.05 ? T.green : T.amber, sub: 'Low accruals → earnings cash-backed' }),
+                    h(StatBox, { label: 'Sloan accrual ratio', value: sv.ratio == null ? '—' : (sv.ratio * 100).toFixed(1) + '%', color: sv.ratio == null ? T.muted2 : sv.cashBacked ? T.green : T.amber, sub: 'Low accruals → earnings cash-backed' }),
                     h(StatBox, { label: 'Accrual quality (5y σ)', value: fin(accrualQ) ? accrualQ.toFixed(3) : '—', sub: 'Stable mapping to cash flows' })
                 ),
                 h(Note, null,
-                    fin(sloan)
-                        ? (Math.abs(sloan) < 0.05 ? 'Earnings are high-quality: cash flow closely tracks reported income and accruals are small.' : 'Accrual ratio elevated — monitor for earnings quality deterioration. Corroborate with CFO/NI ratio.')
-                        : 'Accrual quality data available after sync_fundamentals run.',
+                    sv.note || sv.reason,
                     inp && fin(inp.cfo) && fin(inp.netIncome) && h('span', null, ' CFO/NI ratio: ' + (inp.cfo / inp.netIncome).toFixed(2) + 'x.')
                 )
             ),
@@ -934,65 +968,102 @@ export function CapitalTab(p) {
     var inp = p.inputs;
     var derived = useStatementDerived(p.symbol, p.derived);
 
-    // Use derived if available, otherwise approximate
-    var roic       = (derived && fin(derived.roic))          ? derived.roic          : (inp && inp.roe ? inp.roe * 0.6 : null);  // rough proxy
-    var wacc_est   = (derived && fin(derived.wacc_est))      ? derived.wacc_est      : inp ? inp.wacc : 0.085;
-    var reinvRate  = (derived && fin(derived.reinvest_rate)) ? derived.reinvest_rate : null;
-    var bbYield    = (derived && fin(derived.buyback_yield)) ? derived.buyback_yield : inp ? inp.fcf && inp.mktCap ? -(inp.fcf - (inp.totalCash || 0)) / inp.mktCap : null : null;
-    var divCov     = (derived && fin(derived.div_coverage))  ? derived.div_coverage  : (inp && inp.fcf && inp.divPS && inp.shares) ? inp.fcf / (inp.divPS * inp.shares) : null;
-    var capGrade   = (derived && derived.capalloc_grade)          ? derived.capalloc_grade : null;
+    // NO PROXIES AND NO LITERAL GRADES. Three fabrications stood here:
+    //
+    //   roic      = inp.roe * 0.6            <- a made-up factor, then
+    //                                           differenced against a WACC to
+    //                                           print "value-creating"
+    //   buyback   = -(fcf - cash) / mktCap   <- negative free cash flow over
+    //                                           market cap, under the name
+    //                                           "buyback yield"; nothing in it
+    //                                           knows about repurchases
+    //   scorecard = capGrade ? 'C+' : null   <- a grade for buyback accretion,
+    //             = capGrade ? 'A−' : null      and one for the M&A record,
+    //                                           from the EXISTENCE of a row
+    //
+    // and `overallGrade` ended `: 'B'`, so a company with nothing measured got
+    // a B in 64-point type. `capitalAllocationView` withholds instead.
+    var waccMeasured = derived && fin(derived.wacc_est);
+    var cap = capitalAllocationView({
+        roic: derived && fin(derived.roic) ? derived.roic : null,
+        wacc: waccMeasured ? derived.wacc_est : (inp ? inp.wacc : null),
+        waccBasis: waccMeasured ? 'estimated' : 'assumed',
+        reinvRate: derived && fin(derived.reinvest_rate) ? derived.reinvest_rate : null,
+        // Free cash flow over dividends paid IS dividend coverage, and all
+        // three inputs are measured, so this is a computation rather than a
+        // substitution — but it is a different source from the statements, so
+        // the basis travels with it.
+        divCov: (derived && fin(derived.div_coverage)) ? derived.div_coverage
+              : (inp && fin(inp.fcf) && fin(inp.divPS) && fin(inp.shares) && inp.divPS * inp.shares > 0)
+                    ? inp.fcf / (inp.divPS * inp.shares) : null,
+        divCovBasis: (derived && fin(derived.div_coverage)) ? 'statements' : 'overview',
+        buybackYield: derived && fin(derived.buyback_yield) ? derived.buyback_yield : null,
+    });
 
-    var spread = (fin(roic) && fin(wacc_est)) ? roic - wacc_est : null;
+    var spread = cap.spread == null ? null : cap.spread;
     var spreadColor = spread == null ? T.muted : spread > 0.10 ? T.green : spread > 0 ? T.cyan : T.red;
-
-    // Scorecard items
-    var scorecard = [
-        { label: 'Returns on capital vs cost', grade: fin(spread) ? (spread > 0.15 ? 'A' : spread > 0.08 ? 'B+' : spread > 0 ? 'B−' : 'C') : null, color: fin(spread) && spread > 0.15 ? T.green : T.cyan },
-        { label: 'Reinvestment discipline',    grade: fin(reinvRate) ? (reinvRate > 0.3 && reinvRate < 0.7 ? 'A−' : 'B') : null, color: T.green },
-        { label: 'Buyback value-accretion',    grade: capGrade ? 'C+' : null, color: T.amber },
-        { label: 'Dividend coverage (FCF)',    grade: fin(divCov) ? (divCov > 3 ? 'A' : divCov > 1.5 ? 'B+' : 'C') : null, color: fin(divCov) && divCov > 3 ? T.green : T.cyan },
-        { label: 'M&A track record',           grade: capGrade ? 'A−' : null, color: T.green },
-    ];
-
-    var overallGrade = capGrade || (fin(spread) && spread > 0.10 ? 'A−' : fin(spread) && spread > 0 ? 'B+' : 'B');
-    var overallColor = overallGrade.startsWith('A') ? T.green : overallGrade.startsWith('B') ? T.cyan : T.amber;
+    var overallColor = !cap.overall ? T.muted2
+        : cap.overall.charAt(0) === 'A' ? T.green : cap.overall.charAt(0) === 'B' ? T.cyan : T.amber;
 
     return h('div', null,
         h(Grid, { style: { gridTemplateColumns: '1.3fr .7fr', marginBottom: 14 } },
             h(Card, { title: 'Capital Allocation Report Card', badge: 'REWORKED' },
                 h(Grid, { style: { gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 8 } },
-                    h(StatBox, { label: 'ROIC − WACC spread', value: fin(spread) ? (spread >= 0 ? '+' : '') + (spread * 100).toFixed(1) + 'pp' : '—', color: spreadColor, sub: fin(roic) ? (roic * 100).toFixed(1) + '% vs ' + (wacc_est * 100).toFixed(1) + '% · ' + (spread > 0 ? 'value-creating' : 'value-destroying') : null }),
-                    h(StatBox, { label: 'Reinvestment rate', value: fin(reinvRate) ? (reinvRate * 100).toFixed(0) + '%' : '—', sub: 'of NOPAT' }),
-                    h(StatBox, { label: 'Buyback yield', value: fin(bbYield) ? (bbYield * 100).toFixed(1) + '%' : '—', color: T.amber })
+                    h(StatBox, {
+                        label: 'ROIC − WACC spread',
+                        value: spread == null ? '—' : (spread >= 0 ? '+' : '') + (spread * 100).toFixed(1) + 'pp',
+                        color: spreadColor,
+                        // The value verdict is a claim about the spread and
+                        // cannot outlive it: `spread > 0` on a null is false,
+                        // so the old sub-line read "value-destroying" for a
+                        // company whose ROIC nobody had.
+                        sub: spread == null
+                            ? (cap.roic == null ? 'No measured ROIC on file' : null)
+                            : (cap.roic * 100).toFixed(1) + '% vs ' + (cap.wacc * 100).toFixed(1) + '% '
+                              + (cap.waccBasis === 'assumed' ? 'assumed' : 'estimated') + ' · ' + cap.valueVerdict,
+                    }),
+                    h(StatBox, { label: 'Reinvestment rate', value: fin(derived && derived.reinvest_rate) ? (derived.reinvest_rate * 100).toFixed(0) + '%' : '—', sub: 'of NOPAT' }),
+                    h(StatBox, { label: 'Buyback yield', value: cap.buybackYield == null ? '—' : (cap.buybackYield * 100).toFixed(1) + '%', color: cap.buybackYield == null ? T.muted2 : T.amber, sub: cap.buybackYield == null ? 'No repurchase series on file' : null })
                 ),
                 h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.12em', color: T.muted2, textTransform: 'uppercase', margin: '14px 0 6px' } }, 'Allocation scorecard'),
-                scorecard.map(function(sc) {
-                    return h('div', { key: sc.label, style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid ' + T.border, fontSize: 12.5 } },
-                        h('span', { style: { color: T.muted } }, sc.label),
-                        sc.grade
-                            ? h('span', { style: { fontFamily: T.mono, fontSize: 11, background: sc.color === T.green ? T.greenDim : sc.color === T.cyan ? T.cyanDim : T.amberDim, color: sc.color, padding: '2px 8px', borderRadius: 5 } }, sc.grade)
-                            : h('span', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted2 } }, '—')
+                cap.rows.map(function(sc) {
+                    var gradeColor = sc.grade && sc.grade.charAt(0) === 'A' ? T.green : sc.grade && sc.grade.charAt(0) === 'B' ? T.cyan : T.amber;
+                    return h('div', { key: sc.label, style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid ' + T.border, fontSize: 12.5 } },
+                        h('span', { style: { color: sc.state === ROW_NO_MEASURE ? T.muted2 : T.muted } }, sc.label),
+                        sc.state === ROW_GRADED
+                            ? h('span', { style: { fontFamily: T.mono, fontSize: 11, background: gradeColor === T.green ? T.greenDim : gradeColor === T.cyan ? T.cyanDim : T.amberDim, color: gradeColor, padding: '2px 8px', borderRadius: 5 } }, sc.grade)
+                            // "nothing computes this" and "this filer has no
+                            // value" are different facts, and one em dash in a
+                            // grade slot cannot tell them apart.
+                            : h('span', { style: { fontFamily: T.mono, fontSize: 9.5, color: T.muted2, textAlign: 'right' } }, sc.why)
                     );
                 })
             ),
             h(Card, { title: 'Overall Grade' },
                 h('div', { style: { textAlign: 'center', padding: '18px 0' } },
-                    h('div', { style: { fontFamily: T.display, fontWeight: 700, fontSize: 64, color: overallColor } }, overallGrade),
-                    h(Note, { style: { marginTop: 8 } }, fin(spread) && spread > 0.10
-                        ? 'Elite returns on capital, disciplined reinvestment. Value creation is robust across cycles.'
-                        : fin(spread) && spread > 0
-                        ? 'Positive spread over WACC. Monitor reinvestment quality as growth decelerates.'
-                        : 'Returns on capital require watching. Run sync_fundamentals for full scoring.'
-                    )
+                    h('div', { style: { fontFamily: T.display, fontWeight: 700, fontSize: cap.overall ? 64 : 34, color: overallColor } }, cap.overall || 'NOT GRADED'),
+                    cap.overall && h('div', { style: { fontFamily: T.mono, fontSize: 9.5, color: T.muted2, marginTop: 6 } }, cap.overallBasis),
+                    h(Note, { style: { marginTop: 8 } }, cap.overall
+                        ? (spread == null
+                            ? 'Graded on what could be measured; the returns-on-capital component is not among it.'
+                            : spread > 0.10
+                                ? 'Elite returns on capital, disciplined reinvestment. Value creation is robust across cycles.'
+                                : spread > 0
+                                    ? 'Positive spread over WACC. Monitor reinvestment quality as growth decelerates.'
+                                    : 'Returns on capital sit below the cost of capital on this reading.')
+                        : cap.overallReason)
                 ),
                 inp && h(Grid, { style: { gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 } },
                     h('div', { style: { textAlign: 'center' } },
                         h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.13em', color: T.muted2, textTransform: 'uppercase', marginBottom: 4 } }, 'FCF Yield'),
-                        h('div', { style: { fontFamily: T.mono, fontSize: 18 } }, inp.fcf && inp.mktCap ? (inp.fcf / inp.mktCap * 100).toFixed(1) + '%' : '—')
+                        h('div', { style: { fontFamily: T.mono, fontSize: 18 } }, fin(inp.fcf) && fin(inp.mktCap) && inp.mktCap > 0 ? (inp.fcf / inp.mktCap * 100).toFixed(1) + '%' : '—')
                     ),
                     h('div', { style: { textAlign: 'center' } },
                         h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.13em', color: T.muted2, textTransform: 'uppercase', marginBottom: 4 } }, 'Dividend Coverage'),
-                        h('div', { style: { fontFamily: T.mono, fontSize: 18, color: fin(divCov) && divCov > 2 ? T.green : T.muted } }, fin(divCov) ? divCov.toFixed(1) + 'x' : '—')
+                        h('div', { style: { fontFamily: T.mono, fontSize: 18, color: cap.divCov != null && cap.divCov > 2 ? T.green : T.muted } }, cap.divCov == null ? '—' : cap.divCov.toFixed(1) + 'x'),
+                        // Name the basis: the statements and the overview
+                        // answer the same question from different books.
+                        cap.divCov != null && h('div', { style: { fontFamily: T.mono, fontSize: 9, color: T.muted2, marginTop: 3 } }, 'from ' + cap.divCovBasis)
                     )
                 )
             )
