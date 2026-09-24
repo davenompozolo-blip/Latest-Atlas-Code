@@ -19,13 +19,15 @@
 // working implementation. It follows sync_alpaca_positions exactly, because
 // that pattern has 2016 consecutive clean pg_cron runs behind it.
 //
+// MP-1: one account per portfolio, each with its own credentials, identity
+// gate and resume watermark. See sync_alpaca_positions v4.
+//
 // Environment (Dashboard -> Edge Functions -> Secrets):
-//   ALPACA_API_KEY, ALPACA_API_SECRET, SUPABASE_DB_URL
+//   <credential_prefix>_KEY / _SECRET per Alpaca broker account
+//   (ALPACA_API_* for the original), SUPABASE_DB_URL
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
-
-const ALPACA_TRADING_BASE = 'https://paper-api.alpaca.markets'
 
 // Alpaca caps activities pages at 100. Guard the loop so a pagination bug
 // cannot spin forever inside a scheduled function.
@@ -39,23 +41,81 @@ const COLD_START_AFTER = '2025-12-01T00:00:00Z'
 
 const sql = postgres(Deno.env.get('SUPABASE_DB_URL')!)
 
-function alpacaHeaders(): Record<string, string> {
-    const key = Deno.env.get('ALPACA_API_KEY')
-    const secret = Deno.env.get('ALPACA_API_SECRET')
-    if (!key || !secret) throw new Error('Missing ALPACA_API_KEY and/or ALPACA_API_SECRET')
-    return { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret }
+// ── Broker targets (MP-1) ───────────────────────────────────────────────────
+// Each Alpaca portfolio names its OWN credentials and the account they must
+// belong to. broker_accounts.credential_prefix is the NAME of a secret pair
+// (<prefix>_KEY / <prefix>_SECRET), never a value. There is no global key pair:
+// one pair for every portfolio is what wrote one account's book into every
+// portfolio row before MP-1.
+
+interface BrokerTarget {
+    portfolio_id: string
+    credential_prefix: string | null
+    account_number: string | null
+    is_paper: boolean
 }
 
-async function alpacaGet<T = unknown>(path: string): Promise<T> {
-    const url = new URL(path, ALPACA_TRADING_BASE)
-    const resp = await fetch(url.toString(), { headers: alpacaHeaders() })
+async function loadTargets(portfolioId: string | null): Promise<BrokerTarget[]> {
+    return await sql<BrokerTarget[]>`
+        select p.id as portfolio_id, b.credential_prefix,
+                      b.alpaca_account_number as account_number, b.is_paper
+            from public.portfolios p
+            join public.broker_accounts b on b.id = p.broker_account_id
+          where b.broker = 'alpaca'
+          ${portfolioId ? sql`and p.id = ${portfolioId}` : sql``}
+          order by p.created_at, p.id
+    `
+}
+
+function tradingBase(t: BrokerTarget): string {
+    return t.is_paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'
+}
+
+function alpacaHeaders(t: BrokerTarget): Record<string, string> {
+    if (!t.credential_prefix) {
+        throw new Error(`portfolio ${t.portfolio_id}: its broker account names no credential_prefix`)
+    }
+    const key    = Deno.env.get(`${t.credential_prefix}_KEY`)
+    const secret = Deno.env.get(`${t.credential_prefix}_SECRET`)
+    if (!key || !secret) {
+        throw new Error(`Missing ${t.credential_prefix}_KEY and/or ${t.credential_prefix}_SECRET`)
+    }
+    return {
+        'APCA-API-KEY-ID': key,
+        'APCA-API-SECRET-KEY': secret,
+    }
+}
+
+async function alpacaGet<T = unknown>(t: BrokerTarget, path: string): Promise<T> {
+    const url = new URL(path, tradingBase(t))
+    const resp = await fetch(url.toString(), { headers: alpacaHeaders(t) })
     const text = await resp.text()
-    if (!resp.ok) throw new Error(`Alpaca ${path} failed: ${resp.status} ${text.slice(0, 500)}`)
+    if (!resp.ok) {
+        throw new Error(`Alpaca ${path} failed: ${resp.status} ${text.slice(0, 500)}`)
+    }
     try {
         return JSON.parse(text) as T
     } catch {
         throw new Error(`Alpaca ${path} returned non-JSON: ${text.slice(0, 200)}`)
     }
+}
+
+// IDENTITY GATE. The credentials must report the account the portfolio is
+// registered to, or nothing is written. A mis-set credential_prefix is the
+// pre-MP-1 defect reached by configuration instead of code -- one account's
+// book silently written into another's portfolio -- and it would look healthy.
+async function verifiedAccount<T extends { account_number?: unknown }>(t: BrokerTarget): Promise<T> {
+    if (!t.account_number) {
+        throw new Error(`portfolio ${t.portfolio_id}: its broker account names no alpaca_account_number`)
+    }
+    const acct = await alpacaGet<T>(t, '/v2/account')
+    if (acct.account_number !== t.account_number) {
+        throw new Error(
+            `IDENTITY MISMATCH: ${t.credential_prefix}_* report account ${String(acct.account_number)}, ` +
+            `portfolio ${t.portfolio_id} is registered to ${t.account_number}. Nothing written.`
+        )
+    }
+    return acct
 }
 
 function toNumeric(v: unknown): number {
@@ -99,7 +159,7 @@ interface AlpacaActivity {
 
 // Page through FILL activities newer than `after`. Alpaca returns activities
 // newest-first within a page and supports page_token continuation.
-async function fetchFills(after: string): Promise<AlpacaActivity[]> {
+async function fetchFills(t: BrokerTarget, after: string): Promise<AlpacaActivity[]> {
     const out: AlpacaActivity[] = []
     let pageToken: string | null = null
 
@@ -112,7 +172,7 @@ async function fetchFills(after: string): Promise<AlpacaActivity[]> {
         })
         if (pageToken) qs.set('page_token', pageToken)
 
-        const batch = await alpacaGet<AlpacaActivity[]>(`/v2/account/activities?${qs}`)
+        const batch = await alpacaGet<AlpacaActivity[]>(t, `/v2/account/activities?${qs}`)
         if (!Array.isArray(batch) || batch.length === 0) break
         out.push(...batch)
         if (batch.length < PAGE_SIZE) break
@@ -124,10 +184,10 @@ async function fetchFills(after: string): Promise<AlpacaActivity[]> {
     return out
 }
 
-async function openSyncLog(): Promise<number> {
+async function openSyncLog(portfolioId: string | null): Promise<number> {
     const rows = await sql<{ id: number }[]>`
-        insert into public.sync_log (status, source, function_name)
-        values ('running', 'pg_cron', 'sync_alpaca_transactions')
+        insert into public.sync_log (status, source, function_name, portfolio_id)
+        values ('running', 'pg_cron', 'sync_alpaca_transactions', ${portfolioId})
         returning id
     `
     return rows[0].id
@@ -169,16 +229,14 @@ interface SyncResult {
     symbols: string[]
 }
 
-async function runTransactionSync(): Promise<SyncResult> {
-    const portfolios = await sql<{ portfolio_id: string }[]>`
-        select p.id as portfolio_id
-        from public.portfolios p
-        join public.broker_accounts b on b.id = p.broker_account_id
-        where b.broker = 'alpaca'
-    `
-    if (portfolios.length === 0) {
-        return { watermark: COLD_START_AFTER, fetched: 0, upserted: 0, skipped_no_symbol: 0, assets_created: 0, symbols: [] }
-    }
+async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
+    // ONE portfolio per call, with that portfolio's own credentials. The
+    // single-element list keeps the write path below unchanged from the
+    // version that looped over every Alpaca portfolio with one account's fills.
+    const portfolios = [{ portfolio_id: t.portfolio_id }]
+
+    // Identity gate before anything is fetched or written.
+    await verifiedAccount<{ account_number?: string }>(t)
 
     // Resume from the newest row we already hold. Alpaca's `after` is
     // exclusive on time, and the (portfolio_id, external_id) unique key makes
@@ -188,10 +246,13 @@ async function runTransactionSync(): Promise<SyncResult> {
     const [wm] = await sql<{ watermark: string | null }[]>`
         select to_char(max(transaction_date) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as watermark
         from public.transactions
+        where portfolio_id = ${t.portfolio_id}
     `
     const after = wm?.watermark ?? COLD_START_AFTER
 
-    const activities = await fetchFills(after)
+    // The watermark is THIS portfolio's newest fill. A global max would let a
+    // quieter account resume from a busier one's newest fill and skip its own.
+    const activities = await fetchFills(t, after)
 
     type Parsed = {
         externalId: string
@@ -290,24 +351,57 @@ async function runTransactionSync(): Promise<SyncResult> {
     }
 }
 
-Deno.serve(async (req: Request) => {
-    let logId: number | null = null
+Deno.serve(async (_req: Request) => {
+    // One account per iteration, each with its own sync_log row, so one
+    // account's failure is recorded against it and blocks nothing else.
+    let targets: BrokerTarget[]
     try {
-        logId = await openSyncLog()
-        const result = await runTransactionSync()
-        await closeSyncLogSuccess(logId, result.upserted, result as unknown as Record<string, unknown>)
-        return new Response(JSON.stringify({ ok: true, ...result }), {
-            headers: { 'Content-Type': 'application/json' },
-        })
+        targets = await loadTargets(null)
     } catch (err) {
-        await closeSyncLogError(logId, err)
         const message = err instanceof Error ? err.message : String(err)
         console.error('sync_alpaca_transactions failed:', message)
-        // 500 so a failed run is visible to the caller and to pg_cron's
-        // job_run_details, rather than a silent 200 that reads as healthy.
         return new Response(JSON.stringify({ ok: false, error: message }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' },
+            status: 500, headers: { 'Content-Type': 'application/json' },
         })
     }
+
+    if (targets.length === 0) {
+        // A no-op must not answer 200: no registered Alpaca portfolio is a
+        // configuration fault, not a quiet day.
+        const logId = await openSyncLog(null)
+        const err = new Error('no Alpaca portfolios registered')
+        await closeSyncLogError(logId, err)
+        console.error('sync_alpaca_transactions failed:', err.message)
+        return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 500, headers: { 'Content-Type': 'application/json' },
+        })
+    }
+
+    const results: Record<string, unknown>[] = []
+    let failures = 0
+    for (const t of targets) {
+        let logId: number | null = null
+        try {
+            logId = await openSyncLog(t.portfolio_id)
+            const result = await runTransactionSync(t)
+            await closeSyncLogSuccess(logId, result.upserted, {
+                ...(result as unknown as Record<string, unknown>),
+                portfolio_id: t.portfolio_id,
+                account_number: t.account_number,
+            })
+            results.push({ portfolio_id: t.portfolio_id, ok: true, ...result })
+        } catch (err) {
+            failures += 1
+            await closeSyncLogError(logId, err)
+            const message = err instanceof Error ? err.message : String(err)
+            console.error(`sync_alpaca_transactions failed for portfolio ${t.portfolio_id}:`, message)
+            results.push({ portfolio_id: t.portfolio_id, ok: false, error: message })
+        }
+    }
+    // 500 when ANY account failed, so a failed run is visible to the caller and
+    // to pg_cron's job_run_details rather than a silent 200 that reads as healthy.
+    return new Response(JSON.stringify({ ok: failures === 0, portfolios: targets.length, failures, results }), {
+        status: failures === 0 ? 200 : 500,
+        headers: { 'Content-Type': 'application/json' },
+    })
 })

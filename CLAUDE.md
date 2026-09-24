@@ -91,7 +91,7 @@ were retired on 2026-08-09 (see below).
 
 | Job | Schedule (UTC) | Writes |
 |-----|----------------|--------|
-| `sync-alpaca-positions` | every 5 min | `positions`, `account_snapshots` |
+| `sync-alpaca-positions` | every 5 min | `positions`, `account_snapshots` — every Alpaca portfolio, own credentials each (MP-1) |
 | `sync_alpaca_prices_daily` | 22:00 Mon–Sat | `price_history` |
 | `sync_alpaca_transactions` | 13:10, 22:10 weekdays | `transactions`, `assets` |
 | `refresh_holding_vol_trailing` | 22:25 weekdays | `holding_vol_trailing` |
@@ -5771,104 +5771,167 @@ two real defects. EQ-9, #819 and #820 all merged with no external review simply
 because nobody asked for one -- and EQ-9c, found by self-audit after the fact,
 was a live defect.
 
-### Storage vocabulary reached the screen, in a field meant to tell things apart (2026-09-24)
+### Every book read is scoped before a second book exists (2026-09-24)
 
-Reported from the terminal against the Background tab: `INSTRUMENT us_equity`.
-The raw token was the visible half. **`assets.asset_class` carries EIGHT
-spellings for four kinds:**
+MP-0, phase 0 of multi-portfolio support. A second Alpaca paper account (Atlas
+Secondary) now exists under its own key pair (`ATLAS_ALPACA_API_KEY` /
+`ATLAS_ALPACA_API_SECRET`, Vercel Production and Supabase function secrets).
+Nothing reads or writes it yet, **and nothing may until the writers are
+account-aware (MP-1).**
 
-| kind | stored as | rows |
-|---|---|---:|
-| common stock | `Stock` / `us_equity` / `equity` | 7,847 / 72 / 24 |
-| option | `option` / `us_option` | 10 / 3 |
-| ETF, cash, crypto | `etf` / `cash` / `crypto` | 1 each |
+**The four book tables carry `portfolio_id`; almost nothing filtered on it.**
+25 views and 5 functions read `positions` / `account_snapshots` /
+`transactions` / `portfolio_equity_curve` unscoped, and so did 10 call sites in
+`src/` and `api/`. With a second account's rows present, every one would have
+**summed two books** -- NAV, weights, risk, verdicts -- with nothing on screen
+to say so. Some would be wrong in subtler ways: `vw_positions_current` took
+`max(as_of_date)` across ALL portfolios and `vw_sleeve_headroom` the newest
+equity snapshot from ANY account.
 
-So the same instrument read `Stock` on one symbol and `us_equity` on the next,
-**in the field a reader uses to tell instruments apart**. The inconsistency was
-the defect; the underscore was how it got noticed.
+**The writers are worse, and are MP-1's job.** `sync_alpaca_positions` and
+`sync_alpaca_transactions` read ONE global key pair and write the result into
+EVERY Alpaca portfolio row. Registering Secondary as a portfolio today would
+copy Primary's book into it. **Do not insert a second `portfolios` row until
+MP-1 has shipped.**
 
-**The vendor prefix is provenance, not a property of the instrument.** `us_` is
-which API wrote the row. It cannot be rendered as a market scope either: the
-book holds ADRs and foreign listings (ASML, TSM, SONY) stored as plain `Stock`,
-so "US equity" would assert a domicile the field does not carry -- the `fwd_pe`
-rule, in a display label. `src/lib/instrumentLabel.js` maps to the KIND, and an
-unrecognised value is **humanised, never dropped and never guessed**: dropping
-it would hide a vocabulary the platform had started storing.
+**One choke point.** `atlas_active_portfolio()` returns the portfolio every
+book-scoped reader shows; it is `portfolios.is_default` today (at most one row,
+by unique partial index). `vw_active_positions`, `vw_active_account_snapshots`,
+`vw_active_transactions` and `vw_active_equity_curve` filter the base tables
+to it. **Read those, never the base table, for anything that means "my book".**
+The account switcher (MP-2) changes that function's body and nothing else.
+Call it as `(select public.atlas_active_portfolio())` so it is one InitPlan,
+not a per-row call. It is SECURITY DEFINER because a function inside a view runs
+as the QUERYING role and `portfolios` is under RLS.
 
-Two other sites rendered the same field raw -- `utils.js`'s `Class` column
-(fixed) and `pcm.js:156` (**deliberately not**: those are SAA POLICY buckets, a
-different vocabulary where `us_equity` genuinely means US equities and mapping
-it to "Equity" would lose the scope. Its `.replace('_', ' ')` replaces only the
-FIRST underscore and it dereferences without a null guard -- flagged, not
-touched, because it is a different page and a different field.)
+**A single-table view owned by `postgres` is auto-updatable.** Supabase's
+default grants would have let anon INSERT/UPDATE/DELETE `positions` THROUGH
+`vw_active_positions` with RLS bypassed. All four are revoked and granted
+SELECT only; verified by a real anon POST refused with `42501`.
 
-### Prose at 2.94:1 is the sidebar defect again, one module over (2026-09-24)
+**Three readers stay a union on purpose** -- "held anywhere" is the right
+meaning: `atlas_check_universe_price_coverage`, `atlas_refresh_asset_sectors`,
+`refresh_universe_correlations`. The last still takes a GLOBAL
+`max(as_of_date)`, so a lagging account's names would drop out of the matrix;
+**make it per-portfolio in MP-1.**
 
-The same terminal report circled the Background tab's "Not sourced" card.
-Measured against the card surface rather than eyeballed:
+The rewrite is textual against the live definitions, each bare reference
+aliased back to the table's own name so qualified columns
+(`account_snapshots.equity`) still resolve, with every replacement count
+asserted and a re-patch refused. The SQL rewrite and an independent Python one
+agree byte-for-byte on all 33 definitions. **Proven by `EXCEPT ALL` both ways
+over 36 objects** -- the 25 rewritten views, 8 downstream (`vw_nexus_holdings`,
+`vw_risk_analysis`, `vw_book_mctr`, `vw_position_nav_daily` at 11,717 rows ...)
+and 3 function outputs -- in one REPEATABLE READ transaction so the 5-minute
+sync cannot produce a false diff: **0 rows differ either way.** Timings level
+within noise. `vw_earnings_calendar` is `security_invoker=on` and keeps it.
 
+Two unfiltered `positions.select('asset_id')` reads (`advanced-chart.js`,
+`NexusRealized.js`) were also a 1,000-row-cap defect: 10,963 rows of history
+for a "held" set. They read `vw_positions_current` now.
+`src/lib/bookTableReads.test.mjs` fails any direct book-table read in `src/` or
+`api/`; it finds exactly the 10 pre-fix sites when they are restored. **No CI
+workflow runs the node suite** -- run it with `node --test`.
+
+### The writers were the trap, and an identity gate closes it (2026-09-24)
+
+MP-1, phase 1 of multi-portfolio support. **Atlas Secondary (`PA345SGOX9LY`)
+is now registered and syncing** beside the original account
+(`PA39BDB08Y3X`). It is not the default, so every book surface still shows the
+original account (MP-0); the switcher is MP-2.
+
+**Confirmed in code before it was changed.** `sync_alpaca_positions` fetched
+`/v2/positions` and `/v2/account` ONCE with the global `ALPACA_API_*` pair and
+wrote that book into EVERY Alpaca portfolio in its loop;
+`sync_alpaca_transactions` did the same with fills and resumed from a GLOBAL
+`max(transaction_date)`, so a quieter account would resume from a busier one's
+newest fill and skip its own; `sync_portfolio_history` took `limit 1` of the
+Alpaca portfolios, and a passed `portfolio_id` merely TAGGED the one global
+account's curve with that id.
+
+**Credentials by reference.** `broker_accounts.credential_prefix` is the NAME
+of an edge-function secret pair, `<prefix>_KEY` / `<prefix>_SECRET` --
+`ALPACA_API` for the original, `ATLAS_ALPACA_API` for Secondary. No secret is
+stored in the database. `broker_accounts` is revoked from anon and
+authenticated (nothing in `src/` or `api/` read it); RLS already refused anon
+writes, which matters because rewriting a prefix would redirect a sync.
+
+**The identity gate is the part that matters.**
+`broker_accounts.alpaca_account_number` is what `/v2/account` must report for
+those credentials, and each sync refuses to write on a mismatch
+(`IDENTITY MISMATCH ... Nothing written.`). A mis-set prefix is otherwise the
+original defect reached by configuration instead of code -- one account's book
+written into another's portfolio, looking healthy. Primary's expected number was
+**verified** from its own stored `/v2/account` payload
+(`account_snapshots.raw->>'account_number'`), not assumed.
+
+**One account per iteration, one `sync_log` row each**, now carrying
+`sync_log.portfolio_id`. One account failing (bad keys, identity mismatch,
+endpoint hiccup) is recorded against it and neither blocks nor rolls back the
+other; the response is 500 if ANY account failed, so `cron.job_run_details`
+shows it. **Read `sync_log` per `portfolio_id`**: a `function_name`-only query
+now sees two rows per run and a healthy account can mask a failing one --
+`data_freshness`' `sync_alpaca_positions` stream does exactly that today.
+**Flagged for MP-4, not fixed.**
+
+`sync_alpaca_prices` is **unchanged on purpose**: it only calls the market-data
+API, where any key pair answers the same, and its book scope joins `positions`
+across all portfolios, which is the right "held anywhere" union.
+`refresh_universe_correlations` now takes the latest snapshot PER PORTFOLIO, so
+a lagging account's names no longer drop out of the matrix.
+
+`_shared/alpaca_tasks/activities.ts` and `positions.ts` were **deleted**: no
+importers, and each carried the pre-MP-1 logic -- one import from reintroducing
+it. `_shared/alpaca.ts` stays for market data and says in its header never to
+use it for an account endpoint.
+
+**Proven, in order.** Deployed repo files byte-for-byte through the management
+API (not pasted), after confirming each deployed bundle matched the repo --
+`sync_alpaca_transactions` v4 differed only in comments. Primary synced on the
+new code and was unchanged (67 positions, equity in line with the prior runs,
+transactions resumed from its OWN watermark). Only then was Secondary
+registered, and its first sync triggered manually: identity gate passed, **37
+positions** (matching the broker UI), $1,005,502 equity, 119 fills cold-started
+from its own empty watermark. Every Primary-scoped read stayed Primary-only --
+`vw_positions_current` 67 rows from one portfolio, `nav_reconciliation`
+**0.0000%** against Primary's broker equity, not the combined $1.1M.
+
+**Still single-book, by design until MP-4:** everything downstream of the
+nightly chain -- verdicts, segments, `book_risk_daily`, factor betas, VaR
+backtest, frozen baseline -- is written for the default portfolio only. Those
+tables carry no `portfolio_id`, so they must NOT be rendered against Secondary
+by the MP-2 switcher; badge them as the original account's until MP-4.
+
+**A merge resolved a CLAUDE.md conflict by dropping this file's MP-0 entries**
+(b2a34aa, "Merge branch 'main' into ..." on PR #821): the code, migration and
+test all landed, and the two entries above were silently gone from `main`.
+Restored verbatim from 2bce506. **After merging a branch, grep `main` for the
+heading you added** -- a conflict resolved "take theirs" on a documentation file
+loses exactly the record of why the code is the way it is.
+
+### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
+
+Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`
+exports `null` when `VITE_SUPABASE_ANON_KEY` is absent at BUILD time, and this
+container has none. `sb` is then a constant, and rollup deletes everything after
+`if (!sb) return` -- which is why a `console.log` at the top of an effect shipped
+and the query eight lines below it did not.
+
+Measured: a local build without the key carries `vw_active_positions` **0**
+times; the same source built with the key carries it **2** times. The **live
+production bundle** carries `equity_fundamentals_derived` **2** times and
+`compute_ticker_derived` once. **EQ-5b's "0 in the bundle, so `derived` has
+always been null in the deployed app" was measured against a keyless local
+build and is wrong**; the code path has shipped. Its fix (reading the statement
+layer directly) stands on its own merits. The control string EQ-9 used
+(`equity_fundamentals_derived` = 0) proved nothing for the same reason.
+
+**Build with the key before grepping `dist/`**, or grep the deployed bundle:
+
+```bash
+VITE_SUPABASE_ANON_KEY=<publishable key> npx vite build
+curl -s https://<host>/ | grep -o 'assets/[^"]*\.js'   # then fetch and grep
 ```
-T.text    #e3e9f2  14.60:1
-T.muted   #8aa0bb   6.64:1
-T.muted2  #51647b   2.94:1   <- the paragraph
-```
-
-**2.94:1 is the exact number this file already records** for the shell's nav
-labels -- "below WCAG AA and below even large-text 3:1" -- fixed there by
-moving to the 6.64:1 step. `muted2` is the right token for a 9px uppercase
-field LABEL and the wrong one for a paragraph of running text; six prose sites
-in that tab were on it. Raised to `T.muted`, measured 6.64:1.
-
-**Scoped deliberately.** `muted2` appears **84 times across five equity files**
-and every one of them is text that fails AA at 2.94:1. Restyling all of them --
-or raising `--text-3` in `globals.css`, which moves every surface in the
-terminal -- is a design decision with a blast radius, not a bug fix. Field
-labels are left as they are and the count is recorded here so the next session
-can take it as its own unit rather than rediscovering it.
-
-### A scenario nobody set is not a scenario (2026-09-24)
-
-Found while looking at the same screenshot. The verdict strip read
-**`PROB-WEIGHTED EV $1,036` beside `COMPOSITE FV $376`** on MSFT -- two
-valuations 2.8x apart, side by side, with the REDUCE call driven off the
-smaller one and nothing saying why they disagreed.
-
-`ev_pw` is a DCF over the Valuation tab's Bull/Base/Bear **slider defaults**:
-a 13% revenue CAGR, a 44% terminal EBITDA margin and a 28x exit multiple --
-**the same three constants for every filer on the platform**, initial state
-rather than anything measured or even asserted.
-
-**That is the blend EQ-9 deleted from the composite, surviving one tile over.**
-EQ-9 removed a fair value built on "a SUBSTITUTED 10% revenue growth rate and a
-SUBSTITUTED 20% operating margin"; this is the same construction, and it
-reached the header -- the line a reader trusts at a glance -- while its own
-card was honestly captioned *"what-if · does not set the call"*. **A caption on
-one surface does not travel to another.**
-
-`scenarioEdited()` compares the live state to `BBB_DEFAULTS` **by value, never
-by reference**: the sliders replace the object on every change, so an identity
-check would call an untouched scenario edited the first time anything
-re-rendered. The header gets the figure only once a lever has actually moved,
-and the tile is named **`Scenario EV`** rather than `Prob-weighted EV`, which
-read as a valuation next to a composite.
-
-Two hazards closed in passing: the exported const was handed straight to
-`useState`, so one in-place slider write would have moved the baseline the gate
-compares against and the gate could never fire again (lazy deep copy); and
-Reset re-typed the three rows as literals, a second copy of the defaults free
-to drift from the first.
-
-**And auditing my own change found the worse half: the figure was STALE ACROSS
-SYMBOLS.** `ev_pw` is pushed up from `ThesisTab`, which is mounted only while
-that tab is selected, and `MainPanel` carries no `key` so it does not remount
-when `symbol` changes. The old code called `onEVPW` only when all three
-scenario FVs were finite -- so leaving the Thesis tab, or switching to a
-company whose FVs do not compute (an ETF has no revenue, EBITDA or share
-count), left the PREVIOUS company's EV sitting in the header beside the NEW
-company's composite. Gating the push was not enough on its own: **an unmounted
-child cannot report that it has nothing to say**, so the reset belongs in the
-parent, keyed on `symbol`. `blendedFV` had the identical shape and is reset
-with it (it is also read by nothing -- dead state, flagged).
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
