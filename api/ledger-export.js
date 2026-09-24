@@ -8,19 +8,28 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-function sbAnon() {
+// MP-4a: decisions / decision_outcomes are scoped to the active portfolio by
+// their read policy, so the export carries the account the terminal is on.
+// Tagged onto every same-origin /api call by installApiPortfolioTagging.
+const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function portfolioHeader(req) {
+    const p = req && req.query ? req.query.portfolio : null;
+    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+}
+
+function sbAnon(headers) {
     // ATLAS_ overrides first — SUPABASE_URL may be integration-injected and
     // point at a non-ATLAS Supabase project (see api/options-snapshot.js).
     const url = process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co';
     const key = process.env.ATLAS_SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
     if (!url || !key) return null;
-    return createClient(url, key, { auth: { persistSession: false } });
+    return createClient(url, key, { auth: { persistSession: false }, global: { headers: headers || {} } });
 }
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).end();
 
-    const sb = sbAnon();
+    const sb = sbAnon(portfolioHeader(req));
     if (!sb) return res.status(503).json({ error: 'supabase misconfigured' });
 
     const [intRes, decRes, outRes, fwdRes] = await Promise.all([
