@@ -5569,6 +5569,63 @@ string only it can produce, with `equity_fundamentals_derived` (0) as the
 control — the EQ-5b rule, because this module's sibling `equity-research.js`
 still has an effect body rollup does not emit.
 
+### The self-audit found three, and the worst was the one I had just fixed elsewhere (2026-09-24)
+
+EQ-9 merged with **no external review**: CodeRabbit declines this repo (fewer
+than 10 stars, not the draft state as first reported) and the Codex connector
+was out of quota. Four of this file's entries are defects CodeRabbit caught in
+my own work, so the merged diff was audited against the recorded failure modes
+instead. Three findings, all in what I had just written.
+
+**1. `useStatementDerived` swallowed the failure state.** It read
+`if (cancelled || res.state !== STATE_LOADED) return;`, so a cancelled query
+left `fromStatements` null and every panel downstream printed a claim about
+the COMPANY: *"no financial statements are loaded for this symbol"*, *"no
+statements loaded ... so no Z″ can be formed"*, *"nothing in the scorecard
+could be measured for this filer"*. **I fixed precisely this in the Background
+tab in the same change and left it in the module the change was about** — the
+same asymmetry PR #783 records between two guards written minutes apart, and
+the sixth layer for *never let a transport failure render as a statement about
+the data*. The flag is **non-enumerable** (`Object.defineProperty`) because
+`mergeDerived` copies keys and a consumer iterating the derived object must
+not meet a transport flag among the measures.
+
+**2. My own migration anchor could not fire.** EQ-9b guarded with
+`position('LEFT JOIN LATERAL' in v_def) >= 1` — which the REPLACEMENT text
+also satisfies, so the guard passed on an already-patched view and a re-run
+was stopped only by Postgres rejecting the duplicate `grp` CTE name. Luck, not
+design: this file's recurring *gate that can never pass*, inverted into a gate
+that can never fire. **Assert on what only the OLD body contains**, and refuse
+outright when the new one is already there. Proven by re-running: it now fails
+on my own RAISE rather than on a Postgres accident.
+
+**3. Both EQ-9 migrations were absent from the ledger**, because they were
+applied over the management API's `database/query` rather than through
+`apply_migration` — the exact path CLAUDE.md warns leaves no ledger row.
+Backfilled.
+
+**The ledger/file correspondence is broadly broken and it is NOT EQ-9's doing:
+190 migration files carry no ledger row and 247 ledger rows name no file.**
+Measured while checking my own two. Pre-existing, unfixed, and its own unit —
+recorded here so the next session does not mistake the scale of it for
+something a single change caused.
+
+**What the audit cleared, stated so it is not re-derived:** non-finite input
+(NaN, ±Infinity) is refused at every entry point of `equityVerdicts.js`,
+because `Number.isFinite` is the gate rather than a one-sided bound — the
+PR #783 shape does not reach this module. A genuine zero is still a
+measurement. Grade-point ties round up, deterministically. No other verdict
+ladder in `src/` falls through an unguarded `else`, and the four other
+consumers of `loadStatementLayer` handle `failed` explicitly.
+
+**`wacc_est` and `buyback_yield` are emitted by nothing.**
+`derivedFromStatements` does not produce them and `equity_fundamentals_derived`
+does not ship, so the Capital Allocation WACC is always the platform constant
+(labelled `assumed`, which is honest) and the buyback-yield tile is
+permanently absent. Correct, and worth writing down: it is a gate that can
+never pass in the benign direction, and the next reader should not hunt for a
+bug behind an empty tile.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

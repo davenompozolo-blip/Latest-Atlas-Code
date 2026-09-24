@@ -4,7 +4,7 @@ import { sb } from './config.js';
 import { PeerComparison } from './equity-peers.js';
 import { TechnicalsTab } from './equity-technicals.js';
 import {
-    loadStatementLayer, STATE_LOADED, derivedFromStatements, mergeDerived,
+    loadStatementLayer, STATE_LOADED, STATE_FAILED, derivedFromStatements, mergeDerived,
 } from './equity/equityStatements.js';
 import {
     piotroskiView, PIOTROSKI_OUT_OF, qualityGradeView, sloanView,
@@ -714,18 +714,44 @@ export function ThesisTab(p) {
 function useStatementDerived(symbol, fromProps) {
     var state = React.useState(null);
     var fromStatements = state[0], setFromStatements = state[1];
+    var lstate = React.useState(null);
+    var loadState = lstate[0], setLoadState = lstate[1];
     React.useEffect(function () {
         var cancelled = false;
         setFromStatements(null);
+        setLoadState(null);
         if (!symbol) return;
         loadStatementLayer(symbol, 'annual').then(function (res) {
-            if (cancelled || res.state !== STATE_LOADED) return;
-            setFromStatements(derivedFromStatements(res.rows));
+            if (cancelled) return;
+            // A TRANSPORT FAILURE IS NOT AN EMPTY STATEMENT SET. This read
+            // `if (res.state !== STATE_LOADED) return;`, which dropped the
+            // failure on the floor -- so a cancelled query left every panel
+            // downstream saying "no financial statements are loaded for this
+            // symbol", "no statements loaded ... so no Z-double-prime can be
+            // formed", and "nothing in the scorecard could be measured for
+            // this filer". Three claims about the COMPANY, printed when the
+            // query never answered.
+            //
+            // EQ-9 fixed exactly this in the Background tab and left it here,
+            // in the module the fix was about -- the same asymmetry PR #783
+            // records between two guards written minutes apart. Latent only
+            // because the timeout that would surface it is now closed, which
+            // is the dormant-defect argument this codebase has three entries
+            // about.
+            setLoadState(res.state);
+            if (res.state === STATE_LOADED) setFromStatements(derivedFromStatements(res.rows));
         });
         return function () { cancelled = true; };
     }, [symbol]);
     // Statements win per key; a null from them never erases a real figure.
-    return mergeDerived(fromProps, fromStatements);
+    var merged = mergeDerived(fromProps, fromStatements);
+    if (loadState !== STATE_FAILED) return merged;
+    // The failure travels on the shape so a panel can tell it from an absence.
+    // NON-ENUMERABLE on purpose: `mergeDerived` copies keys, and a consumer
+    // iterating this object must not meet a transport flag among the measures.
+    var out = merged || {};
+    Object.defineProperty(out, '_loadFailed', { value: true, enumerable: false, configurable: true });
+    return out;
 }
 
 export function QualityTab(p) {
@@ -856,8 +882,11 @@ export function QualityTab(p) {
                           + 'and no band: the STRONG / GOOD / WEAK thresholds are defined over all nine, and a count of '
                           + 'fewer tests is a different statistic rather than a lower score. Unresolved: '
                           + pv.withheld.join(', ') + '.'
-                        : '※ No criteria resolved — no financial statements are loaded for this symbol, and the '
-                          + 'six trend criteria need a prior year in any case.')
+                        : (derived && derived._loadFailed
+                            ? '※ The statement feed did not answer, so no criterion could be evaluated. That is a '
+                              + 'transport failure, not a statement about this company.'
+                            : '※ No criteria resolved — no financial statements are loaded for this symbol, and the '
+                              + 'six trend criteria need a prior year in any case.'))
             ),
 
             // Altman Z
@@ -888,7 +917,10 @@ export function QualityTab(p) {
                             ? 'Refused: a Z\u2033 missing a component is not a lower Z\u2033, it is a different '
                               + 'statistic, and the band chart above is drawn for the complete one. '
                               + 'The components below show which terms are absent.'
-                            : 'No statements loaded for this symbol yet, so no Z\u2033 can be formed.')
+                            : (derived && derived._loadFailed
+                                ? 'The statement feed did not answer, so no Z\u2033 could be formed. A transport '
+                                  + 'failure, not a statement about this company.'
+                                : 'No statements loaded for this symbol yet, so no Z\u2033 can be formed.'))
             ),
 
             // Beneish M
@@ -983,6 +1015,14 @@ export function CapitalTab(p) {
     //
     // and `overallGrade` ended `: 'B'`, so a company with nothing measured got
     // a B in 64-point type. `capitalAllocationView` withholds instead.
+    // `wacc_est` and `buyback_yield` are emitted by NOTHING today:
+    // `derivedFromStatements` does not produce them, and the only other source
+    // is `equity_fundamentals_derived`, which EQ-5b measured at 0 occurrences
+    // in the production bundle. So the WACC is always the platform constant
+    // (labelled `assumed`, which is honest) and the buyback yield is always
+    // absent. Both branches are kept rather than collapsed, because a real
+    // source for either is a data unit -- but do not hunt for why the buyback
+    // tile is empty: nothing fills it yet.
     var waccMeasured = derived && fin(derived.wacc_est);
     var cap = capitalAllocationView({
         roic: derived && fin(derived.roic) ? derived.roic : null,
@@ -1051,7 +1091,10 @@ export function CapitalTab(p) {
                                 : spread > 0
                                     ? 'Positive spread over WACC. Monitor reinvestment quality as growth decelerates.'
                                     : 'Returns on capital sit below the cost of capital on this reading.')
-                        : cap.overallReason)
+                        : (derived && derived._loadFailed
+                            ? 'The statement feed did not answer, so nothing could be measured. A transport '
+                              + 'failure, not a statement about this filer.'
+                            : cap.overallReason))
                 ),
                 inp && h(Grid, { style: { gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 } },
                     h('div', { style: { textAlign: 'center' } },
