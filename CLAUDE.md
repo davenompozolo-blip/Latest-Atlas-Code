@@ -5858,6 +5858,18 @@ compares against and the gate could never fire again (lazy deep copy); and
 Reset re-typed the three rows as literals, a second copy of the defaults free
 to drift from the first.
 
+**And auditing my own change found the worse half: the figure was STALE ACROSS
+SYMBOLS.** `ev_pw` is pushed up from `ThesisTab`, which is mounted only while
+that tab is selected, and `MainPanel` carries no `key` so it does not remount
+when `symbol` changes. The old code called `onEVPW` only when all three
+scenario FVs were finite -- so leaving the Thesis tab, or switching to a
+company whose FVs do not compute (an ETF has no revenue, EBITDA or share
+count), left the PREVIOUS company's EV sitting in the header beside the NEW
+company's composite. Gating the push was not enough on its own: **an unmounted
+child cannot report that it has nothing to say**, so the reset belongs in the
+parent, keyed on `symbol`. `blendedFV` had the identical shape and is reset
+with it (it is also read by nothing -- dead state, flagged).
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
