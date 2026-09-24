@@ -6069,6 +6069,125 @@ VITE_SUPABASE_ANON_KEY=<publishable key> npx vite build
 curl -s https://<host>/ | grep -o 'assets/[^"]*\.js'   # then fetch and grep
 ```
 
+### Storage vocabulary is not a label, and a caption does not travel (2026-09-24)
+
+Two defects reported from the terminal on the MSFT Background tab, a third found
+sitting between them in the same screenshot, and a fourth found auditing my own
+gate.
+
+**1. `INSTRUMENT us_equity` -- the inconsistency, not the underscore.**
+`assets.asset_class` is storage vocabulary carrying **eight spellings for four
+kinds**: common stock as `Stock` (7,847) / `us_equity` (72) / `equity` (24),
+options as `option` (10) / `us_option` (3), plus `etf` / `cash` / `crypto`. So
+the same instrument read `Stock` on one symbol and `us_equity` on the next, **in
+the field a reader uses to tell instruments apart**. The raw token is how it got
+noticed; the inconsistency is the defect.
+
+**The vendor prefix is provenance, not a property of the instrument**, and it
+cannot be rendered as a market scope either -- the book holds ADRs and foreign
+listings (ASML, TSM, SONY) stored as plain `Stock`, so "US equity" would assert
+a domicile the field does not carry. The `fwd_pe` rule in a display label.
+`src/lib/instrumentLabel.js` is the one map; an unrecognised value is
+**humanised, never dropped and never guessed**, because dropping it would hide a
+vocabulary the platform had started storing.
+
+**The raw values stay where they are predicates.** The keyed bundle carries
+`us_equity` twice -- once in the label map and once in a PostgREST
+`.in('asset_class', ['Stock','us_equity','equity','etf'])`, which is a query
+against the stored vocabulary and correctly untouched. `pcm.js:156` is untouched
+for the same reason one layer up: those are SAA **policy** buckets where
+`us_equity` genuinely means US equities and mapping it to "Equity" loses the
+scope. (It also `.replace('_', ' ')` -- first occurrence only -- and dereferences
+with no null guard. Flagged, not fixed.)
+
+**2. The circled card was illegible, measured.** `T.muted2` #51647b on the card
+is **2.94:1** -- the exact figure this file already records for the shell's nav
+labels, *"below WCAG AA and below even large-text 3:1"*. `muted2` is right for a
+9px uppercase field label and wrong for running prose; six prose sites in that
+tab were on it, moved to `T.muted` (6.64:1). **Scoped deliberately**: `muted2`
+appears **84 times across five equity files**, and raising `--text-3` in
+`globals.css` moves every surface in the terminal. That is a design decision with
+a blast radius, not a bug fix -- the count is recorded so it can be taken as its
+own unit.
+
+**3. A header figure built from three constants.** The strip read
+**`PROB-WEIGHTED EV $1,036` beside `COMPOSITE FV $376`** -- two valuations 2.8x
+apart, side by side, with the REDUCE call driven off the smaller and nothing
+explaining the gap. `ev_pw` is a DCF over the Bull/Base/Bear **slider defaults**:
+a 13% revenue CAGR, a 44% terminal margin, a 28x exit multiple, **the same three
+numbers for every filer on the platform**.
+
+**That is the blend EQ-9 deleted from the composite, surviving one tile over.**
+Its own card was honestly captioned *"what-if · does not set the call"* -- and
+**a caption on one surface does not travel to another.** The header gets the
+figure only once a lever has moved.
+
+`scenarioEdited()` compares to `BBB_DEFAULTS` **by value, never by reference**:
+the sliders replace the object on every change, so an identity check would call
+an untouched scenario edited the first time anything re-rendered. Two hazards
+closed in passing -- the exported const was handed straight to `useState`, so one
+in-place write would move the baseline the gate compares against and it could
+never fire again; and Reset re-typed the defaults as literals, a second copy free
+to drift.
+
+**4. Gating the push was not enough: an unmounted child cannot clear parent
+state.** Found auditing my own fix. The Thesis tab owns the sliders and pushes
+`ev_pw` up to the header, so switching symbols leaves the last symbol's scenario
+figure in the parent -- the child is gone and can push nothing. **A push gate
+says when a value may be sent; it says nothing about when a stale one must be
+withdrawn.** The parent clears on `[symbol]`.
+
+**And the verification method was void, which I learned from the entry above
+this one.** #824's body claimed the new paths were confirmed in `dist/` "with
+`equity_fundamentals_derived` (0) as the control" -- measured against a
+**keyless** local build, where rollup deletes everything after `if (!sb) return`.
+Re-measured with `VITE_SUPABASE_ANON_KEY` set: the control reads **2**, not 0,
+and proves nothing; `Scenario EV` is genuinely 1 and the label map ships in full.
+**Build with the key before grepping `dist/`** -- and note the claim survived
+because the strings checked were render strings, not query strings. That is luck,
+not method.
+
+### A lookup on an object literal can return something nobody stored (2026-09-24)
+
+#824 merged with **no external review** -- the `@coderabbitai review` I posted
+arrived after the merge, and the one before it aborted on a head change -- so
+the merged diff was audited against this file's recorded failure modes, the
+same procedure EQ-9 and EQ-9c used. It found one, in the module that change
+introduced.
+
+`instrumentLabel` looked its kind up in an object literal, which inherits from
+`Object.prototype`. So a stored value naming an inherited member returned it:
+
+```
+instrumentLabel('constructor')  ->  [Function: Object]
+instrumentLabel('__proto__')    ->  [object Object]
+```
+
+Both truthy, so both passed the `if (known) return known` gate and reached the
+renderer where a string belongs. **Exactly two values can do it** -- the lookup
+lower-cases first, so `toString`, `valueOf` and `hasOwnProperty` fall through
+to the humanise path harmlessly, and only the all-lowercase members leak. That
+narrowness is what makes it invisible on inspection: the line reads correctly
+and is correct for every value anyone would think to try. **Found by probing
+the values, not by reading the module** -- the same method that found the NaN
+CHECK leak and the three-valued-logic hole.
+
+`Object.create(null)` plus a `typeof known === 'string'` gate, which is two
+independent closures rather than one: the map can no longer carry an inherited
+member, and a non-string could not be returned even if it did.
+
+**The map and `BBB_DEFAULTS` are both FROZEN, and for the same reason.**
+`BBB_DEFAULTS` is the baseline `scenarioEdited` measures against; the lazy deep
+copy at the `useState` stops the SLIDERS writing through to it and does nothing
+about a caller reaching for the export. Move that baseline and an untouched
+scenario reads as edited, or an edited one as untouched, with nothing on screen
+to say the gate has stopped working -- the hazard #824's own entry claims to
+have closed, closed only on the half it named. The legs are frozen
+individually: freezing the outer object leaves every lever writable.
+
+4 new tests, all four failing against the merged modules, checked by restoring
+them rather than assumed.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

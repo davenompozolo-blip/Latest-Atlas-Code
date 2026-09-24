@@ -261,3 +261,25 @@ test('resetting returns to the baseline, so the header goes absent again', () =>
     assert.equal(scenarioEdited(edited), true);
     assert.equal(scenarioEdited(JSON.parse(JSON.stringify(BBB_DEFAULTS))), false);
 });
+
+// --- The baseline the gate measures against must not be movable ---------
+// The lazy deep copy at the `useState` stops the SLIDERS writing through to
+// BBB_DEFAULTS; it does nothing about a caller reaching for the export. Move
+// the baseline and an untouched scenario reads as edited (or an edited one as
+// untouched), with nothing on screen to say the gate has stopped working.
+
+test('BBB_DEFAULTS is frozen, legs included', () => {
+    assert.ok(Object.isFrozen(BBB_DEFAULTS));
+    for (const leg of ['bull', 'base', 'bear']) {
+        // Freezing only the outer object leaves every lever writable.
+        assert.ok(Object.isFrozen(BBB_DEFAULTS[leg]), leg + ' is not frozen');
+    }
+});
+
+test('a write to the baseline throws rather than moving the gate', () => {
+    assert.throws(() => { BBB_DEFAULTS.base.cagr = 0.99; });
+    assert.throws(() => { BBB_DEFAULTS.base = { cagr: 0.99 }; });
+    // The untouched scenario still reads as untouched afterwards.
+    assert.equal(scenarioEdited(JSON.parse(JSON.stringify(BBB_DEFAULTS))), false);
+    assert.equal(BBB_DEFAULTS.base.cagr, 0.13);
+});

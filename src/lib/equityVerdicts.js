@@ -314,11 +314,18 @@ export function compositeCallView(engineFV, price) {
 // saying which. That is the blend EQ-9 deleted from the composite -- a DCF on
 // a substituted growth rate and a substituted margin -- surviving one tile
 // over, and the header is the line a reader trusts at a glance.
-export const BBB_DEFAULTS = {
-    bull: { cagr: 0.16, margin: 0.47, mult: 32, prob: 25 },
-    base: { cagr: 0.13, margin: 0.44, mult: 28, prob: 50 },
-    bear: { cagr: 0.08, margin: 0.40, mult: 22, prob: 25 },
-};
+// FROZEN, for the reason the lazy deep copy at the useState exists. That copy
+// stops the SLIDERS writing through to this object; it does nothing about a
+// caller reaching for the export directly. This is the baseline
+// `scenarioEdited` measures against, so moving it moves what counts as an
+// edit -- and a moved baseline makes the gate unable to fire, silently. The
+// leg objects are frozen too: freezing only the outer object leaves every
+// lever writable.
+export const BBB_DEFAULTS = Object.freeze({
+    bull: Object.freeze({ cagr: 0.16, margin: 0.47, mult: 32, prob: 25 }),
+    base: Object.freeze({ cagr: 0.13, margin: 0.44, mult: 28, prob: 50 }),
+    bear: Object.freeze({ cagr: 0.08, margin: 0.40, mult: 22, prob: 25 }),
+});
 
 const BBB_LEGS = ['bull', 'base', 'bear'];
 const BBB_LEVERS = ['cagr', 'margin', 'mult', 'prob'];
