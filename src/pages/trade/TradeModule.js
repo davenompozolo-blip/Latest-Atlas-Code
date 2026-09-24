@@ -13,6 +13,7 @@ import React from 'react';
 import '../../styles/trade.css';
 import { e } from './shared.js';
 import { TradeUniverse } from './TradeUniverse.js';
+import { TradeGeographic } from './TradeGeographic.js';
 import { TradeTicket } from './TradeTicket.js';
 import { TradeBlotter } from './TradeBlotter.js';
 import { OptionsChain } from '../trading.js';
@@ -23,6 +24,7 @@ const { useState, useEffect, useCallback } = React;
 
 const ROUTES = [
     { id: 'universe', label: '/TRADE/UNIVERSE' },
+    { id: 'geographic', label: '/TRADE/UNIVERSE/GEO' },
     { id: 'ticket',   label: '/TRADE/TICKET' },
     { id: 'blotter',  label: '/TRADE/BLOTTER' },
     { id: 'options',  label: '/TRADE/OPTIONS' },
@@ -30,14 +32,19 @@ const ROUTES = [
 
 function parseHash() {
     const h = (window.location.hash || '').replace(/^#/, '');
-    const m = h.match(/^\/trade\/(universe|ticket|blotter|options)(?:\/([A-Za-z0-9.\-]{1,14}))?/);
+    const m = h.match(/^\/trade\/(universe|geographic|ticket|blotter|options)(?:\/([A-Za-z0-9.\-]{1,14}))?/);
     if (!m) return null;
     return { route: m[1], symbol: m[2] ? m[2].toUpperCase() : null };
 }
 
 function writeHash(route, symbol) {
     const next = '#/trade/' + route + (route === 'ticket' && symbol ? '/' + symbol : '');
-    if (window.location.hash !== next) window.history.pushState(null, '', next);
+    // The geographic view keeps its own state in a query inside the hash
+    // (?r=globe&l=...&c=CN) so a shared link carries it. Same route, so the
+    // query survives rather than being written over.
+    const cur = window.location.hash || '';
+    if (cur === next || cur.startsWith(next + '?')) return;
+    window.history.pushState(null, '', next);
 }
 
 export function TradeModule(props) {
@@ -151,6 +158,8 @@ export function TradeModule(props) {
 
         route === 'universe'
             ? e(TradeUniverse, { universe, loading: loadingUniverse, onOpenTicket: openTicket })
+            : route === 'geographic'
+                ? e(TradeGeographic, { universe, onOpenTicket: openTicket })
             : route === 'ticket' && symbol
                 ? e(TradeTicket, { symbol, universeContext, onNavigate: setRoute })
                 : route === 'blotter'

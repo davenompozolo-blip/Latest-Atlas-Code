@@ -17,7 +17,7 @@
     "chart.js": "^4.4.9",
     "globe.gl": "^2.46.2",
     "lightweight-charts": "^5.0.7",
-    "maplibre-gl": "^6.10.0",
+    "maplibre-gl": "~5.24.0",
     "plotly.js-dist-min": "^2.35.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
