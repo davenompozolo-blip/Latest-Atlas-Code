@@ -105,6 +105,8 @@ export function TradeUniverse({ universe, onOpenTicket, loading }) {
                 e(ExcludedDrawer, {
                     excluded, onOpenTicket,
                     total: universe.excludedTotal != null ? universe.excludedTotal : excluded.length,
+                    bookReason: universe.bookAvailable === false ? universe.bookReason : null,
+                    heldIncomplete: universe.heldExcludedComplete === false,
                 }),
                 e(RankedPanel, { rows: filtered, rankBy, setRankBy, onOpenTicket, axes, view }))),
 
@@ -380,7 +382,7 @@ function TableView({ rows, onOpenTicket, rankBy, setRankBy, axes, view }) {
 
 // ── Excluded drawer (§3.2) ───────────────────────────────────────────────────
 
-function ExcludedDrawer({ excluded, onOpenTicket, total }) {
+function ExcludedDrawer({ excluded, onOpenTicket, total, bookReason, heldIncomplete }) {
     const [expanded, setExpanded] = React.useState(false);
     const held = excluded.filter((r) => r.bookState === 'held');
     const shown = expanded ? excluded : excluded.slice(0, 8);
@@ -416,6 +418,14 @@ function ExcludedDrawer({ excluded, onOpenTicket, total }) {
                 ? e('div', { className: 'tr-note', style: { marginTop: 8 } },
                     `Showing ${excluded.length} of ${total}, held names first. The full set is on the daily snapshot; `
                     + 'the drawer samples it so the page does not ship the whole listed universe to read one column.')
+                : null,
+            bookReason
+                ? e('div', { className: 'tr-note', style: { marginTop: 8 } },
+                    `In-book marks are withheld: ${bookReason}. No name is shown as held or unowned until it loads.`)
+                : null,
+            heldIncomplete
+                ? e('div', { className: 'tr-note', style: { marginTop: 8 } },
+                    "This account's held-but-ineligible names outside the sample could not be fetched, so this list may be missing some of them.")
                 : null,
             held.length ? e(HeldButIneligible, { held }) : null));
 }

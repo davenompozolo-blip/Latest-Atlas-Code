@@ -6119,6 +6119,29 @@ They come from `computeRead` over the per-symbol composite fair value
 measured on the account's own live weights. Withheld conviction only touches the
 watch/exit branches. Not changed.
 
+### A nightly table MP-2 missed: the universe's "in book" rings (2026-09-24)
+
+Reported from the terminal on Atlas Secondary's first trade: the Trade
+universe map ringed names as "in book" that were Primary's. Measured, it is
+both directions -- Primary-only names (MRVL) ringed, Secondary-only names
+(ARM, CAT, DG) not. Names both accounts hold (SNDK, CRWV, AMD, MU) were right
+by coincidence, which is why it did not look wholly wrong.
+
+`trade_universe_members` is written nightly by `api/trade-sync.js` as
+service_role with no request context, so its `book_state` and
+`held_weight_pct` are the DEFAULT portfolio's. MP-2 gated sixteen single-book
+sources and did not list it, because it was found by walking views, and this is
+a table read directly by the client. **Every other column on the row is a fact
+about the stock** (eligibility, rank, signals, liquidity), so the fix is an
+overlay, not a guard: `src/lib/trade/bookOverlay.js` recomputes the two book
+columns from `loadBook()` (vw_active_*), and the stored values are never read.
+The excluded drawer's sample is ordered by the STORED weight, so the active
+account's own ineligible holdings are fetched by name as well (ACWX, CPER,
+DFEV, DG, EWY, GDX, SHY on Secondary). 4 of 6 tests fail against pass-through.
+
+**Grep the nightly writers for the book, not only the views.** Any table a
+service_role job writes from `vw_active_*` is the default account's.
+
 ### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
 
 Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`
