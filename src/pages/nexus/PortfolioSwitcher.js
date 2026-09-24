@@ -141,8 +141,8 @@ export function PortfolioBanner() {
     if (st.onDefault !== false) return null;   // default account, or unknown: claim nothing
     return e('div', { role: 'status', style: bar },
         e('strong', null, 'Viewing ' + st.active.name + '. '),
-        'Positions, P&L, account and live risk are this account’s. ',
-        'Nightly analytics — verdicts, segments, conviction, contribution, factor betas and the VaR backtest — ',
+        'Positions, P&L, account, live risk and the holdings analytics (conviction, signals, valuation) are this account’s. ',
+        'Nightly analytics — verdicts, segments, contribution, factor betas and the VaR backtest — ',
         'are computed for the default account only, and are withheld here rather than shown against the wrong book. ',
         e('strong', null, 'Orders from this screen go to ' + st.active.name + '.'));
 }
