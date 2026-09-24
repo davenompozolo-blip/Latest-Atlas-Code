@@ -11,6 +11,7 @@
 
 import { sb } from '../supabase.js';
 import { performanceSnapshot } from './performance.js';
+import { overlayActiveBook, heldSymbols } from './bookOverlay.js';
 
 const UNIVERSE_CODE = 'us_core';
 
@@ -64,7 +65,13 @@ export async function loadUniverse({ asOf = null } = {}) {
     // a universe of 26 first rendered as a universe of 4. Eligible rows are
     // therefore fetched on their own, and the excluded drawer takes a bounded
     // sample with held names first — its headline count comes from the snapshot.
-    const [snap, eligibleRes, excludedRes, rules] = await Promise.all([
+    // The active account's live book. The stored book_state / held_weight_pct
+    // describe the DEFAULT portfolio (trade-sync runs with no request context),
+    // so they are overlaid from this -- see bookOverlay.js.
+    const book = await loadBook();
+    const heldSyms = heldSymbols(book);
+
+    const [snap, eligibleRes, excludedRes, rules, heldExcludedRes] = await Promise.all([
         sb.from('trade_universe_snapshots').select('*').eq('universe_id', universeId).eq('as_of_date', date).single(),
         sb.from('trade_universe_members').select('*')
             .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', true)
@@ -75,19 +82,30 @@ export async function loadUniverse({ asOf = null } = {}) {
             .order('symbol', { ascending: true })
             .limit(EXCLUDED_SAMPLE),
         sb.from('trade_universe_rules').select('*').eq('universe_id', universeId).eq('is_active', true).order('sort_order'),
+        // The sample above is ordered by the STORED weight, which is the default
+        // account's -- so on any other account its own ineligible holdings could
+        // fall outside the 250. Fetch them by name; bounded by the book size.
+        heldSyms.length
+            ? sb.from('trade_universe_members').select('*')
+                .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', false)
+                .in('symbol', heldSyms)
+            : Promise.resolve({ data: [], error: null }),
     ]);
 
     fail('snapshot', snap.error); fail('eligible', eligibleRes.error);
-    fail('excluded', excludedRes.error); fail('rules', rules.error);
+    fail('excluded', excludedRes.error); fail('rules', rules.error); fail('held excluded', heldExcludedRes.error);
 
-    const members = { data: (eligibleRes.data || []).concat(excludedRes.data || []), error: eligibleRes.error };
+    const seen = new Set();
+    const excludedRows = (heldExcludedRes.data || []).concat(excludedRes.data || [])
+        .filter((r) => (seen.has(r.symbol) ? false : (seen.add(r.symbol), true)));
+    const members = { data: (eligibleRes.data || []).concat(excludedRows), error: eligibleRes.error };
     const excludedTotal = snap.data ? snap.data.excluded_count : (excludedRes.data || []).length;
 
     return {
         available: !members.error && !!(members.data || []).length,
         reason: members.error ? members.error.message : null,
         excludedTotal,
-        excludedShown: (excludedRes.data || []).length,
+        excludedShown: excludedRows.length,
         asOfDate: date,
         universeId,
         label: uni.data.label,
@@ -100,7 +118,8 @@ export async function loadUniverse({ asOf = null } = {}) {
         } : null,
         builtAt: snap.data ? snap.data.built_at : null,
         notes: snap.data ? snap.data.notes : null,
-        members: (members.data || []).map(normaliseMember),
+        members: overlayActiveBook((members.data || []).map(normaliseMember), book),
+        bookAvailable: !!book.available,
         rules: rules.data || [],
     };
 }
