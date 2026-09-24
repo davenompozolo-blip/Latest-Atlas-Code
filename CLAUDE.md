@@ -5668,6 +5668,61 @@ filings only. **Loading it is its own unit and is NOT done.**
 10 tests, **5 of which fail against the shipped predicate**, checked by
 reverting. The live coverage rows are the fixtures, not invented shapes.
 
+### An income-statement count stood in for "this basis renders" (2026-09-24)
+
+EQ-9c, found by auditing the 2026-09-24 period fix above **because no external
+reviewer ran on it** -- CodeRabbit declines this repo and the Codex connector
+was out of quota again. Same circumstance as EQ-9, same outcome: the audit
+found a live defect in what had just merged.
+
+`statementPeriodAvailability` read `income_quarterly` as "the quarterly basis
+carries periods". **It is one statement's row count.**
+`vw_company_fundamentals` INNER JOINs the three statements, so a basis renders
+only where three share a fiscal date -- which is exactly why the coverage view
+publishes `aligned_annual_periods` and not `income_annual`. There was no
+quarterly equivalent, so the module read the only quarterly number on offer
+and it was the wrong one. **The `fwd_pe` rule, in a coverage column.**
+
+**Live on SNDK** -- the half-loaded symbol EQ-2 already records, income
+statement only:
+
+| | income_quarterly | aligned quarterly | is_complete |
+|---|---:|---:|---|
+| SNDK | **12** | **0** | false |
+| the other 8 quarterly symbols | 81 | 81 | true |
+
+The eight align exactly, which is why the wrong field looked right. On SNDK
+the panel offered *"Show the quarterly statements ->"*, the switch returned no
+rows, and the module then called the empty result **a fault to chase** --
+`COVERAGE_DISAGREES` -- for a state `is_complete = false` declares on the same
+row. **A dead-end button and a phantom fault, in the module written to stop
+exactly that sentence.**
+
+Two corrections, and the second is the general one:
+
+- `aligned_quarterly_periods` is added to `vw_company_statement_coverage`
+  (EQ-9c, `CREATE OR REPLACE` appending last, so all twelve existing columns
+  keep name, position and type and no consumer moves; 60 rows unchanged).
+- **INCOMPLETE is tested BEFORE the period branches.** A symbol whose
+  statements did not all land cannot satisfy the join on *any* basis, so
+  offering a switch is offering a dead end and a contradiction claim is false.
+  Ordering was the whole defect: a correct branch sat below two that claimed
+  its rows first -- the unreachable-gate shape, inverted.
+
+`present === 0` keeps the INCOMPLETE branch off a genuinely quarterly-only
+symbol: `statements_present` is **annual-scoped**, so absence of annual
+statements is not evidence of a half-loaded one. That has its own test.
+
+**`bigint` reaches the browser as a JSON number, measured not recalled.**
+`count()` gates on `typeof v === 'number'`, which would read every counter as
+zero if PostgREST quoted them. `json_typeof(to_json(aligned_annual_periods))`
+is `number` and `row_to_json` emits them unquoted -- so the gate is right. The
+file's own rule: a fact about a database is measured in that database.
+
+6 new tests, **4 of which fail against the merged module**, checked by
+reverting. One of the two that pass either way is deliberate -- it asserts the
+precedence change did not swallow the AAPL case the first fix existed for.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
