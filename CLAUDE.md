@@ -6200,12 +6200,39 @@ return-engine columns NULL, which `bookBaseline.js` already renders as
 "Not yet computed". Dry run: Secondary vol 27.48%, VaR95 $42,085, Euler
 residual 0.000000, re-run `skipped`, anon on each account sees only its own
 rows.
+Applied 2026-09-24 through the SQL editor; ledger row backfilled and hashed
+against the file (`b895522a`), function body identical to `prosrc` (`bf471e1f`).
 
 **Matviews cannot be refreshed per account by setting the header.** A refresh
 under Secondary's header would make `mv_position_returns` hold Secondary's
 book for everyone reading it until the next refresh -- the wrong-book defect
 by another route. The verdict engine needs per-account TABLES (the MP-4d
 shape), not per-account refreshes.
+
+### Contribution and freshness follow the switch (MP-4f, 2026-09-24)
+
+`vw_bench_contribution` read `mv_bench_contribution`, and
+`vw_nexus_price_freshness` took its symbol set from `mv_nexus_holdings`. Both
+matviews are refreshed headerless, so both were default-only and gated. Every
+input underneath them was already request-scoped (`vw_position_nav_daily`
+since MP-0, `vw_nexus_holdings` since MP-4d), so they get the MP-4d treatment:
+`bench_contribution (portfolio_id, symbol)` is filled by
+`atlas_refresh_bench_contribution()` under each account's header, on the
+existing 10-minute job straight after the holdings analytics it reads.
+`mv_bench_contribution` is **dropped**, not left behind: a stale matview that
+nothing refreshes is one grep away from being read as current.
+
+Freshness now reads the active account's live holdings and each name's newest
+**1d** bar through a LATERAL top-1. That closes the missing `interval` filter
+flagged by H-4. Only SPY carries a non-1d bar, and SPY is not held.
+
+Proven in a rolled-back dry run. On the default account the output is
+identical both ways: contribution 64 of 64 rows, freshness 63 of 63.
+Secondary gets 38 contribution rows, none covered yet. A contribution needs
+two priced sessions and its first fill was today, so every name reads
+`no_priced_position_days`. The one exception is BCHUSD, which reads
+`no_transaction_history` because the crypto position has no FILL row. Both
+reasons are true statements about the account.
 
 ### Withholding made two old fallbacks visible on the first day (2026-09-24)
 
