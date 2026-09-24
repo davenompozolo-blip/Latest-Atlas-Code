@@ -5365,6 +5365,87 @@ filters by symbol (5.9 ms), so nothing is at risk today. A seq scan over a
 growing table is a clock, not a constant.
 
 
+### Sector and industry were the same field, and the SEC publishes the other one (2026-09-24)
+
+EQ-8b. `company_profile` / `src/lib/edgarProfile.js` /
+`src/lib/companyProfileView.js`, 52 symbols loaded from EDGAR submissions.
+
+The Background tab rendered **`SECTOR Technology` / `INDUSTRY Technology`**
+for Apple. Not a display bug -- `mapFinnhubOverview` in `api/equity.js` sets
+both from one field:
+
+```js
+Sector:   p.finnhubIndustry || '',
+Industry: p.finnhubIndustry || '',
+```
+
+So the card asserted a two-level taxonomy the vendor does not have. EQ-7
+measured the identical copy one layer down in `equity_screener_universe`;
+this is its origin in the app layer.
+
+**EDGAR publishes the SEC's own SIC classification, free and with no key, and
+it is a genuine level below sector.** Measured over the 52 loaded symbols:
+
+| | |
+|---|---:|
+| distinct EDGAR SIC industries | **33** |
+| distinct vendor industries | 17 |
+| vendor industry == its own sector | **10 of 52** |
+| **EDGAR industry == vendor sector** | **0 of 52** |
+
+MSFT, TGT and XOM carried **no vendor industry at all**. JPM resolves to
+`National Commercial Banks` and MS to `Security Brokers, Dealers & Flotation
+Companies` -- both `Financials` to the vendor, and that separation is the
+discriminator EQ-4's institution layer picks its framework with.
+
+**The taxonomy is named on the field, never assumed.** The label reads
+`Industry · SEC SIC`, because EQ-7 measured that the vendor buckets mix GICS
+sector names with GICS industry names and are neither level cleanly. An
+industry rendered bare invites a comparison that is invalid.
+
+**EDGAR HAS NO BUSINESS PROSE EITHER.** `description`, `website` and
+`investorWebsite` are present as KEYS and **empty on every filer measured**,
+so `''` would render as a loaded-but-blank field -- indistinguishable from one
+that failed. Every text column is NULL when blank, enforced by CHECK rather
+than by convention, and the view shape omits the key entirely. The Background
+tab's own "not sourced" note stands and now says which half IS sourced:
+classification and filer identity, from the SEC; prose, from nowhere. Item 1
+of the 10-K remains the only route.
+
+**A transport failure and an unloaded symbol get different sentences**, the
+`not_loaded` / `failed` split EQ-4j established -- never let a dead feed
+render as a statement about the company.
+
+**`fiscalYearEnd` is stored as MMDD verbatim and rendered as "September 26",
+never as a fiscal-year NAME**, for the reason recorded above: Target calls the
+year ending Feb 2025 FY2024 and NVIDIA calls the year ending Jan 2025 FY2025,
+so a label says WHEN the year ends and claims nothing about what the filer
+calls it.
+
+**I walked straight into this file's own `select *` trap.** The first write
+was `insert into company_profile select * from jsonb_populate_recordset(...)`
+and died on `23502: null value in column "loaded_at"` -- exactly what the
+2026-09-23 entry records about `atlas_upsert_company_statements`. A NOT NULL
+DEFAULT column reads as optional and under `select *` is mandatory and
+unstated. Naming the columns and stamping `now()` in the statement is the fix,
+and it is the more correct reading anyway: when the DATABASE received the row.
+**Reading the entry is not the same as remembering it at the keyboard.**
+
+24 tests across the two modules, each verified by reverting: industry falling
+back to sector, an industry rendered without its taxonomy, EDGAR's empty
+description reaching the shape, and a failure reading as "not loaded" all fail
+the suite. The path is confirmed in `dist/` by a string only it can produce --
+the EQ-5b rule, because this module's sibling `equity-research.js` still has
+an effect body rollup does not emit (`equity_fundamentals_derived`: 0
+occurrences in the bundle, re-confirmed as the control for this check).
+
+**No cron job yet, deliberately.** A filer's SIC and identity change on the
+order of years, and the loader is one EDGAR call per symbol with no cap, so
+this wants a refresh cadence measured in months rather than a nightly slot
+burned on data that does not move. Coverage is the 52 symbols carrying
+statements; the rest of the universe is the same call again.
+
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

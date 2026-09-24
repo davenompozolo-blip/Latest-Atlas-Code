@@ -19,6 +19,10 @@ import {
     loadStatementLayer, STATE_LOADED,
 } from './equity/equityStatements.js';
 import { companyPhase, revenueCagr, numOrNull, finite } from './equity/statementRows.js';
+import { loadCompanyProfile } from './equity/companyProfile.js';
+import {
+    buildProfileView, fiscalYearEndLabel, PROFILE_LOADED, PROFILE_FAILED,
+} from '../lib/companyProfileView.js';
 
 const { useState, useEffect } = React;
 const h = React.createElement;
@@ -55,11 +59,12 @@ export function BackgroundTab({ symbol, rawOverview }) {
     const [theme, setTheme]   = useState(undefined); // undefined = loading, null = none
     const [asset, setAsset]   = useState(null);
     const [rows,  setRows]    = useState(null);
+    const [profile, setProfile] = useState(null); // null = loading
 
     useEffect(function () {
         let cancelled = false;
         if (!symbol) return;
-        setTheme(undefined); setAsset(null); setRows(null);
+        setTheme(undefined); setAsset(null); setRows(null); setProfile(null);
         sb.from('position_themes').select('theme').eq('symbol', symbol).maybeSingle()
             .then(function (r) { if (!cancelled) setTheme((r.data && r.data.theme) || null); })
             .catch(function () { if (!cancelled) setTheme(null); });
@@ -69,10 +74,28 @@ export function BackgroundTab({ symbol, rawOverview }) {
         loadStatementLayer(symbol, 'annual').then(function (res) {
             if (!cancelled) setRows(res.state === STATE_LOADED ? res.rows : []);
         });
+        loadCompanyProfile(symbol).then(function (res) {
+            if (!cancelled) setProfile(res);
+        });
         return function () { cancelled = true; };
     }, [symbol]);
 
     const ov = rawOverview || {};
+    // SECTOR AND INDUSTRY ARE DIFFERENT OBJECTS AND NEITHER FALLS BACK TO THE
+    // OTHER. `mapFinnhubOverview` sets `Sector` and `Industry` BOTH from
+    // `p.finnhubIndustry`, so this card read `SECTOR Technology / INDUSTRY
+    // Technology` for Apple -- a two-level taxonomy the vendor does not have.
+    // EQ-7 measured the same copy one layer down in `equity_screener_universe`
+    // (896 rows identical, 0 where both are present and differ).
+    //
+    // The industry now comes from the SEC's own SIC classification, which over
+    // the 52 loaded symbols gives 33 distinct industries against the vendor's
+    // 17 and equals the sector on NONE of them. `industrySource` travels with
+    // it so the taxonomy is named rather than assumed comparable.
+    const prof = buildProfileView(
+        profile && profile.row,
+        { sector: (asset && asset.sector) || ov.Sector || null },
+        profile ? profile.state : null);
     const phase = rows && rows.length ? companyPhase(rows) : null;
     const cagr = rows && rows.length ? revenueCagr(rows) : null;
     const latest = rows && rows.length ? rows[0] : null;
@@ -114,8 +137,12 @@ export function BackgroundTab({ symbol, rawOverview }) {
         // ── classification ──────────────────────────────────────────────────
         h(Card, { title: 'Classification' },
             h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 18 } },
-                h(Field, { label: 'Sector', value: (asset && asset.sector) || ov.Sector || null }),
-                h(Field, { label: 'Industry', value: ov.Industry || null }),
+                h(Field, { label: 'Sector', value: prof.sector || null }),
+                h(Field, {
+                    label: prof.industrySource ? 'Industry · ' + prof.industrySource : 'Industry',
+                    // ABSENT, never a fallback to the sector and never ''.
+                    value: prof.industry || null,
+                }),
                 h(Field, {
                     label: 'Theme',
                     value: theme === undefined ? '…' : theme,
@@ -125,6 +152,24 @@ export function BackgroundTab({ symbol, rawOverview }) {
             // Theme is NULL for an unmapped name and is never coalesced to
             // sector: they are two taxonomies and conflating them is a mistake
             // this codebase has already had to correct once.
+            // A dead feed and an unloaded symbol are different facts and get
+            // different sentences. Never let a transport failure render as a
+            // statement about the company.
+            profile && !prof.industry && h('div', {
+                style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2 },
+            }, prof.state === PROFILE_FAILED
+                ? 'The classification feed did not answer, so no industry is shown. That is a '
+                  + 'statement about the feed, not about this company.'
+                : 'No SEC filer profile loaded for this symbol, so no industry is shown. The '
+                  + 'vendor sector is kept as its own field and is never shown as an industry.'),
+            prof.industry && (prof.filerCategory || prof.fiscalYearEnd || prof.stateOfIncorporation) && h('div', {
+                style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2, lineHeight: 1.7 },
+            }, [
+                prof.sicCode ? 'SIC ' + prof.sicCode : null,
+                prof.filerCategory,
+                prof.stateOfIncorporation ? 'Incorporated in ' + prof.stateOfIncorporation : null,
+                prof.fiscalYearEnd ? 'Fiscal year ends ' + fiscalYearEndLabel(prof.fiscalYearEnd) : null,
+            ].filter(Boolean).join('  ·  ')),
             theme === null && h('div', { style: { marginTop: 12, fontFamily: T.mono, fontSize: 10, color: T.muted2 } },
                 'No theme mapped for this name. Theme is a hand-kept taxonomy and is deliberately '
               + 'not defaulted to the sector — they answer different questions.')
@@ -178,7 +223,9 @@ export function BackgroundTab({ symbol, rawOverview }) {
             h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.8, maxWidth: 720 } },
                 'A business description, the customer base and reporting segments, the addressable '
               + 'market and geographic exposure are not in any feed this platform holds. The vendor '
-              + 'profile carries identity only, and its description field is empty for every symbol.'),
+              + 'profile carries identity only and its description field is empty for every symbol — '
+              + 'and so is EDGAR\'s, which publishes a `description` key and leaves it blank on every '
+              + 'filer measured. Classification and filer identity ARE sourced, from the SEC; prose is not.'),
             h('div', { style: { marginTop: 10, fontFamily: T.mono, fontSize: 10, color: T.muted2, lineHeight: 1.7, maxWidth: 720 } },
                 'The route that exists is the 10-K: segment tables, the geographic breakdown and the '
               + 'business description are all in Item 1 and the segment footnote, and the thesis '
