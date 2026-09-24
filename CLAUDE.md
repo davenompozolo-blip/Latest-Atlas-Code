@@ -6106,6 +6106,30 @@ linked to the global head, attributed to Secondary, `chain_ok` true.
 was merged anyway, so `main` held a migration the database had not run for
 about five minutes. The repo and the database are two separate deploys.
 
+### Sync health is graded per account (MP-4c, 2026-09-24)
+
+`atlas_run_validation()` runs from pg_cron with **no request header**, so every
+check reading `vw_active_*` -- `position_count`, `nav_reconciliation`,
+`snapshot_continuity` -- only ever graded the DEFAULT account. Atlas Secondary
+was never validated. `data_freshness()`'s positions-sync stream took the max
+success over every row of the function, so a healthy Primary masked a stopped
+Secondary. **A request-scoped view read by a headerless job always sees the
+default.**
+
+`atlas_account_sync_health()` grades each registered account on its own
+`sync_log` rows and its own book (positions at the snapshot watermark), never
+returning credentials or account numbers. `account_sync_coverage` in the
+validation job reads it, with the existing thresholds (sync 60 min / 24 h,
+drift 0.5% / 2%), and `failed` is `critical` because every account's pipeline
+can succeed. First measurement: both accounts at 0.0000% drift, 67 and 38
+positions. The Command Centre's Broker Accounts card reads the same function.
+
+**`.badge.green` / `.amber` / `.red` have no CSS rule.** Every status badge in
+the Command Centre has rendered uncoloured, which is why its validation log
+could test only `pass`/`ok`/`warn` against a database writing
+`passed`/`warning`/`failed` without anyone seeing it. Colour comes from
+`statusTone()` and the `--green`/`--amber`/`--red` tokens now.
+
 ### Withholding made two old fallbacks visible on the first day (2026-09-24)
 
 Seen on Atlas Secondary's first screen, and neither is specific to it -- the
