@@ -5966,6 +5966,22 @@ two books on one screen. A banner says, on a non-default account, which panels
 follow the switch and which are withheld and why -- without it the withheld
 panels read as "no data".
 
+**The switcher would have created a way to trade the wrong account, so trading
+fails closed.** `api/trading.js` places orders -- and reports account equity,
+cash and order history -- with the default account's keys. With a switcher and
+no guard, a user viewing Secondary could submit from the Trade ticket and have
+the order execute in Primary. There are six order-submission call sites and
+several account reads, so rather than tag each one (which is how one gets
+missed), `installApiPortfolioTagging()` wraps `fetch` once in `main.jsx` and tags
+every same-origin `/api/*` request with `?portfolio=` when a non-default account
+is chosen; `api/trading.js` refuses `account`, `orders`, `order_status` and
+`order` with **409 `account_not_routed`** for any request carrying one, before
+anything reaches Alpaca. On the default account nothing is installed and every
+request is exactly as before. A test calls the real handler with a counting
+`fetch` and asserts **0 broker calls** for all four actions; it fails against the
+unguarded file, checked by restoring it. MP-3 replaces the refusal with
+per-account routing.
+
 **Two pre-existing holes closed in the same migration.** `book_model_diagnostics`
 had **RLS off** (open to anonymous writes -- the `book_regime_cvar` defect
 again). And **four SECURITY DEFINER writers were executable by anon** through the

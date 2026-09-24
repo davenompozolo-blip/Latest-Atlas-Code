@@ -95,3 +95,64 @@ test('no rows (feed failed) claims nothing: no active account, onDefault unknown
         assert.equal(st.mismatch, false);
     }
 });
+
+// ── Fail-closed /api tagging ──────────────────────────────────────────────
+import { tagApiUrl, installApiPortfolioTagging } from './activePortfolio.js';
+
+const ORIGIN = 'https://atlas.example.app';
+
+test('same-origin /api/* is tagged; Supabase, third parties and non-API paths are not', () => {
+    assert.equal(tagApiUrl('/api/trading?action=order', SECONDARY, ORIGIN), '/api/trading?action=order&portfolio=' + SECONDARY);
+    assert.equal(tagApiUrl(ORIGIN + '/api/trading?action=account', SECONDARY, ORIGIN), ORIGIN + '/api/trading?action=account&portfolio=' + SECONDARY);
+    for (const u of ['https://vdmojjszvvcithuxwexx.supabase.co/rest/v1/positions', 'https://evil.example/api/trading', '/assets/x.js', 'api/trading']) {
+        assert.equal(tagApiUrl(u, SECONDARY, ORIGIN), u, u);
+    }
+    // Already tagged (withPortfolio at the call site): never double-tagged.
+    const once = '/api/nexus-bench?portfolio=' + SECONDARY;
+    assert.equal(tagApiUrl(once, SECONDARY, ORIGIN), once);
+    // The default account: nothing tagged.
+    assert.equal(tagApiUrl('/api/trading?action=order', null, ORIGIN), '/api/trading?action=order');
+});
+
+test('installed tagging reaches an ORDER POST no call site remembered to tag', async () => {
+    const seen = [];
+    const win = { location: { origin: ORIGIN }, fetch: async (input) => { seen.push(typeof input === 'string' ? input : input.url || input.href); return { ok: true }; } };
+    assert.equal(installApiPortfolioTagging(win, SECONDARY), true);
+    await win.fetch('/api/trading?action=order', { method: 'POST', body: '{}' });
+    await win.fetch('https://vdmojjszvvcithuxwexx.supabase.co/rest/v1/vw_positions_current');
+    assert.equal(seen[0], '/api/trading?action=order&portfolio=' + SECONDARY);
+    assert.equal(seen[1], 'https://vdmojjszvvcithuxwexx.supabase.co/rest/v1/vw_positions_current');
+    // Idempotent: a second install does not wrap twice.
+    installApiPortfolioTagging(win, SECONDARY);
+    await win.fetch('/api/x');
+    assert.equal(seen[2], '/api/x?portfolio=' + SECONDARY);
+});
+
+test('on the default account nothing is installed: requests are exactly as before MP-2', () => {
+    const f = async () => {};
+    const win = { location: { origin: ORIGIN }, fetch: f };
+    assert.equal(installApiPortfolioTagging(win, null), false);
+    assert.equal(win.fetch, f);
+});
+
+test('api/trading refuses every ACCOUNT action for a non-default portfolio before touching the broker', async () => {
+    const { default: handler } = await import('../../api/trading.js');
+    const realFetch = globalThis.fetch;
+    let brokerCalls = 0;
+    globalThis.fetch = async () => { brokerCalls += 1; throw new Error('broker must not be called'); };
+    try {
+        for (const [method, action] of [['POST', 'order'], ['GET', 'account'], ['GET', 'orders'], ['GET', 'order_status']]) {
+            let status = null, body = null;
+            const res = {
+                setHeader() {}, status(s) { status = s; return this; },
+                json(b) { body = b; return this; }, end() { return this; },
+            };
+            await handler({ method, query: { action, portfolio: SECONDARY, client_order_id: 'x' }, body: { symbol: 'AAPL', qty: 1, side: 'buy' }, headers: {} }, res);
+            assert.equal(status, 409, action);
+            assert.equal(body.error, 'account_not_routed', action);
+        }
+        assert.equal(brokerCalls, 0, 'no request may reach Alpaca');
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+});

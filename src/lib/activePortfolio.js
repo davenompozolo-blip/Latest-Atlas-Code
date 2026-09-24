@@ -89,3 +89,53 @@ export function switcherState(rows, chosen = ACTIVE_PORTFOLIO) {
     const mismatch = Boolean(isPortfolioId(chosen) && active && active.id.toLowerCase() !== chosen.toLowerCase());
     return { options: list, active, onDefault, mismatch };
 }
+
+/**
+ * Tag a same-origin /api/* URL with the choice. Anything else -- Supabase
+ * (another origin), third-party hosts, non-API paths -- is returned untouched,
+ * and a URL that already carries ?portfolio= is never double-tagged.
+ */
+export function tagApiUrl(url, id = ACTIVE_PORTFOLIO, origin = null) {
+    if (!isPortfolioId(id) || typeof url !== 'string') return url;
+    let path = url;
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
+        if (!origin || url.indexOf(origin + '/') !== 0) return url;
+        path = url.slice(origin.length);
+    }
+    if (path.indexOf('/api/') !== 0) return url;
+    if (/[?&]portfolio=/.test(url)) return url;
+    return withPortfolio(url, id);
+}
+
+/**
+ * FAIL-CLOSED: tag every same-origin /api/* request with the choice, once, at
+ * startup. The account-level Alpaca actions in api/trading.js (account, orders,
+ * order status, ORDER SUBMISSION) still use the default account's keys until
+ * MP-3, and refuse any request that names another portfolio. Tagging at the
+ * transport means a call site cannot forget to name the account -- the
+ * alternative, a withPortfolio() at every one of ~20 call sites, is how one gets
+ * missed and an order meant for one account executes in the other.
+ * A no-op when no choice was made (the default account), so the default
+ * account's requests are byte-for-byte what they were.
+ */
+export function installApiPortfolioTagging(win = globalThis, id = ACTIVE_PORTFOLIO) {
+    if (!isPortfolioId(id) || !win || typeof win.fetch !== 'function') return false;
+    if (win.fetch.__atlasPortfolioTagged) return true;
+    const orig = win.fetch.bind(win);
+    const origin = (win.location && win.location.origin) || null;
+    const tagged = function (input, init) {
+        if (typeof input === 'string') {
+            input = tagApiUrl(input, id, origin);
+        } else if (typeof URL !== 'undefined' && input instanceof URL) {
+            const u = tagApiUrl(input.href, id, origin);
+            if (u !== input.href) input = new URL(u);
+        } else if (typeof Request !== 'undefined' && input instanceof Request) {
+            const u = tagApiUrl(input.url, id, origin);
+            if (u !== input.url) input = new Request(u, input);
+        }
+        return orig(input, init);
+    };
+    tagged.__atlasPortfolioTagged = true;
+    win.fetch = tagged;
+    return true;
+}

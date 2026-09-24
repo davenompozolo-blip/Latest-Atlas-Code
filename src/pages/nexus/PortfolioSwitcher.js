@@ -142,5 +142,7 @@ export function PortfolioBanner() {
         e('strong', null, 'Viewing ' + st.active.name + '. '),
         'Positions, P&L, account and live risk are this account’s. ',
         'Nightly analytics — verdicts, segments, conviction, contribution, factor betas and the VaR backtest — ',
-        'are computed for the default account only, and are withheld here rather than shown against the wrong book.');
+        'are computed for the default account only, and are withheld here rather than shown against the wrong book. ',
+        e('strong', null, 'Trading is off on this account'),
+        ' until orders are routed per account \u2014 switch to the default account to trade.');
 }
