@@ -25,6 +25,30 @@
 // basis" are different facts and need different sentences -- the same rule
 // `institutionView.js` states for not_loaded / no_framework / failed, and the
 // same family as a transport failure rendering as a claim about the data.
+//
+// ------------------------------------------------------------
+// SECOND DEFECT, found auditing the first fix (2026-09-24).
+//
+// The first version read `income_quarterly` as "the quarterly basis carries
+// periods". IT IS ONE STATEMENT'S ROW COUNT. `vw_company_fundamentals` INNER
+// JOINs all three statements, so a basis renders only where three share a
+// fiscal date -- which is why the view publishes `aligned_annual_periods` and
+// not `income_annual`. There was no quarterly equivalent, so the module was
+// reading the only quarterly number on offer and it was the wrong one.
+//
+// Live on SNDK (income statement only -- the half-loaded symbol EQ-2 records):
+// `income_quarterly = 12`, aligned quarterly periods **0**. The panel offered
+// "Show the quarterly statements ->", the switch returned no rows, and this
+// module then called a KNOWN, NAMED state -- incomplete, stated on the same
+// row by `is_complete = false` -- a "fault to chase". A dead-end button and a
+// phantom fault, in the module written to stop exactly that sentence.
+//
+// Two corrections:
+//   * read `aligned_quarterly_periods` (EQ-9c adds it) -- the count that
+//     predicts whether the basis returns rows;
+//   * test INCOMPLETE **before** the period branches. A symbol whose
+//     statements did not all land cannot render on any basis, so offering a
+//     switch is offering a dead end, and a contradiction claim is false.
 // ============================================================
 
 export const NOT_LOADED    = 'not_loaded';     // nothing for this symbol, on any basis
@@ -38,7 +62,7 @@ const count = v => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
  * @param {?Object} coverage  a `vw_company_statement_coverage` row, or null
  * @param {string}  period    the basis the tab asked for: 'annual' | 'quarterly'
  * @returns {{
- *   state: 'not_loaded'|'period_absent'|'incomplete',
+ *   state: 'not_loaded'|'period_absent'|'incomplete'|'coverage_disagrees',
  *   requested: string,
  *   available?: string,        // the basis that DOES carry periods
  *   availableCount?: number,   // how many periods it carries
@@ -56,12 +80,32 @@ export function statementPeriodAvailability(coverage, period) {
     const c = coverage || null;
 
     const annual    = count(c && c.aligned_annual_periods);
-    const quarterly = count(c && c.income_quarterly);
+    // ALIGNED, never `income_quarterly`: the consumer view inner-joins the
+    // three statements, so one statement's row count does not say whether the
+    // basis renders. SNDK carried 12 income-quarterly rows and 0 aligned.
+    const quarterly = count(c && c.aligned_quarterly_periods);
     const present   = count(c && c.statements_present);
+    // Read only to decide whether the symbol is loaded at all -- a symbol can
+    // carry income rows on a basis that cannot render, and that is still a
+    // symbol somebody loaded.
+    const incomeQuarterly = count(c && c.income_quarterly);
 
     // Nothing anywhere: the symbol has genuinely never been loaded.
-    if (!c || (annual === 0 && quarterly === 0 && present === 0)) {
+    if (!c || (annual === 0 && quarterly === 0 && present === 0 && incomeQuarterly === 0)) {
         return { state: NOT_LOADED, requested };
+    }
+
+    // INCOMPLETE OUTRANKS BOTH PERIOD BRANCHES, and the order is the fix.
+    // The three statements did not all land, so no basis can satisfy the join:
+    // offering a switch would be a dead end, and calling the empty result a
+    // contradiction would name a fault for a state the row already declares.
+    // `present === 0` keeps a genuinely quarterly-only symbol out of here --
+    // `statements_present` is annual-scoped, so absence of annual statements
+    // is not evidence of an incomplete load.
+    if (present > 0 && c.is_complete !== true) {
+        const out = { state: INCOMPLETE, requested, statementsPresent: present };
+        if (c.source) out.source = c.source;
+        return out;
     }
 
     // THE REQUESTED BASIS CLAIMS PERIODS AND THE VIEW RETURNED NONE.
@@ -91,13 +135,8 @@ export function statementPeriodAvailability(coverage, period) {
         return out;
     }
 
-    // Statements landed but no period carries all three.
-    if (present > 0 && c.is_complete !== true) {
-        const out = { state: INCOMPLETE, requested, statementsPresent: present };
-        if (c.source) out.source = c.source;
-        return out;
-    }
-
+    // INCOMPLETE is handled above, before the period branches -- reaching here
+    // means the symbol is loaded and complete on nothing the tab can show.
     return { state: NOT_LOADED, requested };
 }
 
