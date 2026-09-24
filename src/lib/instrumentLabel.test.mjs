@@ -72,3 +72,28 @@ test('the map covers every value the database currently holds', () => {
             raw + ' is stored but unmapped');
     }
 });
+
+// --- The lookup must not return anything it inherited -------------------
+// Found by probing the values rather than by reading the module: an object
+// literal inherits from Object.prototype, so `KIND['constructor']` was the
+// `Object` FUNCTION and `KIND['__proto__']` was `Object.prototype` -- both
+// truthy, so both were returned where a label belongs. Only the all-lowercase
+// members leak, because the lookup lower-cases first.
+
+test('an inherited member is never returned as a label', () => {
+    for (const raw of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+        const out = instrumentLabel(raw);
+        assert.equal(typeof out, 'string', raw + ' did not render as a string');
+        // It falls through to the humanise path like any other unknown value.
+        assert.equal(out, raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+            .replace(/^./, c => c.toUpperCase()).replace(/(?<=.)[A-Z]/g, c => c.toLowerCase()));
+    }
+});
+
+test('the kind map carries no prototype and cannot be re-pointed', () => {
+    assert.equal(Object.getPrototypeOf(INSTRUMENT_KINDS), null);
+    assert.ok(Object.isFrozen(INSTRUMENT_KINDS));
+    // A caller that could mutate this would re-label every surface at once.
+    assert.throws(() => { 'use strict'; INSTRUMENT_KINDS.stock = 'Wrong'; });
+    assert.equal(instrumentLabel('Stock'), 'Equity');
+});

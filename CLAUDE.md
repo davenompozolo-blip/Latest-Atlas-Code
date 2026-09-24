@@ -6011,6 +6011,47 @@ and proves nothing; `Scenario EV` is genuinely 1 and the label map ships in full
 because the strings checked were render strings, not query strings. That is luck,
 not method.
 
+### A lookup on an object literal can return something nobody stored (2026-09-24)
+
+#824 merged with **no external review** -- the `@coderabbitai review` I posted
+arrived after the merge, and the one before it aborted on a head change -- so
+the merged diff was audited against this file's recorded failure modes, the
+same procedure EQ-9 and EQ-9c used. It found one, in the module that change
+introduced.
+
+`instrumentLabel` looked its kind up in an object literal, which inherits from
+`Object.prototype`. So a stored value naming an inherited member returned it:
+
+```
+instrumentLabel('constructor')  ->  [Function: Object]
+instrumentLabel('__proto__')    ->  [object Object]
+```
+
+Both truthy, so both passed the `if (known) return known` gate and reached the
+renderer where a string belongs. **Exactly two values can do it** -- the lookup
+lower-cases first, so `toString`, `valueOf` and `hasOwnProperty` fall through
+to the humanise path harmlessly, and only the all-lowercase members leak. That
+narrowness is what makes it invisible on inspection: the line reads correctly
+and is correct for every value anyone would think to try. **Found by probing
+the values, not by reading the module** -- the same method that found the NaN
+CHECK leak and the three-valued-logic hole.
+
+`Object.create(null)` plus a `typeof known === 'string'` gate, which is two
+independent closures rather than one: the map can no longer carry an inherited
+member, and a non-string could not be returned even if it did.
+
+**The map and `BBB_DEFAULTS` are both FROZEN, and for the same reason.**
+`BBB_DEFAULTS` is the baseline `scenarioEdited` measures against; the lazy deep
+copy at the `useState` stops the SLIDERS writing through to it and does nothing
+about a caller reaching for the export. Move that baseline and an untouched
+scenario reads as edited, or an edited one as untouched, with nothing on screen
+to say the gate has stopped working -- the hazard #824's own entry claims to
+have closed, closed only on the half it named. The legs are frozen
+individually: freezing the outer object leaves every lever writable.
+
+4 new tests, all four failing against the merged modules, checked by restoring
+them rather than assumed.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

@@ -27,7 +27,17 @@
 // ============================================================
 
 // Keyed on the lower-cased stored value. Kinds, not spellings.
-const KIND = {
+//
+// NULL PROTOTYPE, AND THAT IS NOT TIDYING. An object literal inherits from
+// `Object.prototype`, so a lookup of a stored value that happens to name an
+// inherited member returns it: `KIND['constructor']` is the `Object` FUNCTION
+// and `KIND['__proto__']` is `Object.prototype`, both truthy, so both were
+// returned as the label. React is then handed a function or an object where a
+// string belongs. Exactly two stored values could do it -- the lookup
+// lower-cases first, so `toString` and `valueOf` fall through harmlessly and
+// only the all-lowercase members leak -- which is why it is invisible on
+// inspection and found only by trying the values.
+const KIND = Object.freeze(Object.assign(Object.create(null), {
     stock:     'Equity',
     equity:    'Equity',
     us_equity: 'Equity',
@@ -36,7 +46,7 @@ const KIND = {
     us_option: 'Option',
     cash:      'Cash',
     crypto:    'Crypto',
-};
+}));
 
 /**
  * @param {?string} assetClass a raw `assets.asset_class` value
@@ -48,14 +58,18 @@ export function instrumentLabel(assetClass) {
     if (!raw) return null;
 
     const known = KIND[raw.toLowerCase()];
-    if (known) return known;
+    if (typeof known === 'string') return known;
 
     // Unknown vocabulary: present it readably and claim nothing about it.
     const spaced = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
     return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
-/** The kinds this module recognises, for tests and for callers that group. */
+/**
+ * The kinds this module recognises, for tests and for callers that group.
+ * Frozen: a caller that mutated it would re-point the labels for every
+ * surface at once, with nothing on screen to say so.
+ */
 export const INSTRUMENT_KINDS = KIND;
 
 export default instrumentLabel;
