@@ -5626,6 +5626,92 @@ permanently absent. Correct, and worth writing down: it is a gate that can
 never pass in the benign direction, and the next reader should not hunt for a
 bug behind an empty tile.
 
+### Every book read is scoped before a second book exists (2026-09-24)
+
+MP-0, phase 0 of multi-portfolio support. A second Alpaca paper account (Atlas
+Secondary) now exists under its own key pair (`ATLAS_ALPACA_API_KEY` /
+`ATLAS_ALPACA_API_SECRET`, Vercel Production and Supabase function secrets).
+Nothing reads or writes it yet, **and nothing may until the writers are
+account-aware (MP-1).**
+
+**The four book tables carry `portfolio_id`; almost nothing filtered on it.**
+25 views and 5 functions read `positions` / `account_snapshots` /
+`transactions` / `portfolio_equity_curve` unscoped, and so did 10 call sites in
+`src/` and `api/`. With a second account's rows present, every one would have
+**summed two books** -- NAV, weights, risk, verdicts -- with nothing on screen
+to say so. Some would be wrong in subtler ways: `vw_positions_current` took
+`max(as_of_date)` across ALL portfolios and `vw_sleeve_headroom` the newest
+equity snapshot from ANY account.
+
+**The writers are worse, and are MP-1's job.** `sync_alpaca_positions` and
+`sync_alpaca_transactions` read ONE global key pair and write the result into
+EVERY Alpaca portfolio row. Registering Secondary as a portfolio today would
+copy Primary's book into it. **Do not insert a second `portfolios` row until
+MP-1 has shipped.**
+
+**One choke point.** `atlas_active_portfolio()` returns the portfolio every
+book-scoped reader shows; it is `portfolios.is_default` today (at most one row,
+by unique partial index). `vw_active_positions`, `vw_active_account_snapshots`,
+`vw_active_transactions` and `vw_active_equity_curve` filter the base tables
+to it. **Read those, never the base table, for anything that means "my book".**
+The account switcher (MP-2) changes that function's body and nothing else.
+Call it as `(select public.atlas_active_portfolio())` so it is one InitPlan,
+not a per-row call. It is SECURITY DEFINER because a function inside a view runs
+as the QUERYING role and `portfolios` is under RLS.
+
+**A single-table view owned by `postgres` is auto-updatable.** Supabase's
+default grants would have let anon INSERT/UPDATE/DELETE `positions` THROUGH
+`vw_active_positions` with RLS bypassed. All four are revoked and granted
+SELECT only; verified by a real anon POST refused with `42501`.
+
+**Three readers stay a union on purpose** -- "held anywhere" is the right
+meaning: `atlas_check_universe_price_coverage`, `atlas_refresh_asset_sectors`,
+`refresh_universe_correlations`. The last still takes a GLOBAL
+`max(as_of_date)`, so a lagging account's names would drop out of the matrix;
+**make it per-portfolio in MP-1.**
+
+The rewrite is textual against the live definitions, each bare reference
+aliased back to the table's own name so qualified columns
+(`account_snapshots.equity`) still resolve, with every replacement count
+asserted and a re-patch refused. The SQL rewrite and an independent Python one
+agree byte-for-byte on all 33 definitions. **Proven by `EXCEPT ALL` both ways
+over 36 objects** -- the 25 rewritten views, 8 downstream (`vw_nexus_holdings`,
+`vw_risk_analysis`, `vw_book_mctr`, `vw_position_nav_daily` at 11,717 rows ...)
+and 3 function outputs -- in one REPEATABLE READ transaction so the 5-minute
+sync cannot produce a false diff: **0 rows differ either way.** Timings level
+within noise. `vw_earnings_calendar` is `security_invoker=on` and keeps it.
+
+Two unfiltered `positions.select('asset_id')` reads (`advanced-chart.js`,
+`NexusRealized.js`) were also a 1,000-row-cap defect: 10,963 rows of history
+for a "held" set. They read `vw_positions_current` now.
+`src/lib/bookTableReads.test.mjs` fails any direct book-table read in `src/` or
+`api/`; it finds exactly the 10 pre-fix sites when they are restored. **No CI
+workflow runs the node suite** -- run it with `node --test`.
+
+### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
+
+Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`
+exports `null` when `VITE_SUPABASE_ANON_KEY` is absent at BUILD time, and this
+container has none. `sb` is then a constant, and rollup deletes everything after
+`if (!sb) return` -- which is why a `console.log` at the top of an effect shipped
+and the query eight lines below it did not.
+
+Measured: a local build without the key carries `vw_active_positions` **0**
+times; the same source built with the key carries it **2** times. The **live
+production bundle** carries `equity_fundamentals_derived` **2** times and
+`compute_ticker_derived` once. **EQ-5b's "0 in the bundle, so `derived` has
+always been null in the deployed app" was measured against a keyless local
+build and is wrong**; the code path has shipped. Its fix (reading the statement
+layer directly) stands on its own merits. The control string EQ-9 used
+(`equity_fundamentals_derived` = 0) proved nothing for the same reason.
+
+**Build with the key before grepping `dist/`**, or grep the deployed bundle:
+
+```bash
+VITE_SUPABASE_ANON_KEY=<publishable key> npx vite build
+curl -s https://<host>/ | grep -o 'assets/[^"]*\.js'   # then fetch and grep
+```
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

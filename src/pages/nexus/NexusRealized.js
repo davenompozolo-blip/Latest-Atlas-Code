@@ -561,7 +561,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
         if (!sb) return;
         Promise.all([
             sb.from('assets').select('id, symbol, name'),
-            sb.from('positions').select('asset_id'),
+            sb.from('vw_positions_current').select('asset_id'),
         ]).then(res => {
             if (!ok(true)) return;
             const held = new Set((res[1].data || []).map(p => p.asset_id).filter(Boolean));

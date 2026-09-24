@@ -443,7 +443,7 @@ export function AdvancedChart(props) {
         if (!sb) { setCatalogLoading(false); return; }
         Promise.all([
             sb.from('assets').select('id, symbol, name, asset_class'),
-            sb.from('positions').select('asset_id'),
+            sb.from('vw_positions_current').select('asset_id'),
         ]).then(function(results) {
             var assets  = results[0].data || [];
             var posSet  = {};

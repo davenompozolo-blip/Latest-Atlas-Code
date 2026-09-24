@@ -121,7 +121,7 @@ function MarketRibbon() {
         if (!sb) return;
         async function load() {
             const { data: risk } = await sb.from('vw_risk_analysis').select('symbol,annual_vol,dollar_var_95_daily,weight');
-            const { data: snap } = await sb.from('account_snapshots').select('equity,cash').order('as_of', { ascending: false }).limit(1);
+            const { data: snap } = await sb.from('vw_active_account_snapshots').select('equity,cash').order('as_of', { ascending: false }).limit(1);
             if (!risk || !snap?.[0]) return;
 
             const nav      = snap[0].equity || 0;
@@ -834,7 +834,7 @@ function PretradePanel({ cand, onClose, onTradeExec }) {
 // ── TradeTicket (adjust quantum + execute via Alpaca) ─────────
 async function fetchNav() {
     if (!sb) return 0;
-    const { data } = await sb.from('account_snapshots').select('equity').order('as_of', { ascending: false }).limit(1);
+    const { data } = await sb.from('vw_active_account_snapshots').select('equity').order('as_of', { ascending: false }).limit(1);
     return data?.[0]?.equity || 0;
 }
 async function fetchQuote(ticker) {
