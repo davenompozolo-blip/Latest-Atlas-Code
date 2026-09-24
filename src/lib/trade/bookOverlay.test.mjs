@@ -57,10 +57,17 @@ test('no equity figure: held stays held, the weight is ABSENT rather than 0', ()
     assert.equal(arm.heldWeightPct, null);
 });
 
-test('an empty or unavailable book marks nothing held, whatever the stored row says', () => {
-    for (const book of [null, { positions: [], account: { equity: 1 } }]) {
+test('an EMPTY book marks nothing held, whatever the stored row says', () => {
+    const out = overlayActiveBook(STORED, { available: true, positions: [], account: { equity: 1 } });
+    assert.ok(out.every((r) => r.bookState === 'unowned'));
+});
+
+test('an UNREADABLE book is unknown, never unowned: no book state, no weight', () => {
+    for (const book of [null, { available: false, positions: [], account: { equity: 1 } }]) {
         const out = overlayActiveBook(STORED, book);
-        assert.ok(out.every((r) => r.bookState === 'unowned'));
+        assert.ok(out.every((r) => r.bookState === null), 'a failed read must not publish "unowned"');
+        assert.ok(out.every((r) => r.heldWeightPct === null));
+        assert.equal(out.find((r) => r.symbol === 'SNDK').rank, 1, 'stock facts survive');
     }
 });
 

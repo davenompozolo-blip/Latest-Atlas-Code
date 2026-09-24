@@ -23,6 +23,12 @@
  * @returns {Array<object>} new rows; inputs are not mutated
  */
 export function overlayActiveBook(members, book) {
+    // An unreadable book is UNKNOWN, not empty: every name gets a null book
+    // state and weight, never "unowned". Marking the whole universe unowned
+    // because a read failed is a claim about the account nobody measured.
+    if (!book || book.available === false) {
+        return (members || []).map((m) => ({ ...m, bookState: null, heldWeightPct: null }));
+    }
     const bySymbol = new Map();
     for (const p of (book && book.positions) || []) {
         bySymbol.set(p.symbol, (bySymbol.get(p.symbol) || 0) + Number(p.marketValue || 0));

@@ -99,6 +99,10 @@ export async function loadUniverse({ asOf = null } = {}) {
     const excludedRows = (heldExcludedRes.data || []).concat(excludedRes.data || [])
         .filter((r) => (seen.has(r.symbol) ? false : (seen.add(r.symbol), true)));
     const members = { data: (eligibleRes.data || []).concat(excludedRows), error: eligibleRes.error };
+    // A failed held-names query does not refuse the universe (a supplementary
+    // read must not take down the primary one), but it is carried so the
+    // drawer can say its list of held-but-ineligible names may be short.
+    const heldExcludedComplete = !heldExcludedRes.error;
     const excludedTotal = snap.data ? snap.data.excluded_count : (excludedRes.data || []).length;
 
     return {
@@ -120,6 +124,8 @@ export async function loadUniverse({ asOf = null } = {}) {
         notes: snap.data ? snap.data.notes : null,
         members: overlayActiveBook((members.data || []).map(normaliseMember), book),
         bookAvailable: !!book.available,
+        bookReason: book.available ? null : (book.reason || 'the active book did not load'),
+        heldExcludedComplete,
         rules: rules.data || [],
     };
 }
@@ -238,7 +244,10 @@ export async function loadBook() {
 
     const a = acct.data && acct.data.length ? acct.data[0] : null;
     return {
-        available: true,
+        // A failed positions read is an UNKNOWN book, never an empty one: an
+        // empty positions array would read downstream as "holds nothing".
+        available: !pos.error,
+        reason: pos.error ? 'positions did not load: ' + (pos.error.message || pos.error) : null,
         asOfDate: asOf,
         positions,
         account: a ? {
