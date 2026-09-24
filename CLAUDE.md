@@ -5723,6 +5723,54 @@ file's own rule: a fact about a database is measured in that database.
 reverting. One of the two that pass either way is deliberate -- it asserts the
 precedence change did not swallow the AAPL case the first fix existed for.
 
+### A review has to be ASKED for here, and I nearly overwrote the entry saying so (2026-09-24)
+
+The two entries above say CodeRabbit declines this repo for having fewer than
+10 stars. **That is right, and it is confirmed verbatim** -- once PR #820 was
+taken out of draft the bot said:
+
+> This repository does not receive automatic reviews because it has fewer than
+> 10 stars.
+
+**What produces a review is a `@coderabbitai review` COMMENT on the PR.** That
+is how #804 happened -- the review this file cites for four of its own findings
+-- a comment at 10:44, the review at 10:45, and CodeRabbit's own note that the
+command "is applicable only when automatic reviews are paused". It returned two
+correctness findings, both right, both now entries here.
+
+**A draft PR shows a different reason, which masks the real one.** On a draft
+the check reads *"Review skipped: draft pull request"*; take it out of draft
+and the star-count reason appears underneath. So the cheaper gate is the only
+one visible on a draft, and every PR in this session is opened as a draft by
+standing instruction.
+
+**I read that draft notice, found the #804 review, and concluded the repo IS
+auto-reviewed and the draft state was the whole story.** I wrote that
+correction into this file and pushed it, and it was wrong: the #804 review was
+MANUALLY TRIGGERED, by a comment sitting four entries up the same thread I was
+reading at the time. The commit never reached `main` -- #820 merged the code
+fix a few seconds before it landed -- so the record here was never actually
+damaged, which is luck and not diligence.
+
+**A single positive observation does not identify the mechanism that produced
+it.** This file already says *a plausible explanation for a zero is not a
+measurement of one*; the same holds for a one. I had the outcome (a review
+exists) and inferred the cause (reviews happen automatically) without once
+checking how that particular review was requested.
+
+**And the second-order lesson, which is why this is written down.** The entry I
+was overwriting was correct, and I overwrote it while quoting this file's own
+rule that a wrong entry is worse than none. **Correcting a record can introduce
+an error as easily as writing one, and it is harder to catch afterwards,
+because a correction reads as the more considered claim.** Check the mechanism,
+not just the outcome, before overwriting something that was already right.
+
+**Practical rule: post `@coderabbitai review` on any PR worth reviewing.** It
+is one free comment, and on the single occasion it has been used here it caught
+two real defects. EQ-9, #819 and #820 all merged with no external review simply
+because nobody asked for one -- and EQ-9c, found by self-audit after the fact,
+was a live defect.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
