@@ -122,7 +122,8 @@ When operating Atlas via remote control, use these session roles:
   `EXCEPT ALL` both ways and time it against the 3s anon cap.
 - **Add a scheduled job**: `cron.job`, logging to `sync_log`.
 - **Add a broker account**: a `broker_accounts` row (credential_prefix +
-  alpaca_account_number) + a `portfolios` row + the secret pair.
+  alpaca_account_number) + a `portfolios` row + the `<prefix>_KEY/_SECRET`
+  pair in BOTH Supabase function secrets (syncs) and Vercel env (trading).
 
 ## Data Trust Layer
 
@@ -6044,6 +6045,50 @@ header (grep-asserted); they run on Vercel only after merge, since previews are
 SSO-gated. The switcher's logic is unit-tested (`activePortfolio.test.mjs`) and
 the strings are in a keyed bundle; **the render is not proven** -- the browser in
 this container cannot reach Supabase.
+
+### Trading follows the switch; the Ledger records which book (2026-09-24)
+
+MP-3. `api/trading.js` routes ACCOUNT actions -- `account`, `orders`,
+`order_status`, `order` -- to the portfolio named by `?portfolio=` (tagged onto
+every same-origin `/api/*` call since MP-2). It replaces MP-2's blanket 409.
+
+**Resolution is server-side and never trusts the client for a key.** The
+portfolio id is looked up with the service key -> its `broker_accounts` row ->
+`<credential_prefix>_KEY/_SECRET` from Vercel's environment. Then the **same
+identity gate as the syncs**: `/v2/account` must report the registered
+`alpaca_account_number`, re-checked fresh on every ORDER (cached 5 min for
+reads, keyed by prefix -- a static mapping, safe to share across requests).
+Anything unresolvable -- unknown portfolio, unregistered, keys not configured,
+identity mismatch -- is a 409 `account_not_routed` BEFORE the broker is
+contacted. No `?portfolio=` is the default account's `ALPACA_API_*`, byte for
+byte as before: no lookup, no extra round trip. Market data stays on the
+default pair; it answers the same for any.
+
+`tradingRouting.test.mjs` runs the real handler with Supabase AND Alpaca
+stubbed at `fetch`, so every request is observed: a routed order uses only the
+Secondary pair and checks identity first; a mismatch sends nothing to
+`/orders`. 3 of 5 fail against the MP-2 file (the other two are refusals it
+already made).
+
+**Provenance had to ship WITH routing, because the Ledger cannot be
+backfilled.** `decisions` is append-only (`deny_mutation`) and hash-chained, so
+a Secondary trade written without its portfolio could never be attributed
+afterwards. `decisions.portfolio_id` is inside the hash from **v3** --
+`decisions_canon` appends it only when `hash_version >= 3`, so all 185 v1/v2
+rows hash byte-for-byte as before (asserted in the migration against digests
+taken before the rewrite). The hash trigger fills a missing value from
+`atlas_active_portfolio()`, so the browser's own inserts (deferred and passed
+decisions) are attributed from the request header with no client change; the
+service role sends no header, so `recordExecution` sets it explicitly.
+`orders.portfolio_id` was backfilled (55/55) and defaults to
+`atlas_default_portfolio()`. **Found in my own diff before shipping:** the default
+path sent no `portfolio_id` and `orders` has no trigger, so new Primary orders
+would have landed NULL right after the backfill made every old one explicit.
+
+Legacy `decisions` rows keep `portfolio_id` NULL = the default portfolio.
+**The Ledger's CONSUMERS are not yet scoped** -- `vw_calibration`,
+`vw_brier_trend`, the Ledger page -- and will mix accounts once Secondary
+trades. That is MP-4; the record being right is what could not wait.
 
 ### Withholding made two old fallbacks visible on the first day (2026-09-24)
 

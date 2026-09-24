@@ -8,9 +8,16 @@ import { createClient as _sbCreateClient } from '@supabase/supabase-js';
 //   GET  ?action=search&q=apple            — symbol search
 //   POST ?action=order                     — submit order (paper or live)
 //
+// Accounts (MP-3): account actions -- account, orders, order_status, order --
+// run against the portfolio named by ?portfolio=<id>, resolved SERVER-SIDE to
+// that portfolio's broker_accounts row and its own credential pair, behind an
+// identity gate on /v2/account. No ?portfolio= means the default account's
+// ALPACA_API_* keys, exactly as before. Keys are never taken from the client.
+//
 // Environment variables:
-//   ALPACA_API_KEY        — required
+//   ALPACA_API_KEY        — required (default account; also all market data)
 //   ALPACA_API_SECRET     — required
+//   <credential_prefix>_KEY / _SECRET — one pair per further broker account
 //   ALPACA_PAPER          — 'true' (default) | 'false' for live
 //   ATLAS_ALLOWED_ORIGIN  — optional CORS allow-list
 
@@ -51,6 +58,76 @@ function cors(res) {
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'content-type');
     }
+}
+
+// ── Account routing (MP-3) ───────────────────────────────────────────────────
+// Which broker account an ACCOUNT action runs against. Market data (quote,
+// chart, search, options) answers the same for any key pair and always uses
+// the default one.
+
+var PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function routeError(msg) {
+    var e = new Error(msg);
+    e.route = true;          // -> 409 account_not_routed; never reaches the broker
+    return e;
+}
+
+// credential_prefix -> { acct, at }: the account a key pair was VERIFIED to
+// belong to. A static mapping (a key pair does not change account), so sharing
+// it across concurrent requests leaks nothing; order submission re-verifies.
+var _verified = {};
+var VERIFY_TTL_MS = 5 * 60 * 1000;
+
+async function accountContext(req, opts) {
+    var p = req && req.query ? req.query.portfolio : null;
+    if (!(typeof p === 'string' && PORTFOLIO_RE.test(p))) {
+        return { hdrs: alpacaHdrs(), base: brokerBase(), paper: isPaper(), portfolioId: null, routed: false };
+    }
+    var sb = sbService();
+    if (!sb) throw routeError('account routing needs the Supabase service key, which is not configured on this deployment');
+    var q = await sb.from('portfolios')
+        .select('id, broker_accounts(credential_prefix, alpaca_account_number, is_paper)')
+        .eq('id', p.toLowerCase())
+        .maybeSingle();
+    if (q.error) throw routeError('portfolio lookup failed: ' + q.error.message);
+    if (!q.data) throw routeError('no portfolio ' + p);
+    var b = q.data.broker_accounts;
+    if (!b || !b.credential_prefix || !b.alpaca_account_number) {
+        throw routeError('portfolio is not registered to a broker account');
+    }
+    var key = process.env[b.credential_prefix + '_KEY'];
+    var secret = process.env[b.credential_prefix + '_SECRET'];
+    if (!key || !secret) {
+        throw routeError(b.credential_prefix + '_KEY / _SECRET are not configured on this deployment');
+    }
+    var ctx = {
+        hdrs: { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret, accept: 'application/json' },
+        base: b.is_paper ? 'https://paper-api.alpaca.markets/v2' : 'https://api.alpaca.markets/v2',
+        paper: !!b.is_paper,
+        portfolioId: q.data.id,
+        accountNumber: b.alpaca_account_number,
+        routed: true,
+    };
+    // IDENTITY GATE -- the syncs' rule (MP-1), applied to the path that can
+    // place an order: the credentials must report the account the portfolio is
+    // registered to, or nothing is sent. A mis-set prefix would otherwise
+    // execute one account's order in another, looking healthy.
+    var v = _verified[b.credential_prefix];
+    var fresh = opts && opts.fresh;
+    if (fresh || !v || v.acct !== b.alpaca_account_number || Date.now() - v.at > VERIFY_TTL_MS) {
+        var r = await fetchT(ctx.base + '/account', { headers: ctx.hdrs }, 8000);
+        if (!r.ok) throw routeError('broker account check failed: HTTP ' + r.status);
+        var a = await r.json();
+        if (!a || a.account_number !== b.alpaca_account_number) {
+            delete _verified[b.credential_prefix];
+            throw routeError('IDENTITY MISMATCH: ' + b.credential_prefix + '_* report account '
+                + String(a && a.account_number) + ', portfolio is registered to '
+                + b.alpaca_account_number + '. Nothing was sent to the broker.');
+        }
+        _verified[b.credential_prefix] = { acct: a.account_number, at: Date.now() };
+    }
+    return ctx;
 }
 
 // ── Quote ─────────────────────────────────────────────────────────────────────
@@ -126,14 +203,15 @@ async function getBars(symbol, range) {
 
 // ── Account ───────────────────────────────────────────────────────────────────
 
-async function getAccount() {
-    var r = await fetchT(brokerBase() + '/account', { headers: alpacaHdrs() }, 8000);
+async function getAccount(ctx) {
+    var r = await fetchT(ctx.base + '/account', { headers: ctx.hdrs }, 8000);
     if (!r.ok) throw new Error('Alpaca account HTTP ' + r.status);
     var a = await r.json();
     var eq  = parseFloat(a.equity)      || 0;
     var leq = parseFloat(a.last_equity) || 0;
     return {
-        mode:        isPaper() ? 'PAPER' : 'LIVE',
+        mode:        ctx.paper ? 'PAPER' : 'LIVE',
+        account_number: a.account_number || null,
         equity:      eq,
         last_equity: leq,
         cash:        parseFloat(a.cash)                    || 0,
@@ -172,7 +250,7 @@ async function searchAssets(q) {
 
 // ── Order ─────────────────────────────────────────────────────────────────────
 
-async function submitOrder(body) {
+async function submitOrder(ctx, body) {
     var payload = {
         symbol:        ((body.symbol || '').toUpperCase()),
         side:          body.side   || 'buy',
@@ -188,8 +266,8 @@ async function submitOrder(body) {
     if (body.stopPrice)  payload.stop_price  = String(body.stopPrice);
     if (body.client_order_id) payload.client_order_id = body.client_order_id;
 
-    var hdrs = Object.assign({}, alpacaHdrs(), { 'Content-Type': 'application/json' });
-    var r = await fetchT(brokerBase() + '/orders', {
+    var hdrs = Object.assign({}, ctx.hdrs, { 'Content-Type': 'application/json' });
+    var r = await fetchT(ctx.base + '/orders', {
         method: 'POST', headers: hdrs, body: JSON.stringify(payload),
     }, 10000);
     var j = await r.json();
@@ -216,7 +294,7 @@ function sbService() {
     } catch (_) { return null; }
 }
 
-async function recordExecution(body, order) {
+async function recordExecution(ctx, body, order) {
     var sb = sbService();
     if (!sb) return;   // ledger not configured — degrade silently, the trade still stands
     try {
@@ -232,6 +310,9 @@ async function recordExecution(body, order) {
             status:           (order && order.status) || 'submitted',
             updated_at:       new Date().toISOString(),
             raw:              order || null,
+            // MP-3: the account that executed it. NULL only reaches here on the
+            // default path, which the database attributes to the default.
+            portfolio_id:     ctx.portfolioId || undefined,
         }, { onConflict: 'client_order_id' }).select('id').single();
 
         if (up.error || !up.data) return;
@@ -250,6 +331,10 @@ async function recordExecution(body, order) {
                     conviction:      L.conviction != null ? Math.round(L.conviction) : null,
                     signal_snapshot: L.snapshot || null,
                     rationale:       L.rationale || null,
+                    // MP-3: in the Ledger hash from v3. The service role sends
+                    // no header, so the trigger alone would attribute every
+                    // order to the default account -- set it explicitly.
+                    portfolio_id:    ctx.portfolioId || undefined,
                 });
             }
         }
@@ -260,10 +345,10 @@ async function recordExecution(body, order) {
 
 // ── Order history ─────────────────────────────────────────────────────────────
 
-async function getOrders(status, limit) {
-    var url = brokerBase() + '/orders?status=' + (status || 'all')
+async function getOrders(ctx, status, limit) {
+    var url = ctx.base + '/orders?status=' + (status || 'all')
         + '&limit=' + (limit || 50) + '&direction=desc';
-    var r = await fetchT(url, { headers: alpacaHdrs() }, 8000);
+    var r = await fetchT(url, { headers: ctx.hdrs }, 8000);
     if (!r.ok) throw new Error('Alpaca orders HTTP ' + r.status);
     var orders = await r.json();
     return (Array.isArray(orders) ? orders : []).map(function (o) {
@@ -287,9 +372,9 @@ async function getOrders(status, limit) {
 
 // ── Order by client_order_id ──────────────────────────────────────────────────
 
-async function getOrderByClientId(clientOrderId) {
-    var hdrs = alpacaHdrs();
-    var url = brokerBase() + '/orders:by_client_order_id?client_order_id=' + encodeURIComponent(clientOrderId);
+async function getOrderByClientId(ctx, clientOrderId) {
+    var hdrs = ctx.hdrs;
+    var url = ctx.base + '/orders:by_client_order_id?client_order_id=' + encodeURIComponent(clientOrderId);
     var r = await fetchT(url, { headers: hdrs }, 8000);
     if (r.status === 404) return null;
     if (!r.ok) throw new Error('Alpaca order lookup HTTP ' + r.status);
@@ -490,22 +575,23 @@ export default async function handler(req, res) {
 
     var action = ((req.query && req.query.action) || '').toLowerCase();
 
-    // MP-2 FAIL-CLOSED. Every call below that touches an ACCOUNT -- the account
-    // itself, its orders, an order's status, and ORDER SUBMISSION -- runs on
-    // ALPACA_API_KEY, the default account's keys. A request naming another
-    // portfolio (the browser tags every /api/* call once a non-default account
-    // is chosen) is refused rather than answered from, or executed in, the
-    // wrong account. Per-account routing is MP-3. Market data (quote, chart,
-    // search, options) is the same for any account and is unaffected.
+    // MP-3: ACCOUNT actions resolve their broker account first -- the default
+    // one with no ?portfolio=, otherwise that portfolio's own credentials
+    // behind the identity gate. Anything unresolvable is refused BEFORE the
+    // broker is contacted (409 account_not_routed), never answered from, or
+    // executed in, a different account.
     var ACCOUNT_ACTIONS = { account: 1, orders: 1, order_status: 1, order: 1 };
-    var portfolioParam = req.query && req.query.portfolio;
-    if (ACCOUNT_ACTIONS[action] && typeof portfolioParam === 'string'
-        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(portfolioParam)) {
-        return res.status(409).json({
-            error: 'account_not_routed',
-            detail: 'Trading and account data are not yet routed to this account; '
-                  + 'switch to the default account to trade. Nothing was sent to the broker.',
-        });
+    var ctx = null;
+    if (ACCOUNT_ACTIONS[action]) {
+        try {
+            ctx = await accountContext(req, { fresh: action === 'order' });
+        } catch (e) {
+            if (e && e.route) {
+                console.error('[trading] account_not_routed (' + action + '): ' + e.message);
+                return res.status(409).json({ error: 'account_not_routed', detail: e.message });
+            }
+            throw e;
+        }
     }
 
     try {
@@ -524,7 +610,7 @@ export default async function handler(req, res) {
                 return res.status(200).json({ symbol: sym, range: range, bars: bars });
             }
             if (action === 'account') {
-                return res.status(200).json(await getAccount());
+                return res.status(200).json(await getAccount(ctx));
             }
             if (action === 'search') {
                 var q = ((req.query.q) || '').trim();
@@ -534,12 +620,12 @@ export default async function handler(req, res) {
             if (action === 'orders') {
                 var status = req.query.status || 'all';
                 var limit  = parseInt(req.query.limit) || 50;
-                return res.status(200).json(await getOrders(status, limit));
+                return res.status(200).json(await getOrders(ctx, status, limit));
             }
             if (action === 'order_status') {
                 var cid = req.query.client_order_id;
                 if (!cid) return res.status(400).json({ error: 'client_order_id required' });
-                var ord = await getOrderByClientId(cid);
+                var ord = await getOrderByClientId(ctx, cid);
                 if (!ord) return res.status(404).json({ error: 'not found' });
                 return res.status(200).json(ord);
             }
@@ -568,8 +654,8 @@ export default async function handler(req, res) {
             if (action === 'order') {
                 var body = req.body || {};
                 if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) {} }
-                var order = await submitOrder(body);
-                await recordExecution(body, order);
+                var order = await submitOrder(ctx, body);
+                await recordExecution(ctx, body, order);
                 return res.status(200).json({ success: true, order: order });
             }
             return res.status(400).json({ error: 'Unknown POST action: ' + action });
