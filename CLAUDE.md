@@ -4692,40 +4692,678 @@ believing the panel. Test it with `{"symbols":["TGT"]}`, which returns in ~1.3s.
 "Total invocations 0" on that page is the dashboard's 24h-lagged analytics, not
 a claim about whether the function has run.
 
-### The geographic surface, and the domicile nobody had recorded (2026-09-24)
+### Finnhub is a SEC 10-K feed, so it cannot replace Alpha Vantage (2026-09-23)
 
-`country_ref` / `security_geo_revenue` / `security_domicile` and
-`resolve_geo_exposure` / `geo_exposure_detail` / `geo_exposure_summary`;
-`<GeoSurface>` in `src/geo/`, first consumer `#/trade/geographic`. Full report
-in `docs/GEO_SURFACE_REPORT.md`.
+EQ-3, measured against production. Full report in
+`docs/EQ3_FINNHUB_MEASUREMENT_REPORT.md`. The working assumption across three
+entries above was "move the statement loader to Finnhub". **That is wrong, and
+the split is not where it was assumed to be.**
 
-**There was no domicile column anywhere.** `vw_screener.country` COALESCEs a
-missing value to `'US'`, so HMY (Harmony Gold, Johannesburg) read as American.
-`security_domicile` records the fact with its source; an unknown domicile is an
-ABSENT row, never a default. The vendor field it seeds from also flaps night to
-night (AAPL 'US' on 09-22, NULL on 09-24), so it is recorded, not joined live.
+**The sparse-payload hypothesis is dead.** Every period carries concepts --
+TGT 16/16 at 64-96 concepts each, JPM 15/15 at 108-118, AAPL 16/16. The
+original MISS was the namespace after all: everything resolves to the
+`us-gaap_` UNDERSCORE spelling while the candidate lists were bare local
+names. A few tags come back already stripped (`CommonStockSharesOutstanding`,
+`LongTermDebt`), so all three spellings genuinely occur.
 
-**A fund's domicile is not a revenue fallback.** Every fund in the book is a
-US-registered wrapper; falling back puts EWY on the United States, which is not
-a guess but known to be false. Funds without look-through go to `XX`.
+**THE COVERAGE CLIFF: 4 of 4 foreign filers return ZERO periods**, against 3 of
+3 US filers at 15-16. ASML, TSM, SONY and ABEV all come back with `forms: []`
+-- the vendor returned no rows, not rows a `10-K` filter rejected.
+`financials-reported` is a **SEC 10-K feed**, and a foreign private issuer
+files a 20-F. That is **14.04% of the book** (TSM 3.82, ASML 3.00, ABEV 1.93,
+ATAT 1.93, SONY 1.89, PBR 1.47). Alpha Vantage serves them -- ASML returns 20
+annual periods in EUR -- so **the throughput problem and the coverage problem
+pull in opposite directions and neither vendor alone closes both.**
 
-**Key Natural Earth on `ISO_A2_EH`, never `ISO_A2`** -- the latter is `CN-TW`
-for Taiwan and `-99` for France and Norway.
+**Per-field coverage is uneven, which rules out a swap on its own.** As-reported
+XBRL carries only what the filer tagged on that filing's face statements, and
+practice drifts over the years. TGT matched 24 of 30 fields, but
+`operating_income` on 8/16 periods, **`net_income` on 5/16**, `gross_profit`
+3/16. Net income in under a third of years is disqualifying for the ratio
+layer: Piotroski, ROE and every margin rest on it. **`vw_company_fundamentals`
+stays on Alpha Vantage.**
 
-**Revenue coverage is 0% until someone enters disclosures**, so the revenue map
-renders muted and the largest-gap figure is withheld. That is correct, not a
-bug: do not invent splits to make it look finished. The deferred trigger refuses
-a set that does not sum to 1.0000 including XX.
+**What Finnhub uniquely gives is the thing EQ-2 recorded as impossible.** That
+entry says the CAMELS inputs "do not exist in the persisted statements" -- true
+of AV's NORMALISED schema, false of Finnhub's as-reported payload. JPM carries
+`net_interest_income`, `noninterest_income`, `noninterest_expense`, `deposits`
+and `allowance_for_credit_losses` on **15 of 15 periods**. Tier 1 capital and
+risk-weighted assets are still absent (they live in the regulatory capital
+tables, not the face statements), so CAMELS' **C** leg remains uncomputable;
+A, E and L largely are.
 
-**`maplibre-gl` is pinned to 5.x.** `@deck.gl/mapbox` 9.4 reads `map.transform`
-in interleaved mode and it is undefined under MapLibre 6 -- an error every
-frame that `vite build` cannot see. And key readiness on `style.load`, never
-`load`: `load` waits for every source, so a tile host that does not answer
-leaves the panel blank forever with no error.
+**So EQ-4 builds on Finnhub and EQ-2 stays on AV.** 165 of the 913-symbol
+universe are Financials, essentially all US-listed, which is precisely where
+Finnhub's coverage is strongest and its 10-K restriction costs nothing.
 
-**Grep for `maplibregl` in the main bundle finds plotly**, which ships its own
-MapLibre. Read the sourcemap's `sources`, not the strings, to decide what is in
-a chunk.
+**JPM's GAAP misses corroborate EQ-2's `statement_profile` from the vendor
+side** -- no cost of revenue, no gross profit, no inventory, no current
+assets or liabilities. That gate was reasoned from the CFA framework; this is
+independent confirmation that a bank genuinely does not report those lines.
+
+**The instrument was nearly wrong twice, and both were caught by review.**
+`details.base` / `run_tag` (EQ-3c) prove which server answered -- two earlier
+runs took Vercel's deployment-protection LOGIN PAGE as a 200 and, writing no
+`sync_log` row, let `ORDER BY id DESC` serve the previous run's row as a
+measurement. And the namespace collapse (below) would have laundered
+`ifrs-full:` into a us-gaap match, with **ASML, an IFRS filer, in this very
+sample**. It returns no rows at all so no figure moved -- luck, not design.
+**A probe that cannot say which server answered it is not a measurement.**
+
+**The throughput ceiling is unresolved and is a SPEND decision, not an
+engineering one.** Finnhub does not rescue it, because it cannot feed the ratio
+layer at all.
+
+### A namespace is part of a concept's identity (2026-09-23)
+
+Raised by the Codex reviewer on PR #808. `localName` took the last `:` or `_`
+and dropped whatever preceded it, so `ifrs-full:Assets` and `issuer:Assets`
+both collapsed to `assets` and counted as the US-GAAP candidate -- the probe
+would report mapping coverage it does not have. **The test I wrote explicitly
+blessed the IFRS spelling**, pinning the wrong behaviour.
+
+`conceptKey` strips ONLY the two Finnhub encodings of `us-gaap` (`us-gaap:`,
+`us-gaap_`, case-insensitive) plus the bare form the vendor sometimes already
+strips. Every other taxonomy keeps its prefix and stays visible as a mismatch.
+
+**`foreign_taxonomy_tags` is the other half.** A miss because the concept is
+ABSENT and a miss because the filer uses ANOTHER TAXONOMY are different
+findings, and collapsing them is what the defect did. An IFRS filer now reports
+`matched: null` *and* names the IFRS tag it used -- the discriminator EQ-4 needs
+to tell a US filer from a foreign one, arriving from the same run rather than a
+second investigation.
+
+Same family as the `fwd_pe` entry: **a key that asserts an identity must be
+checked against what it actually matches**, not against what it looks like it
+matches. 164/164, and the two new tests fail against the pre-fix collapse,
+checked by restoring it.
+
+### A second, independent Alpha Vantage key is also free tier (2026-09-23)
+
+EQ-1 measured the production AV key at 25 requests/day and concluded coverage
+needs ~114 days for the 913-symbol universe. The obvious escape is "use a
+different key", so it was **tested rather than assumed**: a second AV
+credential, reached through this session's own MCP server rather than through
+the platform, returns the same message -- *"free key rate limit (25 requests
+per day)"*.
+
+So the throughput ceiling is a property of the **plan**, not of that one key.
+There are exactly two ways past it: pay for AV premium, or move the statement
+loader to **Finnhub** (60/min, no daily cap, 11-16 annual 10-K periods
+measured). That is EQ-3, and it is the reason EQ-3 matters rather than being a
+nice-to-have fallback.
+
+**Parallel requests do not just fail, they SPEND.** Twelve calls fired in one
+batch tripped the undocumented-until-you-hit-it **1 request/second burst
+limit**, and the refusals still counted against the daily 25. Serialise, or the
+quota is gone before the work starts.
+
+**The backfill wrote nothing, and I read that as the design working. It was
+not -- corrected 2026-09-23.** The ingest script imports `rowsFor` and
+`STATEMENTS` from `api/sync-financials.js` and writes through the same
+`atlas_upsert_company_statements` RPC, so a row it writes is indistinguishable
+from a loader row -- and it refuses a symbol unless all three statements are in
+hand. That atomicity guard is real and is EQ-2's lesson (SNDK had an income
+statement and no balance sheet) applied to the one-off path. Row counts before
+and after: 845 / 828 / 828, unchanged.
+
+But the RPC **could not write a row at all** -- it threw 23502 on every call
+since it shipped, for the `loaded_at` reason in the 2026-09-23 entry below. The
+zero was over-determined and the two causes are indistinguishable from outside.
+**A plausible explanation for a zero is not a measurement of one**; the check
+that settles it is one call with a sentinel payload, which takes seconds.
+
+**A management-API SQL path exists from this container.**
+`POST https://api.supabase.com/v1/projects/<ref>/database/query` with
+`SUPABASE_ACCESS_TOKEN` is the same capability the Supabase MCP uses and is
+scriptable from Bash, which is what makes a bulk backfill cheap when there is
+data to load. There is no service-role key and no `SUPABASE_DB_URL` in the
+container; only the management token.
+
+### Equity Research was painting from six palettes and three extra accents (2026-09-23)
+
+The UI-upgrade item from the brief. The module did not look different because
+it was missing tokens -- it looked different because it never joined the ramp
+that the shell unification already established. `:root` in `globals.css` IS
+`.nexus-flagship`'s ramp (`--navy-2` == `--card` == `#121821`); the module
+simply painted from literals that predate it.
+
+**Six local `var T = {}` palettes, no two agreeing**, plus `equity-research.js`
+with no palette at all -- only literals:
+
+| file | green | red | text | muted2 |
+|---|---|---|---|---|
+| `equity-research-panels` | `#41d18a` | `#f76d6d` | `#e7eef5` | `#5a6573` |
+| `equity-background-tab` | `#22c55e` | -- | `#e6edf5` | `#63748c` |
+| `equity-financials-tab` | `#22c55e` | `#ef4444` | `#e6edf5` | `#63748c` |
+| `equity-valuation-tab` | `#22c55e` | `#ef4444` | `#e6edf5` | `#63748c` |
+| `equity-technicals` | `#22c55e` | `#ef4444` | `rgba(255,255,255,.88)` | -- |
+| ramp | `#22c55e` | `#ef4444` | `#e3e9f2` | `#51647b` |
+
+**And THREE accents beyond the ramp's cyan** -- `#00d4b8`, `#00d4ff` and
+`#3b82f6`. The shell entry above records the same shape one layer out ("The
+chrome carried two accents at once"); this module had three, and `#00d4b8` is
+the single literal most responsible for Equity Research reading as a different
+product. `src/pages/equity/equityTheme.js` is now the one palette.
+
+**RAW HEX, NOT `var(--token)`, AND THAT IS THE LOAD-BEARING DECISION.**
+`T.cyan` reaches Chart.js as `borderColor` (`equity-technicals.js:148`,
+`:232`), and **a canvas cannot resolve a CSS custom property** -- it would
+paint nothing and report no error, which is the dead-`var()` defect the shell
+entry records, in a place no screenshot would explain. The cost is that the
+values can drift from `globals.css`, so `src/lib/equityTheme.test.mjs` parses
+that file and asserts every one still matches. **"Move them together" is a CI
+gate here, not a comment.**
+
+**THE NAME TRAP: `--border` is `0.11` in `globals.css` and `0.07` in
+`nexus-flagship.css`** -- the same name, the two alpha steps swapped between
+the files. The module's `border` has always been the subtle one and `border2`
+the stronger, so they land on `0.07` and `0.11`. **Convert on VALUES, never on
+names**; taking the names at face value inverts every edge in the module.
+
+**Dim washes are DERIVED, never typed.** The six palettes carried them at .09,
+.13 and .15 for no stated reason. One `dim(hex, alpha)` at one alpha makes a
+wash that disagrees with its base impossible to write. `violetDim` .09 -> .13
+is a real, intended change.
+
+**Scope the scanner to the IMPORT CLOSURE, not a glob.** The first version
+globbed `src/pages/equity*.js` and over-reached into `equity-valuation.js`,
+`equity-risk.js` and the four `equity-dcf-*` files -- the **Valuation House**,
+a different page with its own chrome decision. A hardcoded list has the
+opposite fault: it goes stale exactly when a tab gains an import, which is when
+a new palette arrives unnoticed. The closure tracks the module as it is.
+
+**The scanner read its own documentation as code** -- `equityTheme.js` names
+the accents it removed, and the first run failed the module that fixed the
+problem. `pagerOrdering.test.mjs` hit the identical trap. Comments are stripped
+(`//` only when not preceded by `:`, so a URL survives) and **the stripping is
+itself tested**, both that it removes prose and that it does not blind the
+scanner to a live literal.
+
+**A mid-token replacement left `dim(T.cyan, 0.6))'`** -- a syntax error found
+by reading the patched region, not by the build. Same lesson as
+`perf-panels-top.js:477` and the `var` hoisting near-miss in `risk-v2.js`:
+**`vite build` is not a scope audit.**
+
+161/161, and the detector is proven by reverting -- reintroducing one local
+palette carrying `#00d4b8` fails 2 of 9.
+
+**Flagged, not fixed, and deliberately:** `equity-peers`' eight-colour chart
+series palette and `equity-screener`'s Value/Growth/Momentum bucket taxonomy
+are doing a different job from chrome, and **G-2 mirrored that taxonomy onto
+the holdings table** -- re-basing it re-bases a vocabulary shared with another
+surface. The Valuation House files above still carry `#00d4ff`. Also
+`equity-peers.js:121` calls `.replace(')', ',0.4)').replace('rgb','rgba')` on
+what are HEX strings, so it is a no-op returning the hex -- pre-existing, not
+touched here.
+
+### A column with a DEFAULT is mandatory under `select *` (2026-09-23)
+
+`atlas_upsert_company_statements` shipped in EQ-2 and **could not write a
+single row**. Found by checking whether the pattern EQ-4's own writer was
+copied from actually works, before copying it.
+
+```
+select atlas_upsert_company_statements(p_income := '[{...}]')
+ERROR 23502: null value in column "loaded_at" ... violates not-null constraint
+CONTEXT: insert into public.company_income_statement
+         select * from jsonb_populate_recordset(...)
+```
+
+`insert into T select * from jsonb_populate_recordset(null::T, payload)` fills
+**every** column of `T` from the payload, and a key the payload omits comes back
+NULL rather than absent. `loaded_at` is `not null default now()` and `rowsFor()`
+has never set it, so every call died. **No statement load has succeeded since
+the RPC shipped**; the layer is frozen at what the earlier direct-POST path
+wrote -- 845/828/828 rows, 10 symbols.
+
+**The default is the trap.** A column with a default reads as optional, and
+under `select *` it is mandatory and unstated. PostgREST applies a default for a
+key it is not sent, so the SAME payload succeeds through a plain POST and fails
+through the RPC -- the transactional wrapper added to make a symbol atomic is
+the thing that broke it. Any NOT NULL DEFAULT column added to those tables later
+breaks it again, silently, in exactly the same way.
+
+**EQ-3 read the resulting empty backfill as the atomicity guard working.** That
+entry says the ingest script "refuses a symbol unless all three statements are
+in hand" and that row counts were unchanged "by design". The guard is real; this
+would have refused the write regardless, and the two were indistinguishable from
+the outside. **A plausible explanation for a zero is not a measurement of one.**
+
+Fixed by stamping `loaded_at` inside the function rather than naming the other
+24/36/28 columns, which keeps the property the original was written for. It is
+also the more correct reading of the field -- when the DATABASE received the
+row, not when a client said it did -- and it removes a caller's ability to
+backdate it.
+
+**No test covered the RPC writing anything**, only its SQL parsing, which is why
+a total write failure sat one level below everything that looked at it.
+`supabase/tests/company_reported_lines_contract.sql` is 9/9 against production
+in a rolled-back transaction, and case 1 is the exact payload shape `rowsFor()`
+produces -- observed throwing before the repair and passing after.
+
+### Never delete on two arrays compared with `= any` (2026-09-23)
+
+`atlas_upsert_reported_lines` first scoped its DELETE
+`where symbol = any(v_syms) and source = any(v_src)`. That is a CROSS PRODUCT: a
+batch carrying (A, finnhub) and (B, alpha_vantage) deletes A's alpha_vantage
+lines and B's finnhub lines, neither of which it is about to rewrite. Harmless
+while one run uses one source, which is the condition that stops being true
+later and without warning. Scope the DELETE to the PAIRS actually present.
+
+### The framework comes out of the filing, not out of the sector (2026-09-23)
+
+EQ-4. `company_reported_lines` / `atlas_upsert_reported_lines` /
+`mode=reported`. Full report in `docs/EQ4_INSTITUTION_LAYER_REPORT.md`.
+
+Eight insurers probed -- TRV, PGR, CB (P&C), MET, PRU, AFL (life), UNH, HUM
+(health). All return **16-19 annual 10-K periods**, 251-472 distinct concepts.
+CB is Swiss-domiciled and still files a 10-K, so EQ-3's 20-F cliff is about
+foreign PRIVATE ISSUERS, not about domicile.
+
+**`loss_reserves` misses exactly the three life names; `future_policy_benefits`
+misses exactly the two pure P&C names.** That is not a coverage gap, it is the
+two business models reporting different liabilities -- which is what the CFA
+frameworks separate them on. A bank carries deposits and net interest income and
+neither.
+
+**`assets.sector` cannot pick the framework, and this is measured:** `Other`
+covers **6,879 of 7,921** active rows. The field is meaningful only inside the
+`equity_cache` cohort (942 symbols: 165 Financials, 4 `Other`, 21 null) --
+EQ-2's `statement_profile` gate is safe for that reason and the claim
+"100% populated" was about the cohort, not the table. Inside it, `Financials`
+still mixes banks, insurers, asset managers and exchanges, and health insurers
+sit under `Healthcare` (UNH, ELV, CI, HUM). **The sector decides who is worth
+fetching; the filing decides which framework applies.**
+
+**Three fields are wrong or unavailable, so the COMBINED RATIO waits.**
+`underwriting_expense`'s only candidate is
+`DeferredPolicyAcquisitionCostAmortizationExpense` -- DAC amortisation is a
+component of underwriting expense, not the measure, so publishing an expense
+ratio from it is the `fwd_pe` defect again. `premiums_written_net` hits 1/8 (the
+CFA denominator; Travelers itself reports on earned, per the text's own
+footnote). `policyholder_benefits` hits 0/8. Both terms of the **loss and LAE
+ratio** hit 8/8, so that is computable and the combined ratio -- which is loss
+ratio plus expense ratio -- is not. **CAMELS - C is not computable from this
+source at all**: Tier 1 and RWA are in the regulatory capital tables, not the
+face statements, absent on every filer probed. A, E and L largely are.
+
+**`sample_concepts` could not fix the mapping** -- it is the first 40 tags in an
+arbitrary order out of several hundred. `conceptSearch` matches the **LABEL** as
+well as the tag, which is the load-bearing half: the label is what a human wrote
+in the filing, so it can find a tag that was never guessed, where a tag search
+can only find what you already thought of. `periods` on each hit, for the reason
+`periods_covered` exists: a tag used in one filing of sixteen is not a series.
+
+**Stored LONG FORM on purpose.** The tag-to-field mapping is exactly what is not
+known, so a corrected mapping is a `CREATE OR REPLACE VIEW` rather than a
+backfill -- the `ratio_pairs` argument. It also turns "which tag does this filer
+use" into a SQL query instead of a code change, a deploy and a vendor call,
+which is the round trip that made this unit slow.
+
+**`taxonomy` is NULL exactly when the concept is us-gaap in ANY of its three
+spellings**, so `taxonomy is not null` IS the foreign test in one predicate.
+Storing `taxonomyOf`'s raw prefix gives `'us-gaap'` for `us-gaap:Assets` and
+NULL for the bare `Assets` the vendor sometimes already strips -- and then
+`taxonomy is distinct from 'us-gaap'` counts every bare tag as foreign. Caught
+by testing, not by reading; 2 of 37 fail against the raw accessor.
+
+**Not loaded yet.** Preview deployments on this project are SSO-gated, so every
+Finnhub measurement round costs a merge to `main`. Finnhub is 60/min with no
+daily cap, so the ~165-symbol cohort is about three minutes of calls -- the
+Alpha Vantage throughput ceiling does not apply to this layer.
+
+### A filer changes its tags, and the concept list knows one spelling (2026-09-23)
+
+The first real load of `company_reported_lines` — eleven financial filers,
+19,727 lines, 2010-2025. Full report in `docs/EQ4_INSTITUTION_LAYER_REPORT.md`
+§7. Three defects, and **not one of them is visible on a probe of one
+filer-year**, which is what every EQ-3 and EQ-4 measurement before this was.
+
+**`pc_insurer` named a property the filers do not have.** UNH and HUM were
+classified `pc_insurer` and write no property and no casualty business at all.
+What the view tests is **ASC 944's SHORT-DURATION vs LONG-DURATION contract
+distinction**, and a health insurer files short-duration contract liabilities
+exactly as a P&C insurer does — so the measurement was right and the label was
+false. The `fwd_pe` defect, in a framework name. `short_duration_*` /
+`long_duration_*`, with the old names kept as aliases and a test asserting they
+still track.
+
+**ONE LIABILITY, THREE TAGS, SPLIT BY ACCOUNTING ERA.** The future-policy-
+benefit liability is reported as `LiabilityForFuturePolicyBenefits`, as
+`...AfterReinsurance` (MET 2019-2022) and as `...AndUnpaidClaimsAndClaims-
+AdjustmentExpense` (PRU 2010-2022) across LDTI (ASU 2018-12) adoption — all
+three labelled *"Future policy benefits"* by the filers themselves. PRU read as
+having **no framework at all on 13 of its 16 years**. Health insurers tag
+losses `PolicyholderBenefitsAndClaimsIncurredHealthCare` through 2023 and
+generically from 2024, so UNH and HUM had a loss ratio on **4 filer-years of
+32**. After: PRU 15/16, MET 16/16, 32/32.
+
+**Verify an alias by the filer's own `label`, not by the tag's shape.** That is
+what storing the long form buys. Two candidates were REFUSED on that reading:
+AFL's `LiabilityForUnpaidClaimsAndClaimsAdjustmentExpenseNet` is labelled
+`[Roll Forward]` — a reconciliation header, not a closing balance — and PRU's
+combined tag pools both durations, so it is accepted to CLASSIFY and refused as
+a MEASUREMENT. **Good enough to classify is not good enough to measure**, and
+it is its own test case rather than a comment. Conversely BAC's legacy loan tag
+is labelled `[Abstract]` and its VALUE is a real loan book (0.40 of assets):
+**a bracketed label is a warning, not a verdict — corroborate the number.**
+
+**CAMELS A was refused as a class and is computable per row** — 48 of 62 bank
+filer-years, under a legacy tag pair through 2019-2021 and the ASC 326 (CECL)
+pair from 2020-2022. The 14 refusals are exactly the years each filer straddles
+that change (BAC 2020-21, C 2020-22, JPM 2016-2020, WFC 2022-25). It
+corroborates rather than merely computing: loans/assets 0.45-0.58 at WFC, the
+loan-heavy bank, against 0.28-0.34 at JPM, and every allowance series traces
+the post-GFC normalisation from 4.7% in 2010 to 1.0% in 2019 and back up after
+CECL. **A class refusal was hiding a measurement.**
+
+**I wrote a coverage figure before the object that carries it existed.** The
+EQ-4h comment says "41 of 62" — from a probe query reading a narrower allowance
+list than the view ships. It is 48. Corrected in EQ-4i as its own migration
+rather than by editing EQ-4h, because EQ-4h is what the database ran.
+**A comment stating a coverage figure is a claim about the data and has to be
+measured against the object that carries it.**
+
+`benefits_to_premiums` reads like a loss ratio and is not one — PRU 1.098, MET
+0.995, AFL 0.554 on FY2024 — because a long-duration insurer earns most revenue
+as net investment income and policy fees. `benefits_ratio_caveat` is present on
+**62 of 62** rows carrying the figure, zero uncaveated.
+
+The figures corroborate published reality throughout: JPM efficiency **0.517**
+(~52% reported), UNH loss ratio **0.855494** against a published **85.5%**
+medical care ratio, HUM **0.898** against ~89.8%, TRV 0.645, PGR 0.693.
+
+**Ratio proof case 11 is the sharpest test here**: the same bank, the same
+numbers, the two tag eras, asserted to agree EXACTLY. If they disagreed the
+ratio would be a statement about XBRL practice rather than about the bank.
+12/12 and 12/12 against production, both rolling back, both including their
+happy paths; cases 8-12 in each fail against the pre-fix views.
+
+**CB is the duplicate-year case.** It returns 19 filings all tagged `10-K` with
+2011, 2012 and 2013 each appearing twice — the two predecessor registrants of
+the merged Chubb/ACE entity — which is what `pickOnePerYear` (EQ-4g) exists
+for. Committed, not yet re-run.
+
+### An undefined `T.<token>` renders as nothing, silently (2026-09-23)
+
+EQ-4j put the institution framework on the Financials tab, and both
+`background: T.navy2` and `fontFamily: T.sans` were written into it. **Neither
+token is on the palette.** React drops a style property whose value is
+`undefined`, so the tile had no background and no reported error — the
+dead-`var()` failure recorded for the app shell, in a JS form instead of a CSS
+one. `vite build` was clean, 597 tests were green, and the strings shipped to
+the bundle.
+
+The palette is `card / card2 / cardHi`, `border / border2`, `text / muted /
+muted2`, `mono / display`. There is no `navy2` and no `sans`; the ramp keys
+(`--navy-2`) are the SOURCE of `card`, not a token name.
+
+`src/lib/equityThemeTokens.test.mjs` parses `equityTheme.js` for the names it
+actually exports and fails any `T.<token>` in the Equity Research closure that
+is not one of them. It carries the three tests such a scanner needs: that the
+palette parses to a non-empty set (a vacuous scan passes trivially), that it
+finds the exact two-token shape that shipped, and that it does not read its own
+documentation as code — `pagerOrdering.test.mjs` and the EQ-6 palette scanner
+both hit that last one. Reintroducing `T.navy2` fails it, checked by reverting.
+
+**The EQ-6 scanner checks for hardcoded literals; it cannot see a token that
+does not exist.** Those are different failures and need different checks.
+
+### The tab said the framework "is not built yet" (2026-09-23)
+
+EQ-4j. `vw_company_institution_ratios` had no consumer, so opening JPM in
+Equity Research showed an amber note reading *"A CAMELS framework is the right
+instrument here and is not built yet."* It is built. **A sentence on screen
+asserting a capability does not exist is the wrong-entry defect this file
+already records twice** — once about `theme_leadership_weekly`, which had
+recovered while the entry still called it dead.
+
+`src/lib/institutionView.js` is pure and decides only what may be RENDERED;
+`src/pages/equity/institutionRatios.js` is transport. The `clusterView.js` /
+`segmentView.js` split, and it is what lets the shape be tested without a
+bundler.
+
+**A metric is ABSENT from the shape when unmeasured** — not null, not zero, not
+an em dash the renderer supplies. WFC's FY2025 filing reports no loan book, so
+`allowance_to_loans` is not a key on the object and a renderer cannot print
+`0.00%` of a bank's loan book. Verified against the live rows, not a fixture:
+JPM publishes both CAMELS A ratios and withholds C, WFC withholds A with its
+reason, UNH carries no bank metric at all, and PRU's `benefits_to_premiums`
+(1.1437 on FY2025) arrives **only** with its caveat — a row carrying the figure
+without it is refused.
+
+**Four states, because they need four different actions.** `not_loaded` (no
+as-reported lines for this symbol — the layer covers 11 filers, not the
+universe) is not `no_framework` (lines loaded, no depository or insurance
+contract lines, which is an ANSWER about the filer), and neither is `failed`.
+A transport failure never renders as a statement about the data.
+
+**The panel lives in `equity-financials-tab.js` and the string is confirmed in
+`dist/`**, with `grep -o | wc -l` on a literal only this path can produce —
+the EQ-5b rule, because that module's sibling `equity-research.js` has an
+effect body rollup does not emit. **What is proven is the shape builder against
+live rows and that the code ships; the render is not** — the browser in this
+container cannot reach Supabase.
+
+### Tab 5 is not blocked, and `industry` is a copy of `sector` (2026-09-23)
+
+I filed EQ-7 (industry and competitive positioning) as blocked on peer
+coverage. **That was wrong, and it was wrong because I reasoned from one peer
+source instead of looking.** `vw_company_fundamental_peers` is thin — it is
+derived from the Alpha Vantage statement load, which is 10 symbols behind a
+25-request/day ceiling — but it is not the only peer basis in the platform.
+
+`equity_screener_universe` carries **913 symbols, refreshed daily** (cached
+2026-09-23 12:31 UTC) with `market_cap_usd`, `forward_pe`, `ev_ebitda`,
+`price_to_book`, `price_to_sales`, `roe_ttm`, `roa_ttm`, `gross_margin`,
+`net_margin`, `rev_growth_yoy`, `rev_growth_3y`, `eps_growth_yoy`,
+`return_52w`, `return_13w`, `beta`, `vol_3m`, `roic_pct`, `wacc_pct` and
+`roic_wacc_spread_pct`. **None of that depends on the AV statement layer.**
+A positioning tab built on it is unblocked today.
+
+**AND THE COHORT COLUMN IS NOT WHAT ITS NAME SAYS.** `industry` and `sector`
+both hold 46 distinct values, and the reason is that **`industry` is a copy of
+`sector`**: 896 rows identical, 17 rows where `industry` is NULL, and
+**0 rows where both are present and differ**. There is no independent industry
+classification anywhere in this table. Building an "industry peer group" from
+it would publish a claim about granularity the data does not carry — the
+`fwd_pe` defect, in a cohort definition.
+
+**The granularity is also inverted from the names.** The 46 buckets are
+Finnhub's single-level `finnhubIndustry` taxonomy, and they mix GICS sector
+names (`Technology`, `Energy`, `Utilities`, `Real Estate`) with GICS *industry*
+names (`Semiconductors`, `Banking`, `Biotechnology`, `Pharmaceuticals`,
+`Aerospace & Defense`). It is neither level cleanly, so **name a cohort for the
+vendor taxonomy it comes from, never "industry" or "sector"**.
+
+Usable as a cohort basis: **30 of the 46 buckets carry 8 or more members,
+covering 854 of 913 symbols (93.5%)**. The smallest bucket is 1 and the largest
+67, so a floor is needed and the share below it has to be stated — the
+`peer_count` rule EQ-2 already established.
+
+**Per-field coverage is uneven inside a cohort and that is informative, not
+noise.** `ev_ebitda` is **0 of 63** on Banking — a third independent
+corroboration of EQ-2's `statement_profile` gate, after the CFA framework
+argument and Finnhub's own GAAP misses. Biotechnology carries `forward_pe` on
+18 of 44, because a pre-revenue biotech has no meaningful forward multiple.
+A cohort median must count members with a MEASURED value for that metric, never
+cohort size.
+
+**The lesson is the one this file keeps recording about itself:** a blocker I
+asserted from one source was removed by a single query against another. Check
+before filing something as blocked.
+
+### `RANGE ... 1 PRECEDING` is a VALUE offset, not a row offset (2026-09-23)
+
+EQ-7's peer layer. `peer_percentile` was meant to be "how many peers rank
+strictly below this one", written as
+
+```sql
+count(*) over (partition by cohort_key, metric order by value
+               range between unbounded preceding and 1 preceding)
+```
+
+In RANGE mode the offset is **arithmetic on the ordering value**, so that
+counts peers whose value is at most `value - 1` — it subtracts one unit of
+whatever the metric is measured in. On `beta`, where the universe spans about
+0 to 3, subtracting 1 discards a third of the range; on `roe_ttm`, spanning 0
+to 110, it discards almost nothing. **The error was not even consistent
+between metrics.**
+
+**Postgres accepts it silently** because `value` is numeric and a numeric
+RANGE offset is legal. It is a correct query computing a different quantity,
+which is exactly why nothing caught it: percentiles stayed inside [0, 1],
+`peer_count` stayed consistent with `peer_median`, no plan node looked odd,
+and every row read plausibly. Eight structural invariants over all 14,058 rows
+passed while the number was wrong.
+
+**It was found only by computing the same quantity a second way** — a plain
+`count(*) where b.value < a.value` over the same cohorts — and measuring the
+disagreement: **0.905 on a figure bounded by 1.**
+
+`rank()` is the right primitive. It is 1 + the count of strictly smaller
+values, so `rank() - 1` is exactly "peers strictly below", ties on neither
+side, and the subject excluded because its own value ties with itself. Use
+`ROWS` when you mean rows; `RANGE` with an offset is for values, and ordering
+by a measurement makes the two look identical in the source.
+
+**The leave-one-out median beside it was right**, checked in the same pass —
+1,442 rows, max difference 5e-7 against `percentile_cont` excluding the
+subject, which is the 6-decimal rounding. **Verify each derived column
+separately**: they were written in one sitting and only one of them was wrong.
+
+**An aggregate hid the distribution, three times in one session.** Cohort-level
+coverage looked healthy (Banking `forward_pe` 58 of 63) while **JPM carries
+nothing but `roic_pct`** and TGT three of twenty metrics. Per symbol: 820 of
+913 carry 12+ metrics, 42 carry four or fewer. And `roic_pct` /
+`roic_wacc_spread_pct` sit at **3.6%** because their writer
+`compute_ticker_derived` is on-demand and stopped at 38 tickers. Read the
+distribution, not the mean — this file already says it about `pg_stat_statements`
+and it is the same mistake in a coverage query.
+
+`equity_screener_universe` is a **VIEW over `equity_cache` JSON**, not a table:
+it seq-scans and re-parses that payload twice per read, which is most of the
+413 ms `vw_company_peer_cohort` takes. Under the 3,000 ms anon cap, and a
+growth-linked node — flagged, not fixed.
+
+### The statement layer had a vendor ceiling, not an engineering problem (2026-09-24)
+
+EQ-8a. Ten of 913 symbols carried financial statements, so every panel
+downstream of the statement layer had nothing to work with -- AAPL among them.
+The cause was a **plan**, not code: Alpha Vantage is 25 requests/day on two
+independent free keys at 3 calls per symbol, about eight symbols a day and
+~114 days for the universe.
+
+**Three sources were measured against production before choosing.**
+
+| source | throughput | coverage |
+|---|---|---|
+| Alpha Vantage | 25 req/day | 20 annual periods |
+| Finnhub `financials-reported` | 60/min, no cap | a **SEC 10-K feed** -- 4 of 4 foreign private issuers return ZERO rows |
+| **EDGAR `companyfacts`** | no key, no cap, 10 req/s | ONE call, every concept, every period |
+
+ASML returns **zero** rows from Finnhub and **19-20 years on all ten core
+fields** from EDGAR -- and files its 20-F in `us-gaap`, not IFRS, which I would
+have guessed wrong. 50 of the 67 held names loaded in two batches; the 17 that
+did not are ETFs, which file no 10-K.
+
+**The SEC publishes TWO things called the EDGAR API and only one is this.** The
+*Filer* API -- filer management, delegations, CCC codes, transmitting
+submissions -- is Bearer-authenticated with tokens issued to a registrant and
+carries no financial data at all. The structured-data side is `data.sec.gov`
+and needs only a User-Agent with a contact address. Check which one a document
+describes before designing against it.
+
+**Four traps, each measured, each with a test that fails against the naive
+implementation** (`src/lib/edgarFacts.js`, 17 tests, verified by reverting):
+
+1. **`fy`/`fp` describe the FILING, not the fact.** A FY2025 10-K carries its
+   FY2023 comparative stamped `fy:2025 fp:FY`. Keying on `fy` collapses every
+   comparative onto the filing year: TGT read **17 years keyed on `fy` and 19
+   keyed on the fact's own `end` date**.
+2. **A flow needs an annual duration.** `Revenues` appears with quarterly and
+   year-to-date spans in one filing; a balance-sheet instant has no `start`.
+3. **The tag changes with the accounting era.** TGT's net income is three tags
+   end to end -- `ProfitLoss` 2007-2011, `NetIncomeLossAvailableToCommon-`
+   `StockholdersBasic` 2009-2021, `NetIncomeLoss` 2020-2025. Union 19 years;
+   `NetIncomeLoss` alone 11. The LDTI/CECL shape EQ-4 found in banks, in a
+   retailer. Every field is an ordered alias list and the winning concept is
+   recorded.
+4. **The three statements must share one period-end date.** The consumer view
+   INNER JOINs them on `fiscal_date_ending`, so an income period ending
+   2025-02-01 against a balance instant at 2025-02-02 drops the symbol
+   **entirely** -- it would load clean and display nothing.
+
+**The ticker map is actively wrong for a reorganised filer.**
+`company_tickers.json` maps XOM to CIK 2115436: **94 concepts, zero annual
+`Assets`.** The real history is CIK 34088 -- 438 concepts, 18 years.
+`entityName` is "Exxon Mobil Corporation" on **both**, so the name corroborates
+the wrong answer and the failure reads as "this company has no data". A CIK
+yielding under three annual periods is REPORTED, never written as a one-year
+history that reads as a successful load.
+
+**`InterestExpense` stops at 2023 for AAPL and that is correct.** No alias
+covers 2024-25 (`InterestExpenseDebt` ends 2021, `InterestCostsIncurred` 2023);
+Apple folds it into "Other income/(expense), net". So `fcff` is NULL for those
+years rather than fabricated. Absent is not zero, in a third place.
+
+### Alpha Vantage rounds a 52/53-week period end to the month end (2026-09-24)
+
+Found fixing the duplicate rows EDGAR created beside Alpha Vantage. The PK on
+the three statement tables carries `source`, so a symbol held by two providers
+yields two rows per fiscal year -- 129 of them across 8 symbols -- and a
+surface reading "the latest row" gets whichever the planner returns.
+
+**A first attempt keyed precedence on `fiscal_date_ending` and cleared only 79
+of the 129.** ADBE is always `11-30` in Alpha Vantage against EDGAR's actual
+`2025-11-28 / 2024-11-29 / 2023-12-01`; AMD always `12-31` against `12-27 /
+12-28 / 12-30`; TGT always `01-31` against `2025-02-01 / 2024-02-03`. **The two
+sources date the SAME fiscal year one to four days apart**, so no date-keyed
+rule can pair them.
+
+Precedence is therefore **per symbol**, which also keeps a series on ONE basis
+-- half a history from each provider is the substitution forbidden everywhere
+else here and would be invisible on screen. The **deepest complete** history
+wins with EDGAR breaking ties: EDGAR is not deeper for every filer (GOOGL 14
+periods against Alpha Vantage's 20) and dropping six years to honour a
+provenance preference would pay real coverage for a tie-break. Completeness is
+counted over the THREE-WAY JOIN, never the income statement alone -- EQ-2 found
+SNDK with an income statement and no balance sheet, and a source that cannot
+complete a period must not win one. 129 -> 3 duplicates, **0 mixed-source
+symbols**, 5.9 ms symbol-filtered against a documented 8.4 ms.
+
+**Where they overlap they mostly agree, and where they do not it is large.**
+GOOGL, TGT and SNDK are bit-identical on every common year and ADBE differs by
+rounding -- but **JPM diverges 38.7% on revenue and PFE 88.9% on net income**, a
+bank's net-versus-gross revenue convention and restatement handling. Picking one
+source is what stops two answers reaching one page; which is right is its own
+question, and is NOT closed.
+
+### No arithmetic rule names a filer's own fiscal year (2026-09-24)
+
+Three JNJ rows survive as duplicates: it is a 52/53-week filer whose year ends
+land on **2023-01-01 and 2023-12-31**, and the view derives `fiscal_year` as
+`EXTRACT(year FROM fiscal_date_ending)`, so both read 2023.
+
+**Two candidate fixes were measured and both are wrong.** The six-month shift
+(`atlas_fiscal_aligned_year`'s convention) would re-label **210 rows** and call
+MSFT's year ending 2025-06-30 "2024" when Microsoft calls it FY2025 -- it exists
+to GROUP filers with different year ends, not to NAME a year. The narrower
+Jan/Feb-to-prior-year rule matches Target, which calls the year ending Feb 2025
+FY2024, and contradicts **NVIDIA, which calls the year ending Jan 2025 FY2025**.
+
+**The filers themselves disagree, so no rule is universally right.** Re-basing
+200+ published labels to fix 3 rows, on a convention that is itself wrong for
+some filers, is a worse trade than carrying the defect. `fiscal_year` is a
+derived grouping key and is not the filer's own label; the collision is real,
+narrow and recorded rather than papered over.
+
+**`vw_company_fundamentals` unfiltered is 1.52 s** and grows with the symbol
+count -- the correlated precedence subquery is O(rows x sources). Every UI path
+filters by symbol (5.9 ms), so nothing is at risk today. A seq scan over a
+growing table is a clock, not a constant.
+
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

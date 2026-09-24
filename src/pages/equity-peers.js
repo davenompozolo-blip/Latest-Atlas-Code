@@ -1,4 +1,5 @@
 import React from 'react';
+import { T, dim } from './equity/equityTheme.js';
 import { fmt, fmtCurrency, fmtPct, cls, useChart } from './utils.js';
 
 const { useState, useRef, useEffect } = React;
@@ -10,9 +11,9 @@ function SubTab(p) {
             return React.createElement('button', {
                 key: t.id, onClick: function() { p.onSelect(t.id); },
                 style: {
-                    background: a ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.04)',
-                    color: a ? '#00d4ff' : 'rgba(255,255,255,0.6)',
-                    border: '1px solid ' + (a ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'),
+                    background: a ? dim(T.cyan, 0.15) : 'rgba(255,255,255,0.04)',
+                    color: a ? T.cyan : 'rgba(255,255,255,0.6)',
+                    border: '1px solid ' + (a ? dim(T.cyan, 0.3) : 'rgba(255,255,255,0.06)'),
                     borderRadius: 6, padding: '6px 14px', fontSize: 11,
                     fontWeight: a ? 600 : 400, cursor: 'pointer',
                     textTransform: 'uppercase', letterSpacing: 0.8,
@@ -79,7 +80,7 @@ function CompTable(p) {
                 React.createElement('tr', null,
                     React.createElement('th', null, 'Metric'),
                     all.map(function(d) {
-                        return React.createElement('th', { key: d.symbol, style: { textAlign: 'center', color: d.isTarget ? '#00d4ff' : 'var(--text-muted)' } }, d.symbol);
+                        return React.createElement('th', { key: d.symbol, style: { textAlign: 'center', color: d.isTarget ? T.cyan : 'var(--text-muted)' } }, d.symbol);
                     })
                 )
             ),
@@ -88,7 +89,7 @@ function CompTable(p) {
                     return React.createElement('tr', { key: row.label },
                         React.createElement('td', { style: { fontWeight: 500 } }, row.label),
                         all.map(function(d) {
-                            return React.createElement('td', { key: d.symbol, style: { textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", background: d.isTarget ? 'rgba(0,212,255,0.04)' : 'transparent' } }, row.fn(d));
+                            return React.createElement('td', { key: d.symbol, style: { textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", background: d.isTarget ? dim(T.cyan, 0.04) : 'transparent' } }, row.fn(d));
                         })
                     );
                 })
@@ -113,13 +114,13 @@ function MultiplesChart(p) {
             { key: 'evr', label: 'EV/Rev', fn: function(d) { return d.snap.evToRevenue; } },
         ];
 
-        var colors = ['#00d4ff', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
+        var colors = [T.cyan, '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
         var datasets = all.map(function(d, i) {
             return {
                 label: d.symbol,
                 data: metrics.map(function(m) { var v = m.fn(d); return v != null && isFinite(v) ? v : 0; }),
-                backgroundColor: (d.isTarget ? 'rgba(0,212,255,0.6)' : colors[i % colors.length].replace(')', ',0.4)').replace('rgb', 'rgba')),
-                borderColor: d.isTarget ? '#00d4ff' : colors[i % colors.length],
+                backgroundColor: (d.isTarget ? dim(T.cyan, 0.6) : colors[i % colors.length].replace(')', ',0.4)').replace('rgb', 'rgba')),
+                borderColor: d.isTarget ? T.cyan : colors[i % colors.length],
                 borderWidth: d.isTarget ? 2 : 1,
                 borderRadius: 4,
             };
@@ -162,13 +163,13 @@ function MarginsChart(p) {
             { label: 'ROA', fn: function(d) { var v = d.snap.returnOnAssets; return v != null ? v * 100 : null; } },
         ];
 
-        var colors = ['#00d4ff', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
+        var colors = [T.cyan, '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
         var datasets = all.map(function(d, i) {
             return {
                 label: d.symbol,
                 data: metrics.map(function(m) { var v = m.fn(d); return v != null && isFinite(v) ? v : 0; }),
-                backgroundColor: d.isTarget ? 'rgba(0,212,255,0.6)' : colors[i % colors.length].replace(')', ',0.4)').replace('rgb', 'rgba'),
-                borderColor: d.isTarget ? '#00d4ff' : colors[i % colors.length],
+                backgroundColor: d.isTarget ? dim(T.cyan, 0.6) : colors[i % colors.length].replace(')', ',0.4)').replace('rgb', 'rgba'),
+                borderColor: d.isTarget ? T.cyan : colors[i % colors.length],
                 borderWidth: d.isTarget ? 2 : 1,
                 borderRadius: 4,
             };
@@ -211,8 +212,8 @@ function BubbleChart(p) {
             return {
                 label: d.symbol,
                 data: [{ x: fwdPE, y: revG, r: r }],
-                backgroundColor: d.isTarget ? 'rgba(0,212,184,0.5)' : 'rgba(100,116,139,0.35)',
-                borderColor: d.isTarget ? '#00d4b8' : '#64748b',
+                backgroundColor: d.isTarget ? dim(T.cyan, 0.5) : 'rgba(100,116,139,0.35)',
+                borderColor: d.isTarget ? T.cyan : T.muted2,
                 borderWidth: d.isTarget ? 2.5 : 1.5,
             };
         });
@@ -255,13 +256,13 @@ function BubbleChart(p) {
         React.createElement('div', { className: 'card-title' }, 'Growth vs Valuation Positioning'),
         React.createElement('div', { style: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8 } },
             'X: Forward P/E · Y: Revenue Growth · Size: log(market cap) · ',
-            React.createElement('span', { style: { color: '#00d4b8' } }, 'Target highlighted in teal')
+            React.createElement('span', { style: { color: T.cyan } }, 'Target highlighted in teal')
         ),
         React.createElement('div', { style: { height: 320 } }, React.createElement('canvas', { ref: ref })),
         React.createElement('div', { style: { display: 'flex', gap: 20, marginTop: 10, flexWrap: 'wrap' } },
             all.map(function(d) {
-                return React.createElement('div', { key: d.symbol, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: d.isTarget ? '#00d4b8' : 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono', monospace" } },
-                    React.createElement('span', { style: { width: 8, height: 8, background: d.isTarget ? '#00d4b8' : '#64748b', borderRadius: '50%', display: 'inline-block', flexShrink: 0 } }),
+                return React.createElement('div', { key: d.symbol, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, color: d.isTarget ? T.cyan : 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono', monospace" } },
+                    React.createElement('span', { style: { width: 8, height: 8, background: d.isTarget ? T.cyan : T.muted2, borderRadius: '50%', display: 'inline-block', flexShrink: 0 } }),
                     d.symbol
                 );
             })
@@ -325,7 +326,7 @@ export function PeerComparison(p) {
 
     return React.createElement('div', null,
         React.createElement('div', { style: { fontSize: 12, color: 'var(--text-sec)', marginBottom: 12 } },
-            'Comparing ', React.createElement('strong', { style: { color: '#00d4ff' } }, p.symbol),
+            'Comparing ', React.createElement('strong', { style: { color: T.cyan } }, p.symbol),
             ' against ', peerData.length, ' peers: ',
             peerData.map(function(d) { return d.symbol; }).join(', ')
         ),

@@ -1,4 +1,5 @@
 import React from 'react';
+import { T } from './equity/equityTheme.js';
 import { sb } from './config.js';
 import { PeerComparison } from './equity-peers.js';
 import { TechnicalsTab } from './equity-technicals.js';
@@ -11,19 +12,6 @@ var useState = React.useState;
 var useEffect = React.useEffect;
 var useMemo = React.useMemo;
 var useRef = React.useRef;
-
-// ── tokens ────────────────────────────────────────────────────────────────────
-var T = {
-    cyan: '#22d3ee',   cyanDim:   'rgba(34,211,238,.13)',
-    amber: '#f5b53d',  amberDim:  'rgba(245,181,61,.13)',
-    green: '#41d18a',  greenDim:  'rgba(65,209,138,.13)',
-    red: '#f76d6d',    redDim:    'rgba(247,109,109,.13)',
-    violet: '#a78bfa', violetDim: 'rgba(167,139,250,.09)',
-    text: '#e7eef5',   muted: '#7e8b99', muted2: '#5a6573',
-    card: 'rgba(17,23,31,.97)', card2: 'rgba(20,27,37,.97)',
-    border: 'rgba(255,255,255,.08)', border2: 'rgba(255,255,255,.13)',
-    mono: "'JetBrains Mono',monospace", display: "'Syne','DM Sans',sans-serif",
-};
 
 // ── tiny helpers ──────────────────────────────────────────────────────────────
 function nv(o, k) { var x = Number(o && o[k]); return fin(x) ? x : null; }
@@ -225,24 +213,12 @@ function dcfFV(revenue0, gr, margin, tax, wacc, g, n, netDebt, shares) {
     return (ev - netDebt) / shares;
 }
 
-function bisect(fn, target, lo, hi, iters) {
-    iters = iters || 64;
-    for (var i = 0; i < iters; i++) {
-        var mid = (lo + hi) / 2;
-        if (fn(mid) > target) hi = mid; else lo = mid;
-    }
-    return (lo + hi) / 2;
-}
-
-function solveImpliedCAGR(price, shares, netDebt, revenue0, margin, tax, wacc, g, n) {
-    var ev = price * shares + netDebt;
-    return bisect(function(gr) { return dcfEV(revenue0, gr, margin, tax, wacc, g, n); }, ev, -0.05, 0.60);
-}
-
-function solveImpliedMargin(price, shares, netDebt, revenue0, gr, tax, wacc, g, n) {
-    var ev = price * shares + netDebt;
-    return bisect(function(m) { return dcfEV(revenue0, gr, m, tax, wacc, g, n); }, ev, 0.01, 0.85);
-}
+// The reverse-DCF solvers that lived here are gone with TAB 2. Worth recording
+// why they are not simply moved: the old `bisect` NEVER CHECKED ITS BRACKET, so
+// a target enterprise value outside [lo, hi] returned an endpoint — the solver's
+// own bound, published as the growth the market expects. `bisectFor` in
+// equity/valuationReconcile.js returns null instead, and the panel says the
+// price is not explained by any growth rate in a sane range.
 
 // ── parse key inputs from AV + snap ──────────────────────────────────────────
 export function parseInputs(rawOverview, snap, price) {
@@ -677,172 +653,23 @@ export function ThesisTab(p) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB 2 — VALUATION
+// TAB 2 — VALUATION lives in equity-valuation-tab.js now.
 // ─────────────────────────────────────────────────────────────────────────────
-export function ValuationTab(p) {
-    var inp = p.inputs, price = p.price;
-    if (!inp) return h(Note, null, 'No data loaded.');
-
-    var n = inp.horizon, wacc = inp.wacc, g = inp.termGrowth;
-    var gr = fin(inp.revGrowth) ? inp.revGrowth : 0.10;
-    var margin = fin(inp.operM) ? inp.operM : 0.20;
-    var tax = inp.taxRate;
-
-    // Reverse DCF solved values
-    var impliedCagr = null, impliedMargin = null, impliedROIC = null;
-    var pvSplit = null;
-    if (inp.revenue && inp.shares && fin(price)) {
-        impliedCagr   = solveImpliedCAGR(price, inp.shares, inp.netDebt, inp.revenue, margin, tax, wacc, g, n);
-        impliedMargin = solveImpliedMargin(price, inp.shares, inp.netDebt, inp.revenue, impliedCagr, tax, wacc, g, n);
-
-        // PV split: explicit vs terminal
-        var evTotal = price * inp.shares + inp.netDebt;
-        var pvExplicit = 0, rev = inp.revenue;
-        for (var t = 1; t <= n; t++) {
-            rev *= (1 + impliedCagr);
-            pvExplicit += rev * impliedMargin * (1 - tax) / Math.pow(1 + wacc, t);
-        }
-        pvSplit = fin(evTotal) && evTotal > 0 ? pvExplicit / evTotal : null;
-
-        // Implied incremental ROIC
-        var netNewIC = 0, rev2 = inp.revenue;
-        for (var t2 = 1; t2 <= n; t2++) {
-            var prevRev = rev2;
-            rev2 *= (1 + impliedCagr);
-            var deltaRev = rev2 - prevRev;
-            netNewIC += deltaRev * impliedMargin * (1 - tax) * 1.5; // rough reinvestment
-        }
-        if (netNewIC > 0) {
-            var totalNewNOPAT = inp.revenue * (Math.pow(1 + impliedCagr, n) - 1) * impliedMargin * (1 - tax);
-            impliedROIC = totalNewNOPAT / netNewIC;
-        }
-    }
-
-    // Sensitivity heatmap data
-    var waccGrid = [0.075, 0.080, 0.085, 0.090, 0.095];
-    var gGrid    = [0.015, 0.020, 0.025, 0.030, 0.035];
-    var heatVals = waccGrid.map(function(w) {
-        return gGrid.map(function(gg) {
-            if (!inp.revenue || !inp.shares) return null;
-            var fv = dcfFV(inp.revenue, impliedCagr || gr, impliedMargin || margin, tax, w, gg, n, inp.netDebt, inp.shares);
-            return fin(fv) ? Math.round(fv) : null;
-        });
-    });
-
-    // Tornado: ΔFV per driver
-    var tornDrivers = [];
-    if (inp.revenue && inp.shares) {
-        function deltaFV(grOff, marginOff, waccOff, gOff) {
-            var fvBase = dcfFV(inp.revenue, (impliedCagr || gr), (impliedMargin || margin), tax, wacc, g, n, inp.netDebt, inp.shares);
-            var fvVar  = dcfFV(inp.revenue, (impliedCagr || gr) + grOff, (impliedMargin || margin) + marginOff, tax, wacc + waccOff, g + gOff, n, inp.netDebt, inp.shares);
-            return fin(fvBase) && fin(fvVar) ? fvVar - fvBase : 0;
-        }
-        tornDrivers = [
-            { label: 'Terminal margin (±200bps)', up: deltaFV(0, 0.02, 0, 0), dn: deltaFV(0, -0.02, 0, 0) },
-            { label: 'WACC (±50bps)',              up: deltaFV(0, 0, -0.005, 0), dn: deltaFV(0, 0, 0.005, 0) },
-            { label: 'Revenue CAGR (±2pp)',         up: deltaFV(0.02, 0, 0, 0), dn: deltaFV(-0.02, 0, 0, 0) },
-            { label: 'Terminal growth (±50bps)',    up: deltaFV(0, 0, 0, 0.005), dn: deltaFV(0, 0, 0, -0.005) },
-        ].sort(function(a, b) { return (Math.abs(b.up) + Math.abs(b.dn)) - (Math.abs(a.up) + Math.abs(a.dn)); });
-    }
-    var maxSwing = tornDrivers.length ? Math.max.apply(null, tornDrivers.map(function(d) { return Math.max(Math.abs(d.up), Math.abs(d.dn)); })) : 1;
-
-    return h('div', null,
-        // Reverse DCF panel
-        h(Card, { title: 'Reverse DCF — Market-Implied Expectations', badge: 'NEW', meta: 'solved from ' + fmtDol(price, 2) + ' · WACC ' + (wacc * 100).toFixed(1) + '% · 10yr', style: { marginBottom: 14 } },
-            h(Grid, { style: { gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 14 } },
-                h(StatBox, {
-                    label: 'Implied Revenue CAGR', big: true,
-                    value: fin(impliedCagr) ? (impliedCagr * 100).toFixed(1) + '%' : '—',
-                    color: T.cyan,
-                    sub: fin(inp.revGrowth) ? 'vs ' + (inp.revGrowth * 100).toFixed(1) + '% delivered' : null,
-                }),
-                h(StatBox, {
-                    label: 'Implied Terminal Margin', big: true,
-                    value: fin(impliedMargin) ? (impliedMargin * 100).toFixed(1) + '%' : '—',
-                    color: impliedMargin && inp.operM && impliedMargin > inp.operM * 1.05 ? T.amber : T.text,
-                    sub: fin(inp.operM) ? 'vs ' + (inp.operM * 100).toFixed(1) + '% current operating margin' : null,
-                }),
-                h(StatBox, {
-                    label: 'Implied Incr. ROIC', big: true,
-                    value: fin(impliedROIC) ? (impliedROIC * 100).toFixed(1) + '%' : '—',
-                    sub: fin(pvSplit) ? (pvSplit * 100).toFixed(0) + '% of EV in explicit period' : null,
-                })
-            ),
-            fin(pvSplit) && h('div', { style: { marginBottom: 12 } },
-                h('div', { style: { display: 'flex', justifyContent: 'space-between', fontFamily: T.mono, fontSize: 10, color: T.muted2, marginBottom: 5 } },
-                    h('span', null, 'PV OF EXPLICIT ' + n + 'YR  ·  ' + (pvSplit * 100).toFixed(0) + '%'),
-                    h('span', null, 'TERMINAL VALUE  ·  ' + ((1 - pvSplit) * 100).toFixed(0) + '%')
-                ),
-                h('div', { style: { display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', border: '1px solid ' + T.border } },
-                    h('div', { style: { width: clamp(pvSplit * 100, 0, 100) + '%', background: T.cyanDim, borderRight: '2px solid ' + T.cyan, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.mono, fontSize: 10, color: T.cyan } }, (pvSplit * 100).toFixed(0) + '%'),
-                    h('div', { style: { flex: 1, background: T.amberDim, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.mono, fontSize: 10, color: T.amber } }, ((1 - pvSplit) * 100).toFixed(0) + '%')
-                )
-            ),
-            h(Note, null,
-                fin(pvSplit) ? ((1 - pvSplit) * 100).toFixed(0) + '% of value sits in terminal value, so the margin assumption dominates. ' : '',
-                'The market isn\'t asking for heroic growth — it\'s asking margins to hold at the current level for a decade.'
-            )
-        ),
-
-        h(Grid, { style: { gridTemplateColumns: '1fr 1fr', marginBottom: 14 } },
-            // Sensitivity heatmap
-            h(Card, { title: 'Sensitivity — Fair Value', badge: 'NEW', meta: 'WACC × terminal growth' },
-                h('div', { style: { display: 'grid', gridTemplateColumns: '50px repeat(5,1fr)', gap: 3, marginBottom: 4 } },
-                    h('div'),
-                    gGrid.map(function(gg) {
-                        return h('div', { key: gg, style: { textAlign: 'center', fontFamily: T.mono, fontSize: 9.5, color: T.muted2 } }, (gg * 100).toFixed(1) + '%');
-                    })
-                ),
-                h('div', { style: { display: 'grid', gridTemplateColumns: '50px repeat(5,1fr)', gap: 3 } },
-                    waccGrid.map(function(w, ri) {
-                        return [
-                            h('div', { key: 'l' + ri, style: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontFamily: T.mono, fontSize: 9.5, color: T.muted2, paddingRight: 4 } }, (w * 100).toFixed(1) + '%'),
-                        ].concat(heatVals[ri].map(function(v, ci) {
-                            var bg, fg;
-                            if (v == null) { bg = T.card2; fg = T.muted2; }
-                            else if (fin(price) && v >= price) {
-                                var t = clamp((v - price) / price / 0.08, 0, 1);
-                                bg = 'rgba(65,209,138,' + (0.12 + t * 0.5) + ')';
-                                fg = '#cdeede';
-                            } else {
-                                var t2 = fin(price) ? clamp((price - v) / price / 0.12, 0, 1) : 0.5;
-                                bg = 'rgba(247,109,109,' + (0.12 + t2 * 0.5) + ')';
-                                fg = '#f6d2d2';
-                            }
-                            return h('div', {
-                                key: ci,
-                                style: { aspectRatio: '1.6', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.mono, fontSize: 10, fontWeight: 500, background: bg, color: fg }
-                            }, v != null ? v : '—');
-                        }));
-                    }).flat()
-                ),
-                h(Note, { style: { marginTop: 12 } }, 'Rows = WACC (' + (waccGrid[0] * 100) + '–' + (waccGrid[4] * 100) + '%). Green ≥ price, red < price. Rate-sensitive — valuation flips quickly as WACC rises.')
-            ),
-
-            // Tornado
-            h(Card, { title: 'Value-Driver Tornado', badge: 'NEW', meta: 'Δ fair value, ±1 unit' },
-                tornDrivers.length ? h('div', { style: { marginTop: 6 } },
-                    tornDrivers.map(function(d) {
-                        var upW = Math.abs(d.up) / maxSwing * 45;
-                        var dnW = Math.abs(d.dn) / maxSwing * 45;
-                        return h('div', { key: d.label, style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 } },
-                            h('div', { style: { width: 170, fontSize: 11.5, color: T.muted, textAlign: 'right', flexShrink: 0 } }, d.label),
-                            h('div', { style: { flex: 1, height: 18, position: 'relative', display: 'flex', justifyContent: 'center' } },
-                                h('div', { style: { position: 'absolute', top: '50%', left: '50%', width: 1, height: '140%', transform: 'translate(-50%,-50%)', background: T.border2 } }),
-                                h('div', { style: { position: 'absolute', top: 0, right: '50%', width: dnW + '%', height: '100%', background: T.cyanDim, borderRight: '2px solid ' + T.cyan } }),
-                                h('div', { style: { position: 'absolute', top: 0, left: '50%', width: upW + '%', height: '100%', background: T.amberDim, borderLeft: '2px solid ' + T.amber } })
-                            )
-                        );
-                    }),
-                    h(Note, { style: { marginTop: 14, borderTop: '1px solid ' + T.border, paddingTop: 12 } },
-                        'The thesis is most fragile where assumptions are stretched. The largest swing factor is the key risk — that is where to focus scenario analysis.'
-                    )
-                ) : h(Note, null, 'Insufficient data for tornado.')
-            )
-        )
-    );
-}
-
+//
+// The panel that stood here ran every reverse DCF at `parseInputs`'s hardcoded
+// 8.5% WACC — one constant for every symbol in the universe — and closed with
+// a sentence computed from nothing:
+//
+//     "The market isn't asking for heroic growth — it's asking margins to hold
+//      at the current level for a decade."'"
+//
+// That was printed for every company in every market since it was written. A
+// sentence that cannot be false is not a verdict, and this file already
+// records the same shape twice: the chrome's hardcoded RISK-ON pill, and the
+// conditional-correlation panel that hardcoded the sign of a surge.
+//
+// Its sensitivity grid and tornado are preserved in the new tab, re-centred on
+// the company's OWN cost of capital rather than the constant.
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 3 — QUALITY & FORENSICS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -921,29 +748,39 @@ export function QualityTab(p) {
     var azComp = derived && derived.altman_components ? derived.altman_components : null;
     var azModel = derived && derived.altman_model ? derived.altman_model : 'service_z2';
 
-    // Approximate if not in derived table (needs balance sheet — show approx)
-    var azApprox = null;
-    if (az == null && inp) {
-        var bookEq = inp.bookVal && inp.shares ? inp.bookVal * inp.shares : null;
-        var totalLiab = (inp.mktCap && bookEq) ? inp.mktCap / (inp.pb || 5) - bookEq : null;
-        var approxTA = bookEq && inp.totalDebt ? bookEq + inp.totalDebt : null;
-        var ebit = inp.revenue && inp.operM ? inp.revenue * inp.operM : null;
-        if (approxTA && approxTA > 0) {
-            var x3 = ebit ? ebit / approxTA : null;
-            var x4 = (bookEq && totalLiab && totalLiab > 0) ? bookEq / totalLiab : null;
-            if (fin(x3) && fin(x4)) {
-                azApprox = 6.72 * x3 + 1.05 * x4; // partial — note as approximate
-            }
-        }
-    }
-    var azDisplay = fin(az) ? az : fin(azApprox) ? azApprox : null;
-    var azZone = azModel === 'manufacturing'
-        ? (azDisplay > 2.99 ? 'SAFE' : azDisplay > 1.81 ? 'GREY' : 'DISTRESS')
-        : (azDisplay > 2.60 ? 'SAFE' : azDisplay > 1.10 ? 'GREY' : 'DISTRESS');
-    var azColor = azZone === 'SAFE' ? T.green : azZone === 'GREY' ? T.amber : T.red;
-    var azNeedlePos = azModel === 'manufacturing'
-        ? clamp((azDisplay - 0) / 8 * 100, 2, 98)
-        : clamp((azDisplay - 0) / 8 * 100, 2, 98);
+    // THE APPROXIMATION THAT STOOD HERE IS GONE. It computed
+    //
+    //     totalLiab  = mktCap / pb − bookEq          <- not a liability figure
+    //     approxTA   = bookEq + totalDebt            <- not total assets
+    //     azApprox   = 6.72 * x3 + 1.05 * x4         <- X3+X4 only, no X1, no X2
+    //
+    // and fed the result straight into the full Z'' bands and needle below. Two
+    // independent faults compounding: a PARTIAL score read under the zones of a
+    // complete one (CodeRabbit, PR #806, which found the same partial in
+    // `compute_ticker_derived`), and inputs algebraically inverted out of a
+    // market multiple rather than read off a balance sheet.
+    //
+    // JPM is the live case. EQ-2's statement_profile gate correctly nulls a
+    // bank's working capital, so the statements refuse the Z'' — and this
+    // fallback then printed a distress zone from a fabricated balance sheet.
+    //
+    // A Z'' missing a term is not a lower Z''; it is a different statistic.
+    // `altman_refused` carries the refusal from the statement layer and
+    // `mergeDerived` deletes any partial score the table holds, so `az` is the
+    // only path and an unformed score renders as absent with its reason.
+    var azRefused = derived && derived.altman_refused === true;
+    var azWithheld = derived && derived._withheld ? derived._withheld : null;
+    var azDisplay = fin(az) ? az : null;
+    // `null > 2.60` is FALSE, so the old chain fell straight through to
+    // DISTRESS — a score that could not be formed rendered as the worst
+    // reading on the card, in red, with a needle. An unformed score has NO
+    // zone: the band is the reading, not a default.
+    var azZone = !fin(azDisplay) ? null
+        : azModel === 'manufacturing'
+            ? (azDisplay > 2.99 ? 'SAFE' : azDisplay > 1.81 ? 'GREY' : 'DISTRESS')
+            : (azDisplay > 2.60 ? 'SAFE' : azDisplay > 1.10 ? 'GREY' : 'DISTRESS');
+    var azColor = azZone === 'SAFE' ? T.green : azZone === 'GREY' ? T.amber : azZone === 'DISTRESS' ? T.red : T.muted2;
+    var azNeedlePos = fin(azDisplay) ? clamp(azDisplay / 8 * 100, 2, 98) : null;
 
     // Beneish M-Score
     var bm = derived && derived.beneish_m != null ? derived.beneish_m : null;
@@ -990,8 +827,8 @@ export function QualityTab(p) {
             // Altman Z
             h(Card, { title: 'Altman Z-Score', badge: 'REWORKED' },
                 h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 } },
-                    h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: azColor } }, fin(azDisplay) ? azDisplay.toFixed(1) : '—'),
-                    h(Pill, { text: azZone, color: azColor, dim: azColor === T.green ? T.greenDim : azColor === T.amber ? T.amberDim : T.redDim })
+                    h('div', { style: { fontFamily: T.mono, fontWeight: 600, fontSize: 40, color: azColor } }, fin(azDisplay) ? azDisplay.toFixed(1) : '\u2014'),
+                    azZone && h(Pill, { text: azZone, color: azColor, dim: azColor === T.green ? T.greenDim : azColor === T.amber ? T.amberDim : T.redDim })
                 ),
                 h('div', { style: { height: 30, borderRadius: 7, display: 'flex', overflow: 'hidden', border: '1px solid ' + T.border, position: 'relative', margin: '8px 0 4px' } },
                     h('div', { style: { flex: 33, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.red, fontFamily: T.mono, fontSize: 9, color: 'rgba(0,0,0,.55)', fontWeight: 600 } }, 'DISTRESS'),
@@ -1007,7 +844,15 @@ export function QualityTab(p) {
                 h('div', { style: { fontFamily: T.mono, fontSize: 9.5, letterSpacing: '.12em', color: T.muted2, textTransform: 'uppercase', margin: '12px 0 8px' } }, 'Components'),
                 azComp ? [['X1 · working capital/assets', azComp.x1], ['X2 · retained earnings/assets', azComp.x2], ['X3 · EBIT/assets', azComp.x3], ['X4 · equity/liabilities', azComp.x4]].map(function(r) {
                     return h(CkRow, { key: r[0], label: r[0], value: fin(r[1]) ? r[1].toFixed(2) : '—', na: !fin(r[1]) });
-                }) : h(Note, { style: { fontSize: 10 } }, azApprox != null ? '※ Partial estimate (X3+X4 only) — balance sheet needed for full score.' : 'Balance sheet data required. Run sync_fundamentals to populate.')
+                }) : null,
+                !fin(azDisplay) && h(Note, { style: { fontSize: 10, marginTop: 8 } },
+                    azRefused && azWithheld && azWithheld.reason === 'financial_profile'
+                        ? 'WITHHELD, not missing. ' + azWithheld.note
+                        : azRefused
+                            ? 'Refused: a Z\u2033 missing a component is not a lower Z\u2033, it is a different '
+                              + 'statistic, and the band chart above is drawn for the complete one. '
+                              + 'The components below show which terms are absent.'
+                            : 'No statements loaded for this symbol yet, so no Z\u2033 can be formed.')
             ),
 
             // Beneish M

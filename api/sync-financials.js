@@ -49,7 +49,11 @@ const SB_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const AV_KEY = process.env.ALPHA_VANTAGE_API_KEY || process.env.ALPHA_VANTAGE_KEY || '';
 const AV_BASE = 'https://www.alphavantage.co/query';
 
+const FINNHUB_KEY = (process.env.FINNHUB_API_KEY || '').trim();
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+
 const SOURCE = 'alphavantage';
+export const SOURCE_FINNHUB = 'finnhub';
 const FN_NAME = 'sync_financials';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -299,6 +303,68 @@ async function resolveSymbols(explicit, limit, refreshDays) {
     return ordered.slice(0, limit);
 }
 
+/**
+ * The symbols the institution layer is for: the Financials cohort, plus any
+ * symbol already carrying statements so a page can show both layers.
+ *
+ * SCOPED TO THE STATEMENT COHORT, NOT TO `assets`. `assets.sector` is
+ * `Other` for 6,879 of 7,921 active rows -- meaningful inside equity_cache
+ * (4 `Other`, 21 null out of 942) and not outside it. A cohort built from
+ * the whole table would be mostly unclassified names.
+ *
+ * `Financials` does NOT separate a bank from an insurer, and it is not asked
+ * to: the framework is chosen from the FILING (deposits and net interest
+ * income against premiums earned and loss reserves), which is a fact about
+ * what the company filed rather than a vendor's label. The sector only
+ * decides who is worth fetching -- and health insurers sit under
+ * `Healthcare`, so they are included by name rather than missed.
+ */
+async function resolveInstitutionSymbols(explicit, limit, refreshDays, extraSectors) {
+    if (explicit.length) return explicit;
+
+    const sectors = ['Financials'].concat(extraSectors || []);
+    const cohort = await sbSelect(
+        'equity_cache?select=symbol&limit=5000').catch(() => []);
+    const inCohort = new Set(cohort.map(r => r.symbol).filter(Boolean));
+    if (!inCohort.size) return [];
+
+    const classified = await sbSelect(
+        'assets?select=symbol,sector&listing_status=eq.active&sector=in.('
+        + sectors.map(x => '"' + x + '"').join(',') + ')&limit=5000').catch(() => []);
+
+    let fresh = new Set();
+    if (refreshDays > 0) {
+        const cutoff = new Date(Date.now() - refreshDays * 86400000).toISOString();
+        const recent = await sbSelect(
+            'company_reported_lines?select=symbol&source=eq.' + SOURCE_REPORTED
+            + '&loaded_at=gte.' + cutoff + '&limit=100000').catch(() => []);
+        fresh = new Set(recent.map(r => r.symbol));
+    }
+
+    const seen = new Set();
+    const ordered = [];
+    for (const a of classified) {
+        const sym = a.symbol;
+        if (!sym || seen.has(sym) || fresh.has(sym) || !inCohort.has(sym)) continue;
+        seen.add(sym);
+        ordered.push(sym);
+    }
+    return ordered.slice(0, limit);
+}
+
+/** One symbol's as-reported lines, written in ONE transaction. */
+async function sbUpsertReportedLines(rows) {
+    const res = await fetch(SB_URL + '/rest/v1/rpc/atlas_upsert_reported_lines', {
+        method: 'POST', headers: sbHeaders(SB_SERVICE),
+        body: JSON.stringify({ p_lines: rows }),
+    });
+    if (!res.ok) {
+        throw new Error('atlas_upsert_reported_lines ' + res.status + ' '
+            + (await res.text().catch(() => '')).slice(0, 300));
+    }
+    return res.json();
+}
+
 export default async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
@@ -306,9 +372,20 @@ export default async function handler(req, res) {
         const token = (req.query && req.query.token) || '';
         if (auth !== 'Bearer ' + secret && token !== secret) return res.status(401).json({ error: 'Unauthorized' });
     }
-    if (!AV_KEY) {
+    const wantProbe = String((req.query && req.query.probe) || '') === '1';
+    // The institution layer reads FINNHUB, like the probe, and writes
+    // company_reported_lines. It touches Alpha Vantage not at all.
+    const wantReported = String((req.query && req.query.mode) || '') === 'reported';
+    const wantFinnhub = wantProbe || wantReported;
+    // The probe reads FINNHUB, not Alpha Vantage, so it must not be refused
+    // for a key it never touches.
+    if (!wantFinnhub && !AV_KEY) {
         console.error('sync_financials: ALPHA_VANTAGE_API_KEY unset — refusing to run');
         return res.status(500).json({ error: 'ALPHA_VANTAGE_API_KEY unset' });
+    }
+    if (wantFinnhub && !FINNHUB_KEY) {
+        console.error('sync_financials: FINNHUB_API_KEY unset — refusing to run', wantProbe ? 'probe' : 'reported');
+        return res.status(500).json({ error: 'FINNHUB_API_KEY unset' });
     }
     if (!SB_SERVICE) {
         console.error('sync_financials: SUPABASE_SERVICE_ROLE_KEY unset — refusing to run');
@@ -327,6 +404,22 @@ export default async function handler(req, res) {
         scope: explicit.length ? 'explicit' : 'book+universe',
         mode: 'statements',
         source: SOURCE,
+        // WHICH HOST ANSWERED, and a caller-supplied tag for THIS run.
+        //
+        // Both exist because a run was read that never happened. A probe fired
+        // at a Vercel PREVIEW alias came back HTTP 200 carrying Vercel's
+        // deployment-protection login page — not this handler at all — so no
+        // sync_log row was written, and reading "the latest probe row" returned
+        // the PREVIOUS run's. Identical output read as "the fix changed
+        // nothing" when the fix had never executed.
+        //
+        // `base` is read off the request rather than a constant, so it names
+        // the deployment that actually served it. `run_tag` lets a caller
+        // prove the row it is reading is the one it fired, instead of trusting
+        // ORDER BY id DESC. Same reasoning as sync_log.details.base on the
+        // chain stages: without it, two layers are indistinguishable.
+        base: (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || null,
+        run_tag: String((req.query && req.query.run_tag) || '') || null,
         requested: 0, attempted: 0, symbols_written: 0, rows_written: 0,
         av_calls: 0, rate_limited: false, rate_limit_message: null,
         years: {}, failures: [], budget_exhausted: false,
@@ -347,6 +440,149 @@ export default async function handler(req, res) {
         if (ins.ok) { const j = await ins.json().catch(() => null); logId = j && j[0] && j[0].id; }
         else console.error('sync_financials: sync_log open refused', ins.status, await ins.text().catch(() => ''));
     } catch (e) { console.error('sync_financials: sync_log open threw', e && e.message); }
+
+    // ── REPORTED-LINES MODE — the institution layer's substrate ─────────
+    // Writes company_reported_lines from Finnhub's as-reported XBRL. One
+    // vendor call and one RPC per symbol, so a symbol is atomic against the
+    // interruption that actually happens.
+    if (wantReported) {
+        summary.mode = 'reported';
+        summary.source = SOURCE_REPORTED;
+        summary.scope = explicit.length ? 'explicit' : 'institution_cohort';
+        // NAMED SEPARATELY from av_calls. A run that made no Alpha Vantage
+        // calls and 40 Finnhub ones must not read as a run that made none.
+        summary.finnhub_calls = 0;
+        summary.symbols = [];
+        // A filer the vendor holds nothing for is not a failure and not a
+        // write: EQ-3 measured ASML, TSM, SONY and ABEV all returning zero
+        // because this endpoint is a SEC 10-K feed and they file 20-Fs.
+        summary.no_filings = [];
+
+        const extra = String(q.sectors || '').split(',').map(x => x.trim()).filter(Boolean);
+        let syms = [];
+        try {
+            syms = await resolveInstitutionSymbols(explicit, limit, refreshDays, extra);
+        } catch (e) {
+            console.error('sync_financials reported: symbol resolve failed', e && e.message);
+            summary.failures.push({ symbol: null, error: String(e.message).slice(0, 200) });
+        }
+        summary.requested = syms.length;
+
+        for (const sym of syms) {
+            if (Date.now() - started > budgetMs) { summary.budget_exhausted = true; break; }
+            summary.attempted++;
+            try {
+                const j = await finnhubGetJson('/stock/financials-reported?symbol='
+                    + encodeURIComponent(sym) + '&freq=annual');
+                summary.finnhub_calls++;
+                const rows = reportedRowsFor(j, sym);
+                const shape = reportedSummary(j, rows);
+                if (!rows.length) {
+                    // Recorded, never written. `reason` says which of the two
+                    // empties this is.
+                    summary.no_filings.push({ symbol: sym, reason: shape.reason, forms: shape.forms });
+                } else {
+                    const wrote = await sbUpsertReportedLines(rows);
+                    summary.rows_written += Number(wrote && wrote.rows) || 0;
+                    summary.symbols_written++;
+                    summary.symbols.push({
+                        symbol: sym, rows: Number(wrote && wrote.rows) || 0,
+                        periods: shape.periods, year_min: shape.year_min, year_max: shape.year_max,
+                    });
+                }
+            } catch (e) {
+                if (e instanceof RateLimited) {
+                    summary.rate_limited = true;
+                    summary.rate_limit_message = e.message;
+                    console.error('sync_financials reported: rate limited —', e.message);
+                    break;
+                }
+                summary.failures.push({ symbol: sym, error: String(e.message).slice(0, 200) });
+                console.error('sync_financials reported:', sym, e && e.message);
+            }
+            if (paceMs) await new Promise(r => setTimeout(r, paceMs));
+        }
+
+        // Three outcomes, never two. A run that wrote nothing because every
+        // symbol was already fresh is not the same as one that wrote nothing
+        // because the fetch produced nothing, and `success` for either is how
+        // a stopped feed stays invisible.
+        const rStatus = summary.rows_written > 0 ? 'success'
+            : (summary.requested === 0 || summary.no_filings.length) ? 'skipped'
+            : 'error';
+        if (logId != null) {
+            try {
+                const upd = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
+                    method: 'PATCH', headers: sbHeaders(SB_SERVICE),
+                    body: JSON.stringify({
+                        finished_at: new Date().toISOString(),
+                        status: rStatus,
+                        error_message: summary.rate_limit_message
+                            || (summary.failures.length ? summary.failures[0].error : null),
+                        details: summary,
+                    }),
+                });
+                // Never swallowed. A non-OK PATCH does not throw, and that is
+                // exactly how 41 sync_funddata_prices rows sat open for months.
+                if (!upd.ok) {
+                    console.error('sync_financials reported: sync_log close refused',
+                        upd.status, await upd.text().catch(() => ''));
+                }
+            } catch (e) {
+                console.error('sync_financials reported: sync_log close threw', e && e.message);
+            }
+        }
+        return res.status(rStatus === 'error' ? 500 : 200).json(summary);
+    }
+
+    // ── PROBE MODE — measures, writes nothing ───────────────────────────
+    // Answers the two questions CLAUDE.md records as load-bearing and
+    // unmeasured: Finnhub's year-depth, and whether one concept mapping
+    // serves every filer. It writes no statement rows at all, so it cannot
+    // put a half-mapped period into the layer the whole module reads.
+    if (wantProbe) {
+        summary.mode = 'probe';
+        summary.source = SOURCE_FINNHUB;
+        const probeSyms = explicit.length ? explicit : ['TGT', 'GOOGL', 'JPM'];
+        summary.requested = probeSyms.length;
+        summary.probes = [];
+        for (const sym of probeSyms) {
+            if (Date.now() - started > budgetMs) { summary.budget_exhausted = true; break; }
+            summary.attempted++;
+            try {
+                summary.probes.push(await probeSymbol(sym, Number(q.count) || 0, String(q.concept_like || '')));
+            } catch (e) {
+                if (e instanceof RateLimited) {
+                    summary.rate_limited = true;
+                    summary.rate_limit_message = e.message;
+                    console.error('sync_financials probe: rate limited —', e.message);
+                    break;
+                }
+                summary.failures.push({ symbol: sym, error: String(e.message).slice(0, 200) });
+                console.error('sync_financials probe:', sym, e && e.message);
+            }
+        }
+        // `skipped`, never `success`: a probe writes nothing, and a run that
+        // wrote nothing must not report a successful write. That distinction
+        // is the one this codebase has had to re-learn four times.
+        const pStatus = summary.probes.length ? 'skipped' : 'error';
+        if (logId != null) {
+            try {
+                const upd = await fetch(SB_URL + '/rest/v1/sync_log?id=eq.' + logId, {
+                    method: 'PATCH', headers: sbHeaders(SB_SERVICE),
+                    body: JSON.stringify({
+                        finished_at: new Date().toISOString(),
+                        status: pStatus,
+                        error_message: summary.rate_limit_message
+                            || (summary.failures.length ? summary.failures[0].error : null),
+                        details: summary,
+                    }),
+                });
+                if (!upd.ok) console.error('sync_financials: probe sync_log close refused', upd.status, await upd.text().catch(() => ''));
+            } catch (e) { console.error('sync_financials: probe sync_log close threw', e && e.message); }
+        }
+        return res.status(pStatus === 'error' ? 503 : 200).json(summary);
+    }
 
     let symbols = [];
     try {
@@ -456,4 +692,548 @@ export default async function handler(req, res) {
     }
 
     return res.status(status === 'error' ? 503 : 200).json(summary);
+}
+
+// ============================================================
+// FINNHUB — as-reported XBRL, and the probe that measures it
+// ------------------------------------------------------------
+// Two questions block EQ-3 and EQ-4, and CLAUDE.md records both as
+// LOAD-BEARING AND UNMEASURED. They are measured here rather than
+// designed around, because this codebase has a standing rule about
+// checking that a tool is absent before designing around its absence.
+//
+//   1. THROUGHPUT. The Alpha Vantage production key is free tier —
+//      measured, not assumed: 25 requests/day against 3 per symbol, so
+//      ~8 symbols/day and ~114 days for the 913-symbol universe. That
+//      is why TGT's peer group is EMPTY today (peer_count = 0 on every
+//      metric) while GOOGL's has two: only nine symbols are loaded and
+//      TGT is alone in its sector among them. The brief asks for "a
+//      real peer average, not some hallucinated one" — and a real one
+//      needs coverage, which needs a source without a daily cap.
+//      Finnhub is 60/min with no daily cap and is ALREADY WIRED. Its
+//      year-depth is the unknown.
+//
+//   2. CONCEPT CONSISTENCY. Alpha Vantage NORMALISES, which is what
+//      makes a retailer and a bank comparable in one schema — and is
+//      also what DISCARDS every line item CAMELS needs. Finnhub's
+//      /stock/financials-reported is as-reported XBRL, so a bank's
+//      Tier 1 capital, risk-weighted assets and loan-loss allowance
+//      survive. The cost is that the tag is the FILER'S choice:
+//      one company reports revenue as `Revenues`, another as
+//      `RevenueFromContractWithCustomerExcludingAssessedTax`. A
+//      mapping that misses returns NULL — honest and useless.
+//
+// The probe answers both in one run and WRITES NOTHING. A loader built
+// on an assumed mapping would fail silently, field by field.
+// ============================================================
+
+/**
+ * Candidate US-GAAP tags per target field, in preference order.
+ *
+ * The lists are candidates, NOT a claim about what any filer uses — that
+ * is precisely what the probe measures. A field with no match is absent
+ * from the probe's report rather than reported as zero coverage, so
+ * "no filer in the sample tags this" is legible as its own finding.
+ */
+export const GAAP_CONCEPTS = {
+    // ── income statement ──
+    total_revenue: ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax',
+        'RevenueFromContractWithCustomerIncludingAssessedTax', 'SalesRevenueNet', 'SalesRevenueGoodsNet'],
+    cost_of_revenue: ['CostOfRevenue', 'CostOfGoodsAndServicesSold', 'CostOfGoodsSold'],
+    gross_profit: ['GrossProfit'],
+    operating_income: ['OperatingIncomeLoss'],
+    net_income: ['NetIncomeLoss', 'ProfitLoss'],
+    income_before_tax: [
+        'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest',
+        'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],
+    income_tax_expense: ['IncomeTaxExpenseBenefit'],
+    interest_expense: ['InterestExpense', 'InterestExpenseDebt', 'InterestExpenseBorrowings'],
+    research_and_development: ['ResearchAndDevelopmentExpense'],
+    selling_general_and_administrative: ['SellingGeneralAndAdministrativeExpense', 'GeneralAndAdministrativeExpense'],
+
+    // ── balance sheet ──
+    total_assets: ['Assets'],
+    total_current_assets: ['AssetsCurrent'],
+    total_liabilities: ['Liabilities'],
+    total_current_liabilities: ['LiabilitiesCurrent'],
+    total_shareholder_equity: ['StockholdersEquity',
+        'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'],
+    retained_earnings: ['RetainedEarningsAccumulatedDeficit'],
+    inventory: ['InventoryNet'],
+    cash_and_cash_equivalents: ['CashAndCashEquivalentsAtCarryingValue',
+        'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents'],
+    current_net_receivables: ['AccountsReceivableNetCurrent', 'ReceivablesNetCurrent'],
+    current_accounts_payable: ['AccountsPayableCurrent', 'AccountsPayableAndAccruedLiabilitiesCurrent'],
+    property_plant_equipment: ['PropertyPlantAndEquipmentNet'],
+    goodwill: ['Goodwill'],
+    long_term_debt: ['LongTermDebtNoncurrent', 'LongTermDebt'],
+    common_stock_shares_outstanding: ['CommonStockSharesOutstanding', 'EntityCommonStockSharesOutstanding'],
+
+    // ── cash flow ──
+    operating_cashflow: ['NetCashProvidedByUsedInOperatingActivities',
+        'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations'],
+    capital_expenditures: ['PaymentsToAcquirePropertyPlantAndEquipment', 'PaymentsToAcquireProductiveAssets'],
+    dividend_payout_common_stock: ['PaymentsOfDividendsCommonStock', 'PaymentsOfDividends'],
+    stock_based_compensation: ['ShareBasedCompensation'],
+    cashflow_from_investment: ['NetCashProvidedByUsedInInvestingActivities'],
+    cashflow_from_financing: ['NetCashProvidedByUsedInFinancingActivities'],
+};
+
+/**
+ * The line items normalisation DISCARDS. These are the whole reason EQ-4
+ * (CAMELS for banks, and the separate P&C and life/health frameworks)
+ * cannot be built on Alpha Vantage: no Tier 1 capital, no risk-weighted
+ * assets, no non-performing loans, no allowance for loan losses, no net
+ * premiums earned or written, no loss reserves.
+ *
+ * CFA L2 V3 LM4 grouping, so a reader can see which framework each
+ * concept serves rather than a flat list.
+ */
+export const INSTITUTION_CONCEPTS = {
+    // CAMELS · C — capital adequacy
+    tier_one_capital: ['TierOneRiskBasedCapital', 'TierOneRiskBasedCapitalToRiskWeightedAssets'],
+    total_risk_based_capital: ['CapitalToRiskWeightedAssets', 'TotalRiskBasedCapital'],
+    risk_weighted_assets: ['RiskWeightedAssets'],
+    common_equity_tier_one: ['TierOneLeverageCapitalToAverageAssets'],
+
+    // CAMELS · A — asset quality
+    allowance_for_credit_losses: ['FinancingReceivableAllowanceForCreditLosses',
+        'FinancingReceivableAllowanceForCreditLossExcludingAccruedInterest',
+        'LoansAndLeasesReceivableAllowance'],
+    nonaccrual_loans: ['FinancingReceivableRecordedInvestmentNonaccrualStatus',
+        'FinancingReceivableNonaccrualNoAllowance'],
+    provision_for_credit_losses: ['ProvisionForLoanLeaseAndOtherLosses',
+        'ProvisionForLoanAndLeaseLosses', 'ProvisionForDoubtfulAccounts'],
+    net_charge_offs: ['FinancingReceivableAllowanceForCreditLossWriteoff'],
+    loans_and_leases: ['NotesReceivableNet', 'LoansAndLeasesReceivableNetReportedAmount'],
+
+    // CAMELS · E — earnings
+    net_interest_income: ['InterestIncomeExpenseNet', 'InterestIncomeExpenseAfterProvisionForLoanLoss'],
+    noninterest_income: ['NoninterestIncome'],
+    noninterest_expense: ['NoninterestExpense'],
+
+    // CAMELS · L — liquidity
+    deposits: ['Deposits', 'InterestBearingDepositLiabilities'],
+
+    // P&C insurers
+    premiums_earned_net: ['PremiumsEarnedNet', 'PremiumsEarnedNetPropertyAndCasualty'],
+    premiums_written_net: ['PremiumsWrittenNet', 'PremiumsWrittenGross'],
+    losses_and_lae_incurred: ['PolicyholderBenefitsAndClaimsIncurredNet',
+        'LiabilityForClaimsAndClaimsAdjustmentExpenseIncurredClaims'],
+    loss_reserves: ['LiabilityForClaimsAndClaimsAdjustmentExpense'],
+    underwriting_expense: ['DeferredPolicyAcquisitionCostAmortizationExpense'],
+
+    // Life / health insurers
+    policyholder_benefits: ['PolicyholderBenefitsAndClaimsIncurredLifeAndAnnuity'],
+    future_policy_benefits: ['LiabilityForFuturePolicyBenefits'],
+    separate_account_assets: ['SeparateAccountAssets'],
+};
+
+async function finnhubGetJson(path) {
+    if (!FINNHUB_KEY) throw new Error('FINNHUB_API_KEY unset');
+    const sep = path.includes('?') ? '&' : '?';
+    const r = await fetchT(FINNHUB_BASE + path + sep + 'token=' + encodeURIComponent(FINNHUB_KEY), 25000);
+    // Finnhub signals a throttle with a real 429 rather than a 200 carrying a
+    // note, so it is detectable without the shape-sniffing Alpha Vantage needs.
+    if (r.status === 429) throw new RateLimited('finnhub 429 rate limit');
+    if (!r.ok) throw new Error('finnhub ' + path.split('?')[0] + ' http ' + r.status);
+    return r.json();
+}
+
+/**
+ * Flatten one Finnhub annual report into { concept -> value } plus the
+ * label, so the probe can report BOTH — a concept nobody recognises is
+ * still identifiable from the label a human wrote in the filing.
+ */
+export function indexReport(report) {
+    const out = {};
+    for (const section of ['ic', 'bs', 'cf']) {
+        const arr = Array.isArray(report && report[section]) ? report[section] : [];
+        for (const item of arr) {
+            const concept = item && item.concept;
+            if (!concept || out[concept] !== undefined) continue;
+            out[concept] = {
+                value: num(item.value),
+                label: item.label || null,
+                // The UNIT is part of the figure. ASML files in EUR; reading a
+                // stored number without it compares a euro to a dollar.
+                unit: item.unit || null,
+                section,
+            };
+        }
+    }
+    return out;
+}
+
+/**
+ * The key an as-reported XBRL tag is matched on.
+ *
+ * The first probe returned MISS on every field for GOOGL while indexing 149
+ * distinct concepts. A tag matching on some periods and not others of the
+ * SAME filer is not a filer choosing a different concept -- it is a FORMAT
+ * difference: Finnhub returns `Assets`, `us-gaap:Assets` and `us-gaap_Assets`
+ * for the same US-GAAP concept, and the candidate lists were written in the
+ * bare form.
+ *
+ * ONLY THE `us-gaap` NAMESPACE IS STRIPPED, AND THAT IS THE WHOLE POINT.
+ * The first fix took the last `:` or `_` and dropped whatever preceded it, so
+ * `ifrs-full:Assets` and `issuer:Assets` both collapsed to `assets` and
+ * counted as the US-GAAP candidate. A namespace is part of a concept's
+ * identity: an IFRS filer tagging `ifrs-full:Assets` has NOT reported the
+ * US-GAAP concept, and a probe that says otherwise reports coverage the
+ * mapping does not have. That matters here rather than in theory -- ASML
+ * files in IFRS (its statements come back in EUR), so a foreign taxonomy is
+ * in the very sample this probe measures.
+ *
+ * Any other taxonomy keeps its prefix, so it stays visible as a mismatch.
+ * Raised by the Codex reviewer on PR #808.
+ */
+const US_GAAP = 'us-gaap';
+const NS = /^([A-Za-z][A-Za-z0-9-]*)[:_](.+)$/;
+
+export function conceptKey(concept) {
+    if (!concept) return '';
+    const s = String(concept);
+    const m = NS.exec(s);
+    if (!m) return s.toLowerCase();
+    const [, ns, local] = m;
+    return ns.toLowerCase() === US_GAAP
+        ? local.toLowerCase()
+        : ns.toLowerCase() + ':' + local.toLowerCase();
+}
+
+/** The taxonomy a tag declares, or null for a bare (already-stripped) tag. */
+export function taxonomyOf(concept) {
+    if (!concept) return null;
+    const m = NS.exec(String(concept));
+    return m ? m[1].toLowerCase() : null;
+}
+
+/** A concept index keyed by `conceptKey`, so a us-gaap tag resolves in any
+ *  of its three spellings while a foreign taxonomy stays distinct. */
+export function indexByLocalName(idx) {
+    const out = {};
+    for (const [concept, v] of Object.entries(idx || {})) {
+        const k = conceptKey(concept);
+        if (!k || out[k] !== undefined) continue;
+        out[k] = Object.assign({ concept }, v);
+    }
+    return out;
+}
+
+/**
+ * Measure, for one symbol's reports, which candidate concept each target
+ * field resolved to and on how many of the periods.
+ *
+ * A field that matched NOTHING is reported with `matched: null` rather
+ * than omitted: "no filer in this sample tags operating income" is a
+ * finding about the mapping, and a field silently missing from the
+ * report reads as one nobody asked about.
+ */
+/**
+ * The tags carrying one of `wanted`'s local names under a NON-us-gaap
+ * taxonomy. `wanted` is already in conceptKey form, so a us-gaap candidate is
+ * a bare local name; anything matching it after its own prefix is stripped is
+ * the same concept in a different taxonomy.
+ */
+function foreignHits(locals, wanted) {
+    const bare = new Set(wanted.filter(w => !w.includes(':')));
+    const out = new Set();
+    for (const idx of locals) {
+        for (const [key, v] of Object.entries(idx)) {
+            const colon = key.indexOf(':');
+            if (colon < 0) continue;                       // us-gaap or bare
+            if (bare.has(key.slice(colon + 1))) out.add(v.concept);
+        }
+    }
+    return Array.from(out);
+}
+
+export function probeConcepts(reports, groups) {
+    const out = {};
+    // Match on LOCAL NAME, so `us-gaap:Assets`, `us-gaap_Assets` and `Assets`
+    // all resolve to the same candidate. The first probe compared raw strings
+    // and reported MISS on every GOOGL field while indexing 149 concepts.
+    const locals = reports.map(indexByLocalName);
+    for (const [field, candidates] of Object.entries(groups)) {
+        const wanted = candidates.map(conceptKey);
+        let matched = null, hits = 0;
+        const seen = new Set();
+        for (const idx of locals) {
+            let found = null;
+            for (let i = 0; i < wanted.length; i++) {
+                if (idx[wanted[i]] !== undefined) { found = idx[wanted[i]].concept; break; }
+            }
+            if (found) { hits++; seen.add(found); if (!matched) matched = found; }
+        }
+        // A MISS under us-gaap while the SAME local name is present under
+        // another taxonomy is a different finding from the concept being
+        // absent: it says this is a foreign filer, not that the mapping is
+        // wrong. Reporting them as one number is what the namespace collapse
+        // did, so they are reported apart.
+        const foreign = matched ? [] : foreignHits(locals, wanted);
+
+        out[field] = {
+            matched: matched,
+            periods_covered: hits,
+            // More than one tag across the sample is the cross-filer
+            // inconsistency this probe exists to detect.
+            tags_seen: seen.size > 1 ? Array.from(seen) : undefined,
+            foreign_taxonomy_tags: foreign.length ? foreign : undefined,
+        };
+    }
+    return out;
+}
+
+export const SOURCE_REPORTED = 'finnhub';
+
+/**
+ * ONE FILING PER FISCAL YEAR.
+ *
+ * `indexReport` dedupes a concept within a single filing; the table's key
+ * spans filings, so two filings covering the same fiscal year collide on
+ * insert. That is not hypothetical: CB returns 19 filings all tagged `10-K`,
+ * and 2011, 2012 and 2013 each appear TWICE -- the merged Chubb/ACE entity,
+ * where two predecessor registrants filed for the same years and the vendor
+ * returns both under one ticker. One payload carries 109-111 concepts, the
+ * other 20-83.
+ *
+ * THE INSERT ERROR WAS THE LESSER HAZARD. Every consumer aggregates per
+ * (symbol, fiscal_year), so without the key refusing them, two registrants'
+ * figures for one year would have been silently mixed into one set of ratios.
+ *
+ * Nothing in the payload says which filing supersedes the other, so the rule
+ * is stated rather than inferred: KEEP THE RICHEST, tie-broken by the later
+ * filing date and then by accession so it is fully deterministic. Richest
+ * cannot lose a line that the other filing carried; "latest" could, and here
+ * would, since the stub payloads are not obviously the older ones. What is
+ * dropped is REPORTED (`supersededFilings`) rather than discarded quietly.
+ */
+export function pickOnePerYear(filings) {
+    const best = new Map();
+    for (const d of filings) {
+        const year = Number(d && d.year);
+        if (!Number.isFinite(year)) continue;
+        const prev = best.get(year);
+        if (!prev || compareFilings(d, prev) > 0) best.set(year, d);
+    }
+    return Array.from(best.values());
+}
+
+function conceptCount(d) {
+    const r = (d && d.report) || {};
+    return ['ic', 'bs', 'cf'].reduce(
+        (n, k) => n + (Array.isArray(r[k]) ? r[k].length : 0), 0);
+}
+
+/** > 0 when `a` should win. Richest, then later filed, then accession. */
+function compareFilings(a, b) {
+    const byCount = conceptCount(a) - conceptCount(b);
+    if (byCount !== 0) return byCount;
+    const fa = isoDate(a && a.filedDate) || '';
+    const fb = isoDate(b && b.filedDate) || '';
+    if (fa !== fb) return fa < fb ? -1 : 1;
+    return String((a && a.accessNumber) || '').localeCompare(String((b && b.accessNumber) || ''));
+}
+
+/** The filings a fiscal year had beyond the one kept, so a duplicate year is
+ *  legible as a decision rather than as a number that quietly went missing. */
+export function supersededFilings(filings) {
+    const seen = new Map();
+    for (const d of filings) {
+        const year = Number(d && d.year);
+        if (!Number.isFinite(year)) continue;
+        seen.set(year, (seen.get(year) || 0) + 1);
+    }
+    const out = [];
+    for (const [year, n] of seen) if (n > 1) out.push({ year, filings: n });
+    return out.sort((a, b) => b.year - a.year);
+}
+
+/**
+ * One symbol's as-reported annual filings, flattened to company_reported_lines
+ * rows.
+ *
+ * ONE ROW PER (symbol, fiscal_year, concept), which is the table's key, so the
+ * dedupe inside indexReport is what keeps a concept reported in two sections of
+ * the same filing from colliding on insert.
+ *
+ * A filing with NO usable year yields nothing. `fiscal_year` is the key; a row
+ * that cannot say which year it describes is not a period, the same rule
+ * rowsFor() applies to a missing fiscalDateEnding.
+ */
+export function reportedRowsFor(json, symbol) {
+    const data = Array.isArray(json && json.data) ? json.data : [];
+    // 10-K only. A foreign private issuer files a 20-F and this endpoint
+    // returns nothing at all for one, which is a COVERAGE finding rather than
+    // a filter result -- see reportedSummary() below.
+    const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
+    const out = [];
+    for (const d of pickOnePerYear(annuals)) {
+        const year = Number(d.year);
+        if (!Number.isFinite(year)) continue;
+        const idx = indexReport(d.report);
+        for (const [concept, v] of Object.entries(idx)) {
+            out.push({
+                source: SOURCE_REPORTED,
+                symbol,
+                fiscal_year: year,
+                concept,
+                form: d.form || null,
+                period_end: isoDate(d.endDate),
+                filed_date: isoDate(d.filedDate),
+                accession: d.accessNumber || null,
+                section: v.section || null,
+                label: v.label,
+                taxonomy: foreignTaxonomyOf(concept),
+                value: v.value,
+                unit: v.unit,
+            });
+        }
+    }
+    return out;
+}
+
+/**
+ * The taxonomy a concept belongs to when that is NOT us-gaap, else null.
+ *
+ * NOT `taxonomyOf`, which returns the raw prefix and would give 'us-gaap' for
+ * `us-gaap:Assets` and NULL for the bare `Assets` the vendor sometimes already
+ * strips. Both are the same concept, so a column that separates them makes
+ * `taxonomy is distinct from 'us-gaap'` -- the obvious foreign-filer test --
+ * count every bare us-gaap tag as foreign.
+ *
+ * Here NULL means us-gaap in any of its three spellings and non-null means it
+ * is not, so `taxonomy is not null` IS the foreign test, in one predicate with
+ * no null handling to get wrong.
+ */
+export function foreignTaxonomyOf(concept) {
+    const key = conceptKey(concept);
+    const colon = key.indexOf(':');
+    return colon < 0 ? null : key.slice(0, colon);
+}
+
+/** A date the database will accept, or null. The vendor mixes plain dates and
+ *  timestamps, and a malformed one must not become a fabricated day. */
+export function isoDate(v) {
+    if (!v) return null;
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v));
+    return m ? m[1] : null;
+}
+
+/**
+ * What a symbol's fetch actually established, kept apart from what it wrote.
+ *
+ * NO ROWS AND NO FILINGS ARE DIFFERENT FINDINGS. `forms: []` means the vendor
+ * holds nothing for this filer -- EQ-3 measured ASML, TSM, SONY and ABEV all
+ * returning zero, because `financials-reported` is a SEC 10-K feed and a
+ * foreign private issuer files a 20-F. Reporting that as "0 rows written"
+ * reads as a load that produced nothing, which is the no-op-as-success shape
+ * this codebase has had to separate four times.
+ */
+export function reportedSummary(json, rows) {
+    const data = Array.isArray(json && json.data) ? json.data : [];
+    const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
+    const superseded = supersededFilings(annuals);
+    const forms = Array.from(new Set(data.map(d => d && d.form).filter(Boolean)));
+    const years = rows.map(r => r.fiscal_year);
+    return {
+        filings: data.length,
+        forms,
+        periods: new Set(years).size,
+        year_min: years.length ? Math.min(...years) : null,
+        year_max: years.length ? Math.max(...years) : null,
+        rows: rows.length,
+        // Present only when a year really had more than one filing. An empty
+        // array on every symbol would be noise; absence here means no year
+        // was duplicated.
+        superseded: superseded.length ? superseded : undefined,
+        reason: data.length === 0 ? 'no_filings'
+            : rows.length === 0 ? 'no_10k_filings'
+            : null,
+    };
+}
+
+/**
+ * Every concept whose TAG or LABEL carries `needle`, with the number of
+ * periods it appears on.
+ *
+ * `sample_concepts` is the first 40 tags in an arbitrary order, which is
+ * enough to prove a namespace prefix and useless for building a concept map
+ * for a filer class nobody has mapped yet: an insurer reports 251-472
+ * distinct concepts and the one wanted is rarely in the first 40.
+ *
+ * The LABEL is searched as well as the tag, because the label is what a
+ * human wrote in the filing. "Policyholder benefits and claims" is how the
+ * CFA framework names the line; the tag the filer chose for it is precisely
+ * the unknown. Searching only the tag can only find what you already guessed.
+ *
+ * `periods` is on each hit for the same reason `periods_covered` is on a
+ * field result — a tag used in one year of sixteen is not a series, and
+ * reading it as one is how a ratio ends up defined on a line the filer
+ * stopped reporting.
+ */
+export function conceptSearch(reports, needle, limit) {
+    if (!needle) return undefined;
+    const n = String(needle).toLowerCase();
+    const cap = Math.max(1, Math.min(200, Number(limit) || 60));
+    const acc = new Map();
+    for (const r of reports) {
+        for (const [concept, v] of Object.entries(r || {})) {
+            const label = (v && v.label) || '';
+            if (!concept.toLowerCase().includes(n) && !label.toLowerCase().includes(n)) continue;
+            const e = acc.get(concept)
+                || { concept, label: (v && v.label) || null, section: v && v.section, periods: 0 };
+            e.periods++;
+            acc.set(concept, e);
+        }
+    }
+    return Array.from(acc.values())
+        .sort((a, b) => b.periods - a.periods || a.concept.localeCompare(b.concept))
+        .slice(0, cap);
+}
+
+/**
+ * One symbol's shape. Writes nothing.
+ */
+export async function probeSymbol(symbol, count, conceptLike) {
+    const j = await finnhubGetJson('/stock/financials-reported?symbol='
+        + encodeURIComponent(symbol) + '&freq=annual'
+        + (count ? '&count=' + count : ''));
+    const data = Array.isArray(j && j.data) ? j.data : [];
+    const annuals = data.filter(d => d && d.form && String(d.form).startsWith('10-K'));
+    const use = annuals.length ? annuals : data;
+    const reports = use.map(d => indexReport(d && d.report));
+    const years = use.map(d => d && d.year).filter(y => Number.isFinite(y));
+
+    return {
+        symbol,
+        periods: use.length,
+        forms: Array.from(new Set(use.map(d => d && d.form).filter(Boolean))),
+        year_min: years.length ? Math.min(...years) : null,
+        year_max: years.length ? Math.max(...years) : null,
+        distinct_concepts: new Set(reports.flatMap(r => Object.keys(r))).size,
+        // PERIODS ARE NOT PERIODS WITH DATA. `periods` counts 10-K filings
+        // the vendor returns; this counts the ones whose `report` actually
+        // carries concepts, and the two are not the same claim. Which of the
+        // three candidate causes is live — a sparse payload, a per-filer tag
+        // vocabulary, or a mapping fault — is OPEN, and this column only
+        // rules the first in or out. `sample_concepts` below is what settles
+        // the second: it names the tags the filer actually used, so a MISS
+        // can be read against them instead of guessed at.
+        periods_with_concepts: reports.filter(r => Object.keys(r).length > 0).length,
+        concepts_per_period: use.map((d, i) => ({
+            year: d && d.year,
+            n: Object.keys(reports[i] || {}).length,
+        })),
+        // A MISS is only actionable if the report says what was there instead.
+        // The first probe returned MISS with no sample and the cause — a
+        // namespace prefix on the tag — was invisible from its output.
+        sample_concepts: Array.from(new Set(reports.flatMap(r => Object.keys(r)))).slice(0, 40),
+        // Present only when asked for. An empty array would read as "nothing
+        // matches", which is a different claim from "nobody searched".
+        concept_matches: conceptSearch(reports, conceptLike),
+        gaap: probeConcepts(reports, GAAP_CONCEPTS),
+        institution: probeConcepts(reports, INSTITUTION_CONCEPTS),
+    };
 }

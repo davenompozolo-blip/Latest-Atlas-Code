@@ -188,3 +188,108 @@ test('the bands are absolute, so a phase does not move when peers change', () =>
     assert.equal(companyPhase(rows).phase, companyPhase(rows).phase);
     assert.equal(companyPhase(rows).bands.highGrowth, PHASE_BANDS.highGrowth);
 });
+
+// ── the Max column cap (CodeRabbit, PR #806) ────────────────────────────────
+
+test('buildColumns with a null limit returns EVERY loaded period', () => {
+    // `Max` used to map to 20, so a quarterly load carrying 81 periods could
+    // never show more than a quarter of them — and the cap read as the data's
+    // own depth rather than as a control. A null limit is unbounded.
+    const many = [];
+    for (let i = 0; i < 81; i++) {
+        many.push({ fiscal_date_ending: '20' + String(10 + Math.floor(i / 4)).padStart(2, '0')
+                        + '-' + String(1 + (i % 4) * 3).padStart(2, '0') + '-01',
+                    fiscal_year: 2010 + Math.floor(i / 4), total_revenue: 100 + i });
+    }
+    assert.equal(buildColumns(many, null).length, 81);
+    assert.equal(buildColumns(many).length, 81);
+    assert.equal(buildColumns(many, 20).length, 20);
+    assert.equal(buildColumns(many, 4).length, 4);
+    // A limit past the row count is not padded.
+    assert.equal(buildColumns(many, 500).length, 81);
+});
+
+// ── the Altman refusal (CodeRabbit, PR #806 — and a worse one beside it) ────
+
+import { altmanZDoublePrime, mergeDerived, derivedFromStatements } from '../pages/equity/statementRows.js';
+
+// JPM FY2025 as vw_company_fundamentals publishes it: EQ-2's statement_profile
+// gate nulls a bank's working capital, CCC, ROIC and cash conversion, so X1
+// cannot be formed. This is the LIVE case for the refusal.
+const BANK_ROW = {
+    symbol: 'JPM', fiscal_year: 2025, statement_profile: 'financial',
+    total_assets: 4200000e6, total_liabilities: 3855000e6,
+    total_shareholder_equity: 345000e6, retained_earnings: 320000e6,
+    ebit: 68000e6, operating_income: 68000e6,
+    working_capital: null, cash_conversion_cycle: null, roic: null,
+    cash_conversion: null, sloan_accrual_ratio: null,
+    effective_tax_rate: 0.2142, capital_expenditures: -3000e6, d_and_a: 8000e6,
+    net_income: 55000e6, operating_cashflow: 60000e6, total_revenue: 180000e6,
+};
+
+const RETAIL_ROW = {
+    symbol: 'TGT', fiscal_year: 2026, statement_profile: 'operating',
+    total_assets: 59490e6, total_liabilities: 43325e6,
+    total_shareholder_equity: 16165e6, retained_earnings: 9297e6,
+    ebit: 5212e6, working_capital: -1225e6, cash_conversion_cycle: 4.31,
+    roic: 0.114, cash_conversion: 1.771, sloan_accrual_ratio: -0.0487,
+    effective_tax_rate: 0.2228, capital_expenditures: -3727e6, d_and_a: 3134e6,
+    net_income: 3705e6, operating_cashflow: 6562e6, total_revenue: 104780e6,
+    dividend_coverage_of_fcf: 0.7242,
+};
+
+test('a Z-double-prime missing a component is REFUSED, not scored lower', () => {
+    const r = altmanZDoublePrime(BANK_ROW);
+    assert.equal(r.z, null);
+    assert.equal(r.partial, true);
+    // The components are still published so the panel can say WHICH term is
+    // absent — that is the diagnosis, and it is not the score.
+    assert.equal(r.components.x1, null);
+    assert.ok(r.components.x3 != null && r.components.x4 != null);
+
+    const ok = altmanZDoublePrime(RETAIL_ROW);
+    assert.ok(ok.z != null);
+    assert.equal(ok.partial, undefined);
+    // 6.56*X1 + 3.26*X2 + 6.72*X3 + 1.05*X4 on TGT's own filing.
+    const ta = 59490e6;
+    const expected = 6.56 * (-1225e6 / ta) + 3.26 * (9297e6 / ta)
+                   + 6.72 * (5212e6 / ta) + 1.05 * (16165e6 / 43325e6);
+    assert.ok(Math.abs(ok.z - expected) < 1e-9);
+});
+
+test('mergeDerived REFUSES a partial score from the table', () => {
+    // compute_ticker_derived publishes `6.72*x3 + 1.05*x4` when it cannot form
+    // x1 and x2, and the panel reads it under the full Z'' bands. The refusal
+    // deletes the key rather than nulling it: a renderer cannot print a number
+    // it was never handed.
+    const table = { altman_z: 2.41, altman_model: 'service_z2',
+                    altman_components: { x1: null, x2: null, x3: 0.09, x4: 0.37 },
+                    roic: 0.11 };
+    const merged = mergeDerived(table, derivedFromStatements([BANK_ROW]));
+    assert.equal('altman_z' in merged, false);
+    assert.equal('altman_components' in merged, false);
+    // Other keys the table carries are untouched — the refusal is scoped.
+    assert.equal(merged.roic, 0.11);
+});
+
+test('a healthy symbol keeps its score, so the refusal is not a blanket', () => {
+    const table = { altman_z: 2.41, altman_components: { x1: null, x2: null, x3: 0.09, x4: 0.37 } };
+    const merged = mergeDerived(table, derivedFromStatements([RETAIL_ROW]));
+    assert.ok(merged.altman_z > 1 && merged.altman_z < 3);
+    assert.ok(merged.altman_components.x1 != null);
+});
+
+test('a financial publishes WHY its figures are absent, not just that they are', () => {
+    // A gate rendering as a data failure is the same shape as a transport
+    // failure rendering as a statement about the data.
+    const bank = derivedFromStatements([BANK_ROW]);
+    assert.equal(bank._statementProfile, 'financial');
+    assert.ok(bank._withheld);
+    assert.equal(bank._withheld.reason, 'financial_profile');
+    assert.ok(/CAMELS/.test(bank._withheld.note));
+    assert.ok(bank._withheld.fields.includes('altman_z'));
+
+    const retail = derivedFromStatements([RETAIL_ROW]);
+    assert.equal(retail._statementProfile, 'operating');
+    assert.equal(retail._withheld, null);
+});

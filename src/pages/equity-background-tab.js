@@ -13,6 +13,7 @@
 // relabel a company because its peers changed.
 // ============================================================
 import React from 'react';
+import { T } from './equity/equityTheme.js';
 import { sb } from './config.js';
 import {
     loadStatementLayer, STATE_LOADED,
@@ -22,12 +23,6 @@ import { companyPhase, revenueCagr, numOrNull, finite } from './equity/statement
 const { useState, useEffect } = React;
 const h = React.createElement;
 
-var T = {
-    text: '#e6edf5', muted: '#8aa0bb', muted2: '#63748c',
-    green: '#22c55e', cyan: '#22d3ee', amber: '#f59e0b',
-    card: 'rgba(17,23,31,.97)', border: 'rgba(255,255,255,.08)', border2: 'rgba(255,255,255,.13)',
-    mono: "'JetBrains Mono',monospace", display: "'Syne','DM Sans',sans-serif",
-};
 
 function Card(p) {
     return h('div', {
