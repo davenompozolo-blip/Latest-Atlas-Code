@@ -400,6 +400,15 @@ function MainPanel({ symbol, financials, rawOverview, overview, series, engine, 
     const [blendedFV, setBlendedFV]= useState(null);
     const [ev_pw,     setEVPW]     = useState(null);
 
+    // THE SCENARIO EV BELONGED TO WHICHEVER SYMBOL WAS LAST ON THE THESIS TAB.
+    // It is pushed up from `ThesisTab`, which is mounted only while that tab is
+    // selected, and `MainPanel` carries no `key` so it does not remount when
+    // `symbol` changes. So switching tab -- or switching company -- left the
+    // previous figure sitting in the header strip beside the NEW company's
+    // composite. Clearing it here is the only place that covers both, because
+    // an unmounted child cannot report that it has nothing to say.
+    useEffect(function () { setEVPW(null); setBlendedFV(null); }, [symbol]);
+
     const price = series && series.length ? series[series.length - 1].close : null;
     const snap  = financials && financials.snapshot;
     const inp   = parseInputs(rawOverview, snap, price);

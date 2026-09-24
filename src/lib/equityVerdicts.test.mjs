@@ -10,6 +10,7 @@ import {
     piotroskiView, PIOTROSKI_OUT_OF, qualityGradeView, sloanView,
     capitalAllocationView, compositeCallView,
     ROW_GRADED, ROW_NO_VALUE, ROW_NO_MEASURE,
+    BBB_DEFAULTS, scenarioEdited,
 } from './equityVerdicts.js';
 
 // AAPL FY2025 resolves all nine — measured against vw_company_fundamentals.
@@ -210,4 +211,53 @@ test('the call bands read off the engine composite', () => {
 test('a non-positive composite is not a fair value', () => {
     assert.ok(!('fv' in compositeCallView(0, 100)));
     assert.ok(!('fv' in compositeCallView(-12, 100)));
+});
+
+// ── the scenario gate ───────────────────────────────────────────────────────
+// Every test below fails against the pre-fix behaviour (the header strip was
+// fed `ev_pw` unconditionally), checked by reverting.
+
+test('an untouched scenario is NOT an edit, so the header gets nothing', () => {
+    assert.equal(scenarioEdited(BBB_DEFAULTS), false);
+    // ...and not by reference either: the sliders replace the object on every
+    // change, so a `!==` check would call an untouched scenario edited the
+    // first time anything re-rendered.
+    assert.equal(scenarioEdited(JSON.parse(JSON.stringify(BBB_DEFAULTS))), false);
+});
+
+test('moving any single lever on any leg counts as an edit', () => {
+    for (const leg of ['bull', 'base', 'bear']) {
+        for (const lever of ['cagr', 'margin', 'mult', 'prob']) {
+            const s = JSON.parse(JSON.stringify(BBB_DEFAULTS));
+            s[leg][lever] = s[leg][lever] + 0.01;
+            assert.equal(scenarioEdited(s), true, leg + '.' + lever);
+        }
+    }
+});
+
+test('a malformed or non-finite scenario is not an edit', () => {
+    // A NaN lever cannot have come from a slider, and treating it as an edit
+    // would publish an EV computed through it.
+    for (const bad of [null, undefined, {}, 'x', 7, { bull: {}, base: {}, bear: {} }]) {
+        assert.equal(scenarioEdited(bad), false, JSON.stringify(bad));
+    }
+    const nan = JSON.parse(JSON.stringify(BBB_DEFAULTS));
+    nan.base.cagr = NaN;
+    assert.equal(scenarioEdited(nan), false);
+});
+
+test('the defaults are company-independent constants, which is the point', () => {
+    // If these ever became per-company they would stop being a reason to
+    // withhold the figure, and this test should be the thing that fails.
+    assert.equal(BBB_DEFAULTS.base.cagr, 0.13);
+    assert.equal(BBB_DEFAULTS.base.margin, 0.44);
+    assert.equal(BBB_DEFAULTS.base.mult, 28);
+    assert.equal(BBB_DEFAULTS.bull.prob + BBB_DEFAULTS.base.prob + BBB_DEFAULTS.bear.prob, 100);
+});
+
+test('resetting returns to the baseline, so the header goes absent again', () => {
+    const edited = JSON.parse(JSON.stringify(BBB_DEFAULTS));
+    edited.bull.mult = 40;
+    assert.equal(scenarioEdited(edited), true);
+    assert.equal(scenarioEdited(JSON.parse(JSON.stringify(BBB_DEFAULTS))), false);
 });
