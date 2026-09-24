@@ -56,7 +56,7 @@ function useMapRows() {
         // Not configured and did not answer are different claims, and only
         // one of them is about the connection.
         if (!supabase) { setS({ loading: false, failed: true, unconfigured: true }); return undefined; }
-        supabase.from('mv_book_candidate_map')
+        supabase.from('vw_default_only_book_candidate_map')
             .select('*')
             // 423 rows today and bounded by the correlation snapshot's own
             // ~420-symbol cap, so this sits well inside PostgREST's 1,000-row

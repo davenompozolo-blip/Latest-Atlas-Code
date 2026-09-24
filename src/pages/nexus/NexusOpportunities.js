@@ -13,6 +13,7 @@
 import React from 'react';
 import { LedgerDispersionNote } from './NexusDispersion.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
+import { withPortfolio } from '../../lib/activePortfolio.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -33,7 +34,7 @@ function useOpps() {
     const [s, setS] = useState({ data: null, loading: true });
     useEffect(function () {
         let alive = true;
-        fetch('/api/nexus-opportunities').then(r => r.json())
+        fetch(withPortfolio('/api/nexus-opportunities')).then(r => r.json())
             .then(j => { if (alive) setS({ data: j && j.ok ? j : { ledger: [], sectorTilts: [], funding: EMPTY_FUNDING }, loading: false }); })
             .catch(() => { if (alive) setS({ data: { ledger: [], sectorTilts: [], funding: EMPTY_FUNDING }, loading: false }); });
         return () => { alive = false; };

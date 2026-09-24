@@ -34,12 +34,26 @@ const ymd = d => d.toISOString().slice(0, 10);
 //
 // A swallowed read failure is indistinguishable from absent data at every
 // layer above it, and the UI is built to describe absent data calmly. Log it.
-async function sb(path, ms) {
+// MP-2: the browser's chosen portfolio arrives as ?portfolio= -- a query param
+// because this response is CDN-cached by URL and a request header is not part
+// of the cache key, so one account's cached answer would be served to the
+// other. It is forwarded to PostgREST as x-atlas-portfolio, where
+// atlas_active_portfolio() validates it; anything that is not a portfolio id
+// is dropped here and the server resolves the default portfolio.
+const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function portfolioHeader(req) {
+    const p = req && req.query ? req.query.portfolio : null;
+    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+}
+
+// `ph` (the portfolio header) is REQUIRED and FIRST: a call site that forgets
+// it fails loudly instead of silently reading the default portfolio.
+async function sb(ph, path, ms) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms || 9000);
     const src = path.split('?')[0];
     try {
-        const r = await fetch(SB_URL + '/rest/v1/' + path, { signal: ac.signal, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } });
+        const r = await fetch(SB_URL + '/rest/v1/' + path, { signal: ac.signal, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...ph } });
         if (r.ok) return await r.json();
         // Body carries the PostgREST code — 57014 is a statement timeout,
         // which means the view is too slow for the role, not that it is empty.
@@ -57,7 +71,7 @@ async function sb(path, ms) {
 // Paged fetch — PostgREST caps responses at max-rows (1000 here), which
 // SILENTLY truncates a big window; page with Range headers until a short
 // page so the tape never loses its most recent months. null on failure.
-async function sbPaged(path, pages, ms) {
+async function sbPaged(ph, path, pages, ms) {
     const out = [];
     for (let p = 0; p < pages; p++) {
         const ac = new AbortController();
@@ -65,7 +79,7 @@ async function sbPaged(path, pages, ms) {
         try {
             const r = await fetch(SB_URL + '/rest/v1/' + path, {
                 signal: ac.signal,
-                headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, Range: (p * 1000) + '-' + (p * 1000 + 999) },
+                headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...ph, Range: (p * 1000) + '-' + (p * 1000 + 999) },
             });
             if (!r.ok) return p === 0 ? null : out;
             const rows = await r.json();
@@ -80,10 +94,10 @@ async function sbPaged(path, pages, ms) {
 // Latest assessments: try the extended (Bench) columns first; before the
 // section-4 migration lands the select 400s → retry with the base shape,
 // mapping survives/portfolio_verdict through for continuity.
-async function fetchAssessments() {
-    const ext = await sb('opportunity_assessments?select=symbol,as_of_date,verdict,thesis_integrity,synthesis,verdict_condition,overridden_by_user,user_verdict,survives,portfolio_verdict,model_used,created_at&order=as_of_date.desc,created_at.desc&limit=400');
+async function fetchAssessments(ph) {
+    const ext = await sb(ph, 'opportunity_assessments?select=symbol,as_of_date,verdict,thesis_integrity,synthesis,verdict_condition,overridden_by_user,user_verdict,survives,portfolio_verdict,model_used,created_at&order=as_of_date.desc,created_at.desc&limit=400');
     if (ext) return { rows: ext, extended: true };
-    const base = await sb('opportunity_assessments?select=symbol,as_of_date,survives,portfolio_verdict,model_used,created_at&order=as_of_date.desc,created_at.desc&limit=400');
+    const base = await sb(ph, 'opportunity_assessments?select=symbol,as_of_date,survives,portfolio_verdict,model_used,created_at&order=as_of_date.desc,created_at.desc&limit=400');
     return { rows: base, extended: false };
 }
 
@@ -97,6 +111,7 @@ function downsample(arr, cap) {
 }
 
 export default async function handler(req, res) {
+    const ph = portfolioHeader(req);
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -107,7 +122,7 @@ export default async function handler(req, res) {
         // the names actually on the docket. It used to sit inside the
         // Promise.all, which is why the tape query could not filter and had
         // to read the whole universe — see the note on that query.
-        const holdings = await sb('vw_nexus_holdings?select=symbol,asset_name,sector,theme,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade');
+        const holdings = await sb(ph, 'vw_nexus_holdings?select=symbol,asset_name,sector,theme,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade');
         const heldSymbols = [...new Set((holdings || []).map(h => h.symbol).filter(Boolean))];
 
         // TAPES. This read `price_history` for the whole 1,500-name universe
@@ -125,30 +140,30 @@ export default async function handler(req, res) {
         // rather than the newest, so a short tape beats a stale one. The
         // series is re-sorted ascending on the way into `series` below.
         const [assess, claims, regimeDrift, sleeve, contribView, docketView, headroom, volRows, scrapCos, freshness, prices, cortexSignals, fvRows] = await Promise.all([
-            fetchAssessments(),
-            sb('bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
+            fetchAssessments(ph),
+            sb(ph, 'bench_claims?select=id,symbol,thesis_ref,claim_text,status,evidence_text,evidence_value,evidence_source,status_changed_at,created_at&order=created_at.asc&limit=1000'),
             // E1.3 — the axis state each open thesis was written under, and
             // the drift since. Open theses only by construction (the view
             // filters on status), so a settled claim simply has no rows and
             // renders nothing. ~3 rows per open thesis; 75 today.
-            sb('vw_thesis_regime_drift?select=thesis_id,symbol,thesis_status,axis_key,axis_label,positive_means,axis_marginal,snapshot_at,snapshot_reason,snapshot_score_date,snapshot_score_20d,current_score_date,current_score_20d,drift_score_20d,score_20d_stdev_full,sign_flipped,snapshot_dispersion_state,current_dispersion_state,dispersion_changed,sessions_span_days,pc_rank&limit=1000'),
-            sb('vw_funding_sleeve?select=tk,qualified,sleeve_rank,funding_score,disqualification_reason,fv_trustworthy'),
-            sb('vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry,covered,coverage_reason,nav_coverage_pct'),
+            sb(ph, 'vw_thesis_regime_drift?select=thesis_id,symbol,thesis_status,axis_key,axis_label,positive_means,axis_marginal,snapshot_at,snapshot_reason,snapshot_score_date,snapshot_score_20d,current_score_date,current_score_20d,drift_score_20d,score_20d_stdev_full,sign_flipped,snapshot_dispersion_state,current_dispersion_state,dispersion_changed,sessions_span_days,pc_rank&limit=1000'),
+            sb(ph, 'vw_funding_sleeve?select=tk,qualified,sleeve_rank,funding_score,disqualification_reason,fv_trustworthy'),
+            sb(ph, 'vw_bench_contribution?select=symbol,contrib_today,contrib_ytd,contrib_since_entry,covered,coverage_reason,nav_coverage_pct'),
             // the judged columns: conviction-implied target, R/VaR, damage, clock
-            sb('vw_bench_docket?select=symbol,target_weight_pct,weight_gap_pp,r_var,damage_pp,days_held,component_var_pct,unrealised_return_pct,macro_regime_fit,quality_grade'),
-            sb('vw_sleeve_headroom?select=sleeve,weight_pct,cap_pct,headroom_pp,headroom_usd,positions,nav_usd'),
+            sb(ph, 'vw_bench_docket?select=symbol,target_weight_pct,weight_gap_pp,r_var,damage_pp,days_held,component_var_pct,unrealised_return_pct,macro_regime_fit,quality_grade'),
+            sb(ph, 'vw_sleeve_headroom?select=sleeve,weight_pct,cap_pct,headroom_pp,headroom_usd,positions,nav_usd'),
             // §4.4 surfacing trigger — a flag on a docket row, never a panel
-            sb('vw_holding_vol_latest?select=symbol,asof,ret_1d,vol_20d,z_move,days_old,vol_trigger,abstain_reason'),
-            sb('scrapbook_companies?select=ticker,thesis_summary,updated_at'),
-            sb('vw_nexus_price_freshness?select=symbol,days_old'),
+            sb(ph, 'vw_holding_vol_latest?select=symbol,asof,ret_1d,vol_20d,z_move,days_old,vol_trigger,abstain_reason'),
+            sb(ph, 'scrapbook_companies?select=ticker,thesis_summary,updated_at'),
+            sb(ph, 'vw_nexus_price_freshness?select=symbol,days_old'),
             heldSymbols.length
-                ? sbPaged('price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d'
+                ? sbPaged(ph, 'price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d'
                     + '&assets.symbol=in.(' + heldSymbols.join(',') + ')'
                     + '&price_date=gte.' + since + '&order=price_date.desc,asset_id.asc', 6)
                 : Promise.resolve([]),
-            sb('cortex_signals?select=signal_class,title,relevance,candidates,is_muted&is_muted=eq.false&order=generated_at.desc&limit=60'),
+            sb(ph, 'cortex_signals?select=signal_class,title,relevance,candidates,is_muted&is_muted=eq.false&order=generated_at.desc&limit=60'),
             // fv_untrust_reason explains the coverage number on the strip
-            sb('nexus_holdings?select=tk,fv_trustworthy,fv_untrust_reason'),
+            sb(ph, 'nexus_holdings?select=tk,fv_trustworthy,fv_untrust_reason'),
         ]);
 
         if (!holdings || !holdings.length) {
@@ -160,9 +175,9 @@ export default async function handler(req, res) {
         // map — second hop. scrapbook_companies.thesis_summary is truncated
         // at 220 chars by the upstream writer; the narrative carries the
         // full text, so the trial quotes that when it exists.
-        const scrapIdRows = await sb('scrapbook_companies?select=id,ticker');
+        const scrapIdRows = await sb(ph, 'scrapbook_companies?select=id,ticker');
         const idToTk = new Map((scrapIdRows || []).map(c => [c.id, c.ticker]));
-        const narrs = await sb('scrapbook_narratives?select=company_id,thesis,created_at&order=created_at.asc&limit=2000');
+        const narrs = await sb(ph, 'scrapbook_narratives?select=company_id,thesis,created_at&order=created_at.asc&limit=2000');
         const thesisDatesByTk = new Map();
         const fullThesisByTk = new Map();
         for (const n of narrs || []) {

@@ -25,6 +25,7 @@ import {
 } from './nexusThemeCompute.js';
 import { DispersionRegime, SectorDispersionStrip } from './NexusDispersion.js';
 import { NexusRealizedLayer } from './NexusRealized.js';
+import { withPortfolio } from '../../lib/activePortfolio.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -45,7 +46,7 @@ function useThemeSeries() {
     const [s, setS] = useState({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: false });
     useEffect(function () {
         let alive = true;
-        fetch('/api/nexus-theme').then(r => r.json())
+        fetch(withPortfolio('/api/nexus-theme')).then(r => r.json())
             .then(j => {
                 if (!alive) return;
                 const map = new Map(((j && j.themes) || []).map(t => [t.theme, t]));

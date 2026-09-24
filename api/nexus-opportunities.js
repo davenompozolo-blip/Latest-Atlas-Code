@@ -43,34 +43,48 @@ const normSector = s => {
     return s || 'Unclassified';
 };
 
-async function sb(path, ms) {
+// MP-2: the browser's chosen portfolio arrives as ?portfolio= -- a query param
+// because this response is CDN-cached by URL and a request header is not part
+// of the cache key, so one account's cached answer would be served to the
+// other. It is forwarded to PostgREST as x-atlas-portfolio, where
+// atlas_active_portfolio() validates it; anything that is not a portfolio id
+// is dropped here and the server resolves the default portfolio.
+const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function portfolioHeader(req) {
+    const p = req && req.query ? req.query.portfolio : null;
+    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+}
+
+// `ph` is REQUIRED and FIRST -- see nexus-bench.
+async function sb(ph, path, ms) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), ms || 9000);
     try {
-        const r = await fetch(SB_URL + '/rest/v1/' + path, { signal: ac.signal, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } });
+        const r = await fetch(SB_URL + '/rest/v1/' + path, { signal: ac.signal, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...ph } });
         return r.ok ? await r.json() : [];
     } catch { return []; }
     finally { clearTimeout(t); }
 }
 
 export default async function handler(req, res) {
+    const ph = portfolioHeader(req);
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
         const [holdings, companies, narratives, sigs, watch, corr, varRows, sectorNotes, options, sleeveRows, disqRows] = await Promise.all([
-            sb('vw_nexus_holdings?select=symbol,sector,weight_pct,conviction_score,dcf_upside_pct'),
-            sb('scrapbook_companies?select=id,ticker,company_name,sector,avg_fair_value,current_price,fair_value_low,fair_value_high,conviction_rating,thesis_summary&avg_fair_value=not.is.null&current_price=not.is.null'),
-            sb('scrapbook_narratives?select=company_id,thesis,investment_verdict,avg_upside_pct,bull_case,bear_case,key_sensitivities'),
-            sb('cortex_signals?select=candidates&is_muted=eq.false'),
-            sb('cortex_watchlist?select=symbol'),
-            sb('insight_correlation_cluster?select=symbol_1,symbol_2,correlation'),
-            sb('insight_counter_specific_var_vs_sector?select=symbol,excess_var'),
-            sb('scrapbook_sector_notes?select=sector,sector_verdict,relative_value,company_tickers'),
-            sb('nexus_options?select=tk,atm_iv,skew_25d,pc_oi,front_iv,back_iv,iv_rank,skew_rank,rank_ready'),
+            sb(ph, 'vw_nexus_holdings?select=symbol,sector,weight_pct,conviction_score,dcf_upside_pct'),
+            sb(ph, 'scrapbook_companies?select=id,ticker,company_name,sector,avg_fair_value,current_price,fair_value_low,fair_value_high,conviction_rating,thesis_summary&avg_fair_value=not.is.null&current_price=not.is.null'),
+            sb(ph, 'scrapbook_narratives?select=company_id,thesis,investment_verdict,avg_upside_pct,bull_case,bear_case,key_sensitivities'),
+            sb(ph, 'cortex_signals?select=candidates&is_muted=eq.false'),
+            sb(ph, 'cortex_watchlist?select=symbol'),
+            sb(ph, 'insight_correlation_cluster?select=symbol_1,symbol_2,correlation'),
+            sb(ph, 'insight_counter_specific_var_vs_sector?select=symbol,excess_var'),
+            sb(ph, 'scrapbook_sector_notes?select=sector,sector_verdict,relative_value,company_tickers'),
+            sb(ph, 'nexus_options?select=tk,atm_iv,skew_25d,pc_oi,front_iv,back_iv,iv_rank,skew_rank,rank_ready'),
             // sleeve_rank restarts within each qualified group — filter first, then order.
-            sb('vw_funding_sleeve?select=tk,funding_score,disqualification_reason,sleeve_rank&qualified=eq.true&order=sleeve_rank.asc&limit=6'),
-            sb('vw_funding_sleeve?select=disqualification_reason&qualified=eq.false&disqualification_reason=not.is.null'),
+            sb(ph, 'vw_funding_sleeve?select=tk,funding_score,disqualification_reason,sleeve_rank&qualified=eq.true&order=sleeve_rank.asc&limit=6'),
+            sb(ph, 'vw_funding_sleeve?select=disqualification_reason&qualified=eq.false&disqualification_reason=not.is.null'),
         ]);
 
         // The funding sleeve — the single honest fund-from source. Empty when

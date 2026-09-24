@@ -2,67 +2,104 @@
 
 ## What This Is
 
-ATLAS Terminal v10.0 — institutional-grade portfolio analytics platform built on Streamlit + Python.
-Think: personal Bloomberg Terminal with quantitative analysis, valuation engine, and automated reporting.
+ATLAS Terminal — institutional-grade portfolio analytics: a personal Bloomberg
+Terminal over a live Alpaca paper book, with a quantitative risk and regime
+layer, a valuation and equity-research house, and an order ticket.
+
+**The stack is a React single-page app on Vercel over a Supabase Postgres
+database.** Almost all analytics are computed IN the database -- views,
+materialised views and nightly SQL jobs -- and the browser reads them over
+PostgREST. The Streamlit build is retired (see the end of this file); its files
+are still in the repo and nothing deploys them.
 
 ## Architecture
 
 ```
-atlas_app.py              → Main Streamlit entry (routing hub)
-core/                     → Engine layer
-  calculations.py         → VaR, CVaR, DCF, returns, attribution
-  charts.py               → Plotly visualizations
-  data_loading.py         → Portfolio data I/O
-  fetchers.py             → yFinance, FRED, Alpha Vantage
-  optimizers.py           → Portfolio optimization (MVO, Black-Litterman)
-  constants.py            → Feature flags, shared config
-ui/pages/                 → 25 page modules (performance, risk, valuation, etc.)
-ui/components/            → Reusable UI (tables, metrics, badges, navigation)
-navigation/               → Router, registry, sidebar, page handlers
-api/                      → FastAPI REST layer (portfolio, optimization, regime, billing)
-scheduler/                → Automated reports (weekly/monthly/quarterly)
-data/instruments.py       → Market data dictionaries
-config/branding.py        → White-label branding config
+src/                          → the terminal (React 18 + Vite, deployed to Vercel)
+  main.jsx                    → entry; installs /api portfolio tagging (MP-2)
+  pages/app.js                → module router (TABS) — every page registered here
+  pages/nexus-page.js         → NexusShell: the app chrome (topbar, sidebar, switcher)
+  pages/nexus/                → Nexus flagship and its panels
+  pages/trade/                → Trade module (universe / ticket / blotter)
+  pages/equity/, equity-*.js  → Equity Research + Valuation House
+  pages/*.js                  → Performance, Risk, Quant, Macro, Markets, Funds,
+                                Options, PCM, Ledger, Cortex, Scrapbook, SQL
+  lib/                        → pure compute + data modules, each with a
+                                *.test.mjs beside it (node --test)
+  lib/supabase.js             → THE Supabase client (pages/config.js re-exports it)
+  components/                 → shared UI (TickerSearch, SyncStatus, ...)
+  styles/                     → globals.css (ramp tokens) + nexus-theme.css (--nx-*)
+api/*.js                      → Vercel Node functions: broker (trading.js), market
+                                data (equity, macro, movers, news), Nexus feeds
+                                (nexus-*), cron-driven writers (sync-*, *-snapshot)
+supabase/migrations/          → the database: tables, views, matviews, SQL jobs
+supabase/functions/           → Deno edge functions (Alpaca syncs, loaders, AI)
+supabase/tests/               → SQL contract tests, run in a rolled-back transaction
+docs/                         → unit reports (A0…H4, EQ1…EQ9, MP-*) — the WHY
 ```
 
 ## Key Systems
 
-| System | Entry Point | What It Does |
-|--------|-------------|--------------|
-| Streamlit UI | `atlas_app.py` | Portfolio dashboard, all pages |
-| FastAPI | `api/main.py` | REST endpoints for external access |
-| Scheduler | `scheduler/main.py` | Automated snapshot/commentary/attribution reports |
-| Supabase | `supabase/` | Persistent storage (portfolios, positions, prices) |
+| System | Where | What it does |
+|--------|-------|--------------|
+| Terminal | `src/` on Vercel | Every page; reads views directly over PostgREST |
+| API routes | `api/*.js` on Vercel | Broker calls, third-party market data, Nexus feeds |
+| Database | Supabase `vdmojjszvvcithuxwexx` | Book, prices, analytics; views are the compute layer |
+| Syncs | `supabase/functions/` | Alpaca positions/fills/history/prices, fundamentals, macro |
+| Scheduler | `pg_cron` (`cron.job`) | The ONLY scheduler — see "Sync System" and "The nightly chain" |
+
+**Supabase project is `vdmojjszvvcithuxwexx`, always.** `jikbulixwvvfrirjpgra`
+is the CFA Codex project and holds nothing of Atlas's.
 
 ## Running Locally
 
 ```bash
-# Streamlit (primary)
-streamlit run atlas_app.py --server.port=8501 --server.headless=true
-
-# API server
-uvicorn api.main:app --port 8000
-
-# Full stack (Docker)
-docker-compose up
+npm install
+npm run dev            # Vite on :3000 -- pages only; /api/* needs `vercel dev`
+npm run build          # production build into dist/
+node --test $(find src -name '*.test.mjs' -not -path '*/node_modules/*')
 ```
+
+Set `VITE_SUPABASE_ANON_KEY` (the publishable key) before building. Without it
+`src/lib/supabase.js` exports `null` and the bundler deletes every query behind
+`if (!sb) return` -- a keyless build silently omits most of the app (see
+"The 'missing from the bundle' anomaly").
+
+Edge functions typecheck without Deno:
+`tsc --noEmit --noResolve --skipLibCheck --strict --target es2022 --module esnext --lib es2022,dom <file>`.
 
 ## Data Flow
 
-1. **Ingestion**: Alpaca API → Supabase (positions, transactions, prices)
-2. **Fetching**: yFinance + FRED + Alpha Vantage → live market data
-3. **Calculation**: `core/calculations.py` → all analytics
-4. **Display**: `ui/pages/*` → Streamlit renders
-5. **API**: FastAPI exposes calculations as REST endpoints
-6. **Reports**: Scheduler triggers → email via SendGrid
+1. **Ingestion**: Alpaca → edge functions (`sync_alpaca_*`, `sync_portfolio_history`)
+   → `positions`, `account_snapshots`, `transactions`, `price_history`,
+   `portfolio_equity_curve`. One run per account, each with its own credentials
+   and an identity gate (MP-1).
+2. **Market & fundamentals**: Yahoo, FRED, Finnhub, Alpha Vantage, SEC EDGAR →
+   edge functions and `api/sync-*` → `market_prices`, `macro_series_values`,
+   statement tables, `equity_cache`.
+3. **Compute**: Postgres views and matviews (risk, returns, attribution) plus the
+   nightly SQL jobs (verdicts, segments, factor scores, regime CVaR, VaR backtest).
+4. **Display**: `src/pages/*` read views via supabase-js; a few panels go through
+   `api/nexus-*` where a third-party call or server-side assembly is needed.
+5. **Multi-portfolio**: every book read is scoped to `atlas_active_portfolio()`,
+   chosen per browser by the account switcher (MP-0 to MP-2).
 
 ## Conventions
 
-- All pages are in `ui/pages/` and registered in `navigation/registry.py`
-- Charts use Plotly with dark theme (matches `.streamlit/config.toml`)
-- Constants and feature flags live in `core/constants.py`
-- Table formatting uses `core/atlas_table_formatting.py`
-- CSS is in `ui/branding/atlas_complete_ui.css`
+- Pages live in `src/pages/` and are registered in `TABS` in `src/pages/app.js`;
+  the sidebar is `NEXUS_NAV` in `src/pages/nexus-page.js`.
+- Compute that can be pure lives in `src/lib/` with a `*.test.mjs` beside it.
+  Fixtures must carry the shapes that break the naive version -- see the
+  many entries below that say so.
+- Colours come from tokens (`--nx-*`, `globals.css` ramp, `equityTheme.js`),
+  never literals. Check a `var(--token)` exists before using it: an undefined
+  one fails silently.
+- **Read `vw_active_*` or a view built on it, never a book table directly**
+  (`positions`, `account_snapshots`, `transactions`, `portfolio_equity_curve`);
+  `src/lib/bookTableReads.test.mjs` enforces it.
+- Schema changes are migrations in `supabase/migrations/`, and the ledger row
+  must match the file (see "A dumped function definition goes stale").
+- Scheduled work goes in `cron.job`. Nowhere else.
 
 ## Remote Control Sessions
 
@@ -70,17 +107,22 @@ When operating Atlas via remote control, use these session roles:
 
 | Session | Focus | Key Files |
 |---------|-------|-----------|
-| ATLAS-CORE | Valuation, calculations, optimization | `core/`, `api/routers/` |
-| ATLAS-UI | Pages, components, styling | `ui/`, `navigation/`, `.streamlit/` |
-| ATLAS-DATA | Ingestion, Supabase, fetchers | `core/fetchers.py`, `core/data_loading.py`, `supabase/` |
+| ATLAS-CORE | Risk, valuation, the SQL compute layer | `supabase/migrations/`, `src/lib/` |
+| ATLAS-UI | Pages, components, styling | `src/pages/`, `src/components/`, `src/styles/` |
+| ATLAS-DATA | Ingestion, syncs, fetchers | `supabase/functions/`, `api/sync-*.js` |
 
 ## Common Tasks
 
-- **Add a new page**: Create in `ui/pages/`, register in `navigation/registry.py`, add handler in `navigation/page_handlers.py`
-- **Add an API endpoint**: Create router in `api/routers/`, mount in `api/main.py`
-- **Modify calculations**: Edit `core/calculations.py`, update tests
-- **Update chart theme**: Edit `core/charts.py`, check `ui/branding/atlas_complete_ui.css`
-- **Add scheduled report**: Create job in `scheduler/jobs/`, register in `scheduler/main.py`
+- **Add a page**: component in `src/pages/`, add it to `TABS` in `app.js` and
+  to `NEXUS_NAV` in `nexus-page.js`.
+- **Add an API route**: a file in `api/`; give it a `maxDuration` in
+  `vercel.json` if it runs long. If it reads the book, accept `?portfolio=`
+  and forward it (see `api/nexus-bench.js`).
+- **Change a calculation**: prefer the view that owns it; prove equivalence with
+  `EXCEPT ALL` both ways and time it against the 3s anon cap.
+- **Add a scheduled job**: `cron.job`, logging to `sync_log`.
+- **Add a broker account**: a `broker_accounts` row (credential_prefix +
+  alpaca_account_number) + a `portfolios` row + the secret pair.
 
 ## Data Trust Layer
 
@@ -5909,6 +5951,100 @@ Restored verbatim from 2bce506. **After merging a branch, grep `main` for the
 heading you added** -- a conflict resolved "take theirs" on a documentation file
 loses exactly the record of why the code is the way it is.
 
+### The browser chooses the book; single-book analytics refuse the others (2026-09-24)
+
+MP-2, the account switcher. **`atlas_active_portfolio()` now reads the
+`x-atlas-portfolio` request header**, validated against `portfolios`; absent,
+malformed or unknown falls back to the default. MP-0 made it the one choke
+point, so the 25 scoped views and 5 functions follow the switch with no change
+of their own. Proven through real PostgREST: no header -> 67 positions and
+1,189 verdict rows; Secondary's id -> 37 positions and 0 verdicts.
+
+**The hard part was never the live book -- it is everything cached.** Nine
+matviews are refreshed by cron with NO request context, so they always describe
+the default portfolio; seven tables (`position_verdicts`, `segment_verdicts`,
+`book_risk_daily`, `book_factor_betas`, `book_regime_cvar`,
+`book_model_diagnostics`, `var_backtest_runs`) are written nightly from the book
+and carry no `portfolio_id`. Joined on `asset_id` to another account's live rows,
+they attach the default book's conviction, verdicts and risk shares to any name
+held in both -- AAPL, AMD -- which reads as right and is about a different book.
+All of it is gated on `atlas_on_default_portfolio()`:
+
+- **11 views** read a source directly (found by walking `pg_rewrite` /
+  `pg_depend`, not by grep); each reference is wrapped in a guarded subquery, so
+  a LEFT JOIN comes back NULL and a wholly single-book view comes back empty.
+  Views built on them inherit it. `vw_nexus_holdings` on Secondary: 37 live rows,
+  **0 conviction scores** -- H-4's "analytics pending" state, which the UI
+  already renders honestly. Live risk is NOT gated and is Secondary's own:
+  `vw_risk_analysis` 36 rows, `vw_book_mctr` 34.
+- **The tables**: their anon/authenticated SELECT policy.
+- **The matviews** cannot carry RLS, so they are revoked from browser roles and
+  the two the app reads get `vw_default_only_*` views. A missed read now FAILS
+  (`42501`) instead of leaking. `mv_book_ex_index` keeps its grant:
+  `atlas_counterfactual_book` is SECURITY INVOKER and reads it on behalf of
+  `vw_position_tier2` -- a revoke there would have broken a view that anon reads,
+  found by listing the invoker functions views call before revoking anything.
+
+Every guard is behaviour-neutral on the default portfolio, proven by
+`EXCEPT ALL` both ways over 15 views (0 rows differ), and the Secondary case in
+the same rolled-back transaction by `set_config('request.headers', ...)`.
+
+**Two transports for one choice, and the difference matters.** Direct Supabase
+reads carry the HEADER (set once on the client in `supabase.js`). `/api/*`
+routes take a `?portfolio=` QUERY PARAM: they answer with `s-maxage` up to
+**6 hours**, the CDN caches by URL, and a request header is not part of the
+key -- a header alone would serve one account's cached answer to the other.
+Each route forwards it to PostgREST as the header. The route helpers take it as
+a **required FIRST argument**, `sb(ph, path)`: a call site that forgets it fails
+loudly, where an optional trailing argument would silently read the default.
+Threaded explicitly, never through module state -- Vercel can serve concurrent
+requests from one instance.
+
+**The switcher shows what the SERVER resolved** (`vw_portfolios.is_active`), not
+the client's belief; a stored id the server did not honour renders as a
+fall-back, never under the chosen name. Choosing **reloads the page**: loaders
+cache in module-level promises across the app, and a partial switch would put
+two books on one screen. A banner says, on a non-default account, which panels
+follow the switch and which are withheld and why -- without it the withheld
+panels read as "no data".
+
+**The switcher would have created a way to trade the wrong account, so trading
+fails closed.** `api/trading.js` places orders -- and reports account equity,
+cash and order history -- with the default account's keys. With a switcher and
+no guard, a user viewing Secondary could submit from the Trade ticket and have
+the order execute in Primary. There are six order-submission call sites and
+several account reads, so rather than tag each one (which is how one gets
+missed), `installApiPortfolioTagging()` wraps `fetch` once in `main.jsx` and tags
+every same-origin `/api/*` request with `?portfolio=` when a non-default account
+is chosen; `api/trading.js` refuses `account`, `orders`, `order_status` and
+`order` with **409 `account_not_routed`** for any request carrying one, before
+anything reaches Alpaca. On the default account nothing is installed and every
+request is exactly as before. A test calls the real handler with a counting
+`fetch` and asserts **0 broker calls** for all four actions; it fails against the
+unguarded file, checked by restoring it. MP-3 replaces the refusal with
+per-account routing.
+
+**Two pre-existing holes closed in the same migration.** `book_model_diagnostics`
+had **RLS off** (open to anonymous writes -- the `book_regime_cvar` defect
+again). And **four SECURITY DEFINER writers were executable by anon** through the
+default PUBLIC grant -- `atlas_write_verdicts`, `atlas_write_segment_verdicts`,
+`atlas_refresh_position_returns`, `atlas_refresh_verdict_inputs` -- so anyone
+holding the public key could append permanent rows to the append-only verdict
+history. Revoked from PUBLIC, anon and authenticated; asserted with
+`has_function_privilege` inside the migration.
+
+**`--nx-text1` does not exist; the token is `--nx-text`.** Caught by checking
+every `var(--nx-*)` in the new component against the stylesheet before
+building -- the dead-`var()` failure that once left the whole app shell
+unstyled.
+
+**What is proven and what is not.** The database half is proven through real
+PostgREST. The API routes are syntax-checked and every `sb(` call carries the
+header (grep-asserted); they run on Vercel only after merge, since previews are
+SSO-gated. The switcher's logic is unit-tested (`activePortfolio.test.mjs`) and
+the strings are in a keyed bundle; **the render is not proven** -- the browser in
+this container cannot reach Supabase.
+
 ### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
 
 Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`
@@ -5938,7 +6074,15 @@ curl -s https://<host>/ | grep -o 'assets/[^"]*\.js'   # then fetch and grep
 - Shows live health indicator (green/yellow/red) with expandable detail panel
 - Auto-refreshes every 5 minutes
 
-### Streamlit
-Retired. React terminal on Vercel is the single source of truth for all portfolio analytics.
-Archive branch: `legacy/streamlit-archive`
-Retirement script: `scripts/retire-streamlit.sh` (run after confirming full view parity)
+### Streamlit (retired)
+The React terminal on Vercel is the single source of truth. The Streamlit build
+and its FastAPI companion are retired and **nothing deploys them** --
+`/api/main` answers 404 in production (checked 2026-09-24). Their files are
+still in the repo and are not the live stack: `atlas_app.py`, `core/`, `ui/`,
+`navigation/`, `.streamlit/`, `scheduler/`, `api/main.py`, `api/routers/`,
+`api/models/`, `docker-compose.yml`, `Dockerfile`, `requirements*.txt`.
+**Do not read them to learn how Atlas works today.**
+Retirement script: `scripts/retire-streamlit.sh` -- archives them to a
+`legacy/streamlit-archive` branch, then removes them. **Not yet run, so that
+branch does not exist yet** (an earlier version of this note said it did;
+checked against the remote 2026-09-24).

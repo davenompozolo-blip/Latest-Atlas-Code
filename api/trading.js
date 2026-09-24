@@ -490,6 +490,24 @@ export default async function handler(req, res) {
 
     var action = ((req.query && req.query.action) || '').toLowerCase();
 
+    // MP-2 FAIL-CLOSED. Every call below that touches an ACCOUNT -- the account
+    // itself, its orders, an order's status, and ORDER SUBMISSION -- runs on
+    // ALPACA_API_KEY, the default account's keys. A request naming another
+    // portfolio (the browser tags every /api/* call once a non-default account
+    // is chosen) is refused rather than answered from, or executed in, the
+    // wrong account. Per-account routing is MP-3. Market data (quote, chart,
+    // search, options) is the same for any account and is unaffected.
+    var ACCOUNT_ACTIONS = { account: 1, orders: 1, order_status: 1, order: 1 };
+    var portfolioParam = req.query && req.query.portfolio;
+    if (ACCOUNT_ACTIONS[action] && typeof portfolioParam === 'string'
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(portfolioParam)) {
+        return res.status(409).json({
+            error: 'account_not_routed',
+            detail: 'Trading and account data are not yet routed to this account; '
+                  + 'switch to the default account to trade. Nothing was sent to the broker.',
+        });
+    }
+
     try {
         // ── GET ──────────────────────────────────────────────────────────────
         if (req.method === 'GET') {

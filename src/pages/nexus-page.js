@@ -13,6 +13,7 @@ import { analyticsPending, convictionOf, actionOf, partitionByAnalytics,
          sortByConviction, ANALYTICS_PENDING_LABEL } from '../lib/holdingsAnalytics.js';
 import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 import { NexusRiskPill } from './nexus/NexusRiskPill.js';
+import { PortfolioSwitcher, PortfolioBanner } from './nexus/PortfolioSwitcher.js';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const e = React.createElement;
@@ -1228,9 +1229,12 @@ export function NexusShell({ children, onNavigate, activeTab }) {
             // green in every market since it was written, while the Markets
             // page computed a real barometer from the same session's data.
             // Now one computation, shared with the cross-asset panel.
+            e(PortfolioSwitcher, null),
             e(NexusRiskPill, null),
             e(Clock, null)
         ),
+        // MP-2: says what a non-default account means for the analytics panels.
+        e(PortfolioBanner, null),
         // body: icon sidebar + main
         e('div', { style: { display: 'flex', flex: 1, overflow: 'hidden' } },
             e('nav', {
