@@ -5247,6 +5247,124 @@ it seq-scans and re-parses that payload twice per read, which is most of the
 413 ms `vw_company_peer_cohort` takes. Under the 3,000 ms anon cap, and a
 growth-linked node — flagged, not fixed.
 
+### The statement layer had a vendor ceiling, not an engineering problem (2026-09-24)
+
+EQ-8a. Ten of 913 symbols carried financial statements, so every panel
+downstream of the statement layer had nothing to work with -- AAPL among them.
+The cause was a **plan**, not code: Alpha Vantage is 25 requests/day on two
+independent free keys at 3 calls per symbol, about eight symbols a day and
+~114 days for the universe.
+
+**Three sources were measured against production before choosing.**
+
+| source | throughput | coverage |
+|---|---|---|
+| Alpha Vantage | 25 req/day | 20 annual periods |
+| Finnhub `financials-reported` | 60/min, no cap | a **SEC 10-K feed** -- 4 of 4 foreign private issuers return ZERO rows |
+| **EDGAR `companyfacts`** | no key, no cap, 10 req/s | ONE call, every concept, every period |
+
+ASML returns **zero** rows from Finnhub and **19-20 years on all ten core
+fields** from EDGAR -- and files its 20-F in `us-gaap`, not IFRS, which I would
+have guessed wrong. 50 of the 67 held names loaded in two batches; the 17 that
+did not are ETFs, which file no 10-K.
+
+**The SEC publishes TWO things called the EDGAR API and only one is this.** The
+*Filer* API -- filer management, delegations, CCC codes, transmitting
+submissions -- is Bearer-authenticated with tokens issued to a registrant and
+carries no financial data at all. The structured-data side is `data.sec.gov`
+and needs only a User-Agent with a contact address. Check which one a document
+describes before designing against it.
+
+**Four traps, each measured, each with a test that fails against the naive
+implementation** (`src/lib/edgarFacts.js`, 17 tests, verified by reverting):
+
+1. **`fy`/`fp` describe the FILING, not the fact.** A FY2025 10-K carries its
+   FY2023 comparative stamped `fy:2025 fp:FY`. Keying on `fy` collapses every
+   comparative onto the filing year: TGT read **17 years keyed on `fy` and 19
+   keyed on the fact's own `end` date**.
+2. **A flow needs an annual duration.** `Revenues` appears with quarterly and
+   year-to-date spans in one filing; a balance-sheet instant has no `start`.
+3. **The tag changes with the accounting era.** TGT's net income is three tags
+   end to end -- `ProfitLoss` 2007-2011, `NetIncomeLossAvailableToCommon-`
+   `StockholdersBasic` 2009-2021, `NetIncomeLoss` 2020-2025. Union 19 years;
+   `NetIncomeLoss` alone 11. The LDTI/CECL shape EQ-4 found in banks, in a
+   retailer. Every field is an ordered alias list and the winning concept is
+   recorded.
+4. **The three statements must share one period-end date.** The consumer view
+   INNER JOINs them on `fiscal_date_ending`, so an income period ending
+   2025-02-01 against a balance instant at 2025-02-02 drops the symbol
+   **entirely** -- it would load clean and display nothing.
+
+**The ticker map is actively wrong for a reorganised filer.**
+`company_tickers.json` maps XOM to CIK 2115436: **94 concepts, zero annual
+`Assets`.** The real history is CIK 34088 -- 438 concepts, 18 years.
+`entityName` is "Exxon Mobil Corporation" on **both**, so the name corroborates
+the wrong answer and the failure reads as "this company has no data". A CIK
+yielding under three annual periods is REPORTED, never written as a one-year
+history that reads as a successful load.
+
+**`InterestExpense` stops at 2023 for AAPL and that is correct.** No alias
+covers 2024-25 (`InterestExpenseDebt` ends 2021, `InterestCostsIncurred` 2023);
+Apple folds it into "Other income/(expense), net". So `fcff` is NULL for those
+years rather than fabricated. Absent is not zero, in a third place.
+
+### Alpha Vantage rounds a 52/53-week period end to the month end (2026-09-24)
+
+Found fixing the duplicate rows EDGAR created beside Alpha Vantage. The PK on
+the three statement tables carries `source`, so a symbol held by two providers
+yields two rows per fiscal year -- 129 of them across 8 symbols -- and a
+surface reading "the latest row" gets whichever the planner returns.
+
+**A first attempt keyed precedence on `fiscal_date_ending` and cleared only 79
+of the 129.** ADBE is always `11-30` in Alpha Vantage against EDGAR's actual
+`2025-11-28 / 2024-11-29 / 2023-12-01`; AMD always `12-31` against `12-27 /
+12-28 / 12-30`; TGT always `01-31` against `2025-02-01 / 2024-02-03`. **The two
+sources date the SAME fiscal year one to four days apart**, so no date-keyed
+rule can pair them.
+
+Precedence is therefore **per symbol**, which also keeps a series on ONE basis
+-- half a history from each provider is the substitution forbidden everywhere
+else here and would be invisible on screen. The **deepest complete** history
+wins with EDGAR breaking ties: EDGAR is not deeper for every filer (GOOGL 14
+periods against Alpha Vantage's 20) and dropping six years to honour a
+provenance preference would pay real coverage for a tie-break. Completeness is
+counted over the THREE-WAY JOIN, never the income statement alone -- EQ-2 found
+SNDK with an income statement and no balance sheet, and a source that cannot
+complete a period must not win one. 129 -> 3 duplicates, **0 mixed-source
+symbols**, 5.9 ms symbol-filtered against a documented 8.4 ms.
+
+**Where they overlap they mostly agree, and where they do not it is large.**
+GOOGL, TGT and SNDK are bit-identical on every common year and ADBE differs by
+rounding -- but **JPM diverges 38.7% on revenue and PFE 88.9% on net income**, a
+bank's net-versus-gross revenue convention and restatement handling. Picking one
+source is what stops two answers reaching one page; which is right is its own
+question, and is NOT closed.
+
+### No arithmetic rule names a filer's own fiscal year (2026-09-24)
+
+Three JNJ rows survive as duplicates: it is a 52/53-week filer whose year ends
+land on **2023-01-01 and 2023-12-31**, and the view derives `fiscal_year` as
+`EXTRACT(year FROM fiscal_date_ending)`, so both read 2023.
+
+**Two candidate fixes were measured and both are wrong.** The six-month shift
+(`atlas_fiscal_aligned_year`'s convention) would re-label **210 rows** and call
+MSFT's year ending 2025-06-30 "2024" when Microsoft calls it FY2025 -- it exists
+to GROUP filers with different year ends, not to NAME a year. The narrower
+Jan/Feb-to-prior-year rule matches Target, which calls the year ending Feb 2025
+FY2024, and contradicts **NVIDIA, which calls the year ending Jan 2025 FY2025**.
+
+**The filers themselves disagree, so no rule is universally right.** Re-basing
+200+ published labels to fix 3 rows, on a convention that is itself wrong for
+some filers, is a worse trade than carrying the defect. `fiscal_year` is a
+derived grouping key and is not the filer's own label; the collision is real,
+narrow and recorded rather than papered over.
+
+**`vw_company_fundamentals` unfiltered is 1.52 s** and grows with the symbol
+count -- the correlated precedence subquery is O(rows x sources). Every UI path
+filters by symbol (5.9 ms), so nothing is at risk today. A seq scan over a
+growing table is a clock, not a constant.
+
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
