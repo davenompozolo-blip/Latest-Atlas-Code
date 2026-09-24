@@ -101,7 +101,13 @@ export default function FlatRenderer({ exposure, byKind, scale, selected, overla
                 attributionControl: { compact: true },
             });
             map.touchZoomRotate.disableRotation();
-            const overlay = new MapboxOverlay({ interleaved: true, layers: [] });
+            // A click on empty space reaches no layer, so a layer's onClick
+            // cannot clear a selection. The overlay's own onClick sees every
+            // click, object or not.
+            const overlay = new MapboxOverlay({
+                interleaved: true, layers: [],
+                onClick: (info) => { if (!info || !info.object) latest.current.onSelect(null); },
+            });
             map.addControl(overlay);
             mapRef.current = map;
             overlayRef.current = overlay;
@@ -125,6 +131,10 @@ export default function FlatRenderer({ exposure, byKind, scale, selected, overla
             // rebuild below is a no-op for deck.gl.
             map.on('moveend', () => {
                 const z = map.getZoom();
+                // Published for tests and debugging, like the globe's
+                // data-rotation: the camera, rounded, on each settle.
+                const c = map.getCenter();
+                hostRef.current && (hostRef.current.dataset.view = [c.lng.toFixed(2), c.lat.toFixed(2), z.toFixed(2)].join(','));
                 setZoomRes(z >= DETAIL_ZOOM ? '50m' : '110m');
                 setViewTick((t) => t + 1);
             });

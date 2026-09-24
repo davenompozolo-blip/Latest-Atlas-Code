@@ -367,8 +367,19 @@ export function geoQuery({ renderer, layers, selected }) {
 
 // ── Interaction ────────────────────────────────────────────────────────────
 
+// The timer functions are WRAPPED, never stored bare: `{ set: setTimeout }`
+// then `timer.set(...)` calls setTimeout with `this` = the object, which
+// browsers reject with "Illegal invocation". Node does not, so the unit test
+// (which injects its own timer) passed while every trailing hover call threw
+// in the browser -- and the trailing call is usually the one saying the hover
+// ENDED, so labels lingered on screen.
+const DEFAULT_TIMER = Object.freeze({
+    set: (fn, ms) => setTimeout(fn, ms),
+    clear: (id) => clearTimeout(id),
+});
+
 /** Leading + trailing throttle. The surface throttles hover to 60 ms. */
-export function throttle(fn, ms, now = () => Date.now(), timer = { set: setTimeout, clear: clearTimeout }) {
+export function throttle(fn, ms, now = () => Date.now(), timer = DEFAULT_TIMER) {
     let last = -Infinity;
     let pending = null;
     let lastArgs = null;

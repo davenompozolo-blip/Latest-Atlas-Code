@@ -255,3 +255,22 @@ test('a dust weight prints as <0.1%, never as 0.0%; a true zero stays 0.0%', () 
     assert.equal(pct(0.004, 0), '<1%');
     assert.equal(pct(null), '—');
 });
+
+test('the DEFAULT timer survives being called with a foreign this (the browser "Illegal invocation")', async () => {
+    // Simulate the browser's receiver check: a setTimeout that refuses any
+    // `this` other than the global object.
+    const real = globalThis.setTimeout;
+    globalThis.setTimeout = function (fn, ms) {
+        if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+        return real(fn, ms);
+    };
+    try {
+        const calls = [];
+        const h = throttle((x) => calls.push(x), 20);
+        h('A'); h('B');                    // B takes the trailing path through the timer
+        await new Promise((r) => real(r, 60));
+        assert.deepEqual(calls, ['A', 'B']);
+    } finally {
+        globalThis.setTimeout = real;
+    }
+});
