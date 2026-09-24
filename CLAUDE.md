@@ -6090,6 +6090,22 @@ Legacy `decisions` rows keep `portfolio_id` NULL = the default portfolio.
 `vw_brier_trend`, the Ledger page -- and will mix accounts once Secondary
 trades. That is MP-4; the record being right is what could not wait.
 
+**Scoped 2026-09-24 (MP-4a, `20260924211210`).** Views read
+`vw_active_decisions`; the `decisions` / `decision_outcomes` SELECT policies
+follow `atlas_active_portfolio()`. **The hash chain stays GLOBAL, and that is
+why `decisions_hash_chain()` is now SECURITY DEFINER**: as an invoker function
+it found "the latest decision" through the scoped policy, so a browser insert
+on Secondary would have linked to Secondary's latest row rather than the
+chain's and broken verification for every row after it. `vw_ledger_integrity`
+still verifies the whole chain on purpose. Proven before applying in a
+rolled-back block (Primary's five views 0 rows differ both ways; Secondary
+sees 1 decision, ARM) and after, by an anon insert under the Secondary header:
+linked to the global head, attributed to Secondary, `chain_ok` true.
+
+**Merging the PR did not apply the migration.** #830 carried it unapplied and
+was merged anyway, so `main` held a migration the database had not run for
+about five minutes. The repo and the database are two separate deploys.
+
 ### Withholding made two old fallbacks visible on the first day (2026-09-24)
 
 Seen on Atlas Secondary's first screen, and neither is specific to it -- the
