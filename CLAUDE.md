@@ -6262,6 +6262,106 @@ individually: freezing the outer object leaves every lever writable.
 4 new tests, all four failing against the merged modules, checked by restoring
 them rather than assumed.
 
+### A preferred share has no 10-K, and the cohort counted it as a company (2026-09-24)
+
+EQ-4k. The institution layer went from **7 of 172 Financials to 94**, 88 distinct
+companies, `company_reported_lines` 27,709 -> 145,552 lines. No new code: the
+`mode=reported` handler was already deployed, so the load is pg_net calling it
+with the Vault `CRON_SECRET`, the path EQ-1 established.
+
+**THE DENOMINATOR IN THE TASK WAS WRONG, AND IT FLATTERS THE GAP.** The 172-symbol
+cohort is **141 distinct companies plus 31 extra share classes** across 21
+companies -- Brighthouse is SIX tickers (`BHF` + `BHFAL/M/N/O/P`), American
+Financial four, Huntington four, Arch three. A preferred share or baby bond has
+**no 10-K of its own**; the filing belongs to the parent under a different
+ticker. So those tickers can never load, from any vendor, and every Finnhub call
+spent on one is spent for nothing.
+
+`assets.asset_class` is `Stock` for all of them, so the field cannot tell a
+preferred from a common share -- the same storage-vocabulary weakness the
+instrument-label entry above records, biting in a different place. What DOES
+identify them is `assets.name`: the parent's name, repeated across the tickers.
+
+So **"50 no filings" is not 50 missing companies.** It is ~30 share classes that
+can never have a filing plus ~20 foreign private issuers (`HSBC`, `ING`, `LYG`,
+`BCS`, `BMO`, `BNS`, `IBN`, `KB`, `SHG`, `AEG`, `BBD`, `BAP`…) on 20-F/40-F --
+EQ-3's measured cliff, which EDGAR could serve and Finnhub structurally cannot.
+`no_filings` is the right bucket for both and the handler was right to keep it
+apart from `failures`; what was missing was anyone reading the bucket. **I read
+`symbols` and `failures`, saw 1 + 0 against 3 attempted, and reported two
+symbols as having vanished. The handler was correct and my query was the defect**
+-- 1 written + 2 no-filings = 3, and it reconciles exactly.
+
+### Never read `vw_company_institution_ratios` unfiltered (2026-09-24)
+
+Measured on a quiet database after EQ-4k took its base table up 5.5x:
+
+| read | time |
+|---|---|
+| symbol-filtered -- what the Financials tab issues | **291-357 ms** |
+| `count(*)` unfiltered | under 20s |
+| `select *` unfiltered | **over 75s, and it exhausts the connection pool** |
+
+The filtered path is healthy with an 8x margin under anon's 3,000 ms cap, so
+EQ-4k is safe. The unfiltered one is a growth-linked node of the kind this file
+records twice already -- `vw_company_fundamental_peers` was flagged "trivial at
+ten symbols, not measured at scale" and crossed the cap the week the layer grew.
+Flagged, not fixed: no surface reads it unfiltered.
+
+**`count(*)` completing in 20s while `select *` exceeds 75s is this file's own
+"never benchmark with `count(*)`" rule**, arriving on a cost question rather than
+a rewrite: the planner elides the laterals that are the entire expense. 1,288
+rows came back fast and told me nothing.
+
+**I took the pool down with that query TWICE, the second time after writing that
+I would stop.** It is a read-only query, so nothing was damaged -- but a
+client-side timeout does not cancel the server-side statement, and `service_role`
+carries a 300s timeout, so each attempt kept grinding after the tool gave up.
+**Bound an exploratory query with `set local statement_timeout` inside a
+transaction, or do not run it.**
+
+### A hung handler leaves the row open, exactly as recorded (2026-09-24)
+
+EQ-4k's second batch opened its `sync_log` row at 18:33:17 and never wrote
+anything: it needs PostgREST to resolve its symbol list, the pool had nothing to
+give it, and pg_net gave up with
+
+```
+Timeout of 295000 ms reached. Total time: 598562 ms
+```
+
+So the row sat `running` with no `finished_at` -- the shape behind the 41 open
+`sync_funddata_prices` rows, arriving from the other direction: there the close
+was refused, here the handler never reached its close at all. Closed by hand as
+`error` naming the cause, rather than left for `stuck_syncs` to flag in six
+hours. **`duration_ms` was NOT written** -- it is `GENERATED ALWAYS` and derived
+itself as 813,771 ms from the timestamps.
+
+**Do not fire a 240-second bulk load into a database another session is running
+view-equivalence proofs against.** That is what killed this batch. The parallel
+multi-account work (MP-0) captures 30 view definitions twice inside one
+REPEATABLE READ transaction; that plus an unbounded aggregate is enough to
+exhaust the pool on this instance.
+
+### The Alpha Vantage throughput ceiling is not a spend decision (2026-09-24)
+
+Filed as "decide whether to pay for Alpha Vantage premium". Measured instead,
+and it dissolves: EQ-8a moved the statement layer to EDGAR, and AV now serves
+**10 of 60 symbols against EDGAR's 50**.
+
+All ten AV symbols are **US filers that already have EDGAR profiles** -- not one
+is a foreign private issuer, which was the coverage argument for keeping AV. And
+`ANNUAL_FORMS` in `edgarFacts.js` already carries `20-F` and `40-F`, so EDGAR
+serves foreign filers too (ASML measured at 19-20 years through it).
+
+AV's only remaining unique contribution is **quarterly periods**, and EDGAR's
+quarterly facts are in the same `companyfacts` payload already being fetched --
+excluded by the form filter plus the 330-400 day flow window, not by
+availability. To be precise about the cost, that is not one line: quarterly needs
+the 10-Q form set, a ~90-day window, and a period key carrying a quarter rather
+than a fiscal year, since the three statements must still share a period end.
+**Engineering, and free. Not a reason to buy a plan.**
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
