@@ -6130,6 +6130,54 @@ could test only `pass`/`ok`/`warn` against a database writing
 `passed`/`warning`/`failed` without anyone seeing it. Colour comes from
 `statusTone()` and the `--green`/`--amber`/`--red` tokens now.
 
+### Withholding a matview blanked facts about the stock (MP-4d, 2026-09-24)
+
+Reported from the terminal: both accounts' flagship showed the MOCK (Risk
+"73 / 100%", Performance −0.9% on NVDA/AVGO/MSFT, a 12-name holdings table
+at 0.0% weights). `vw_nexus_holdings` answered **57014** for the default
+account cold, and `loadHoldingRows()` falls the whole model back to the
+baseline on any error. Warm it was ~1.1 s; cold, past anon's 3 s.
+
+And Secondary, when it did load, had every analytic column NULL -- beta, fair
+value, PEG, drawdown, earnings date, the signals, and **conviction_score**,
+which is a blend of the stock's own valuation / macro / technical / quality
+reads. MP-2 withheld `mv_nexus_holdings` whole because a matview refreshed by
+pg_cron has no request header and so only ever describes the default book.
+Right for `total_return_pct` and `var_contribution_pct`; wrong for everything
+that is a fact about the stock. **Withholding a source by table withholds the
+columns that were never book-scoped along with the ones that were.**
+
+`nexus_holdings_analytics (portfolio_id, symbol)` holds the same computation
+evaluated under EACH portfolio's `x-atlas-portfolio` in turn
+(`atlas_refresh_nexus_holdings_analytics()`, on the existing 10-minute job,
+one `sync_log` row per portfolio). Every request-scoped view underneath then
+answers for that account, so the book columns are right too, not merely the
+stock ones. **A job can compute per account by setting `request.headers`
+itself** -- the whole MP-0 choke point works from a headerless context.
+
+Four cost nodes, each found by EXPLAIN rather than guessed:
+- `quality_grade` computed live from `vw_portfolio_home.quality_score`, which
+  kept that view's unbounded returns/stats CTE alive (57k rows, disk sort).
+  It is an analytic; it comes from the per-account table now.
+- `vw_positions_current` took `max(as_of)` over **every** snapshot the account
+  ever wrote (49k) and `max(as_of_date)` over every position row -- the two
+  growth nodes flagged 2026-09-17. `ORDER BY ... LIMIT 1` on the existing
+  index, plus `(portfolio_id, as_of_date desc)`.
+- **A CTE referenced once is INLINED (PG12+).** `mkt` and the forward-P/E join
+  both read `equity_screener_universe` (a view re-parsing `equity_cache`
+  JSON, ~50 ms), the planner misestimated the book at 1 row, and put each on
+  the inner side of a nested loop: **64 evaluations, 3.4 s**. Fixing one
+  exposed the other. `MATERIALIZED` makes the evaluate-once explicit.
+- 120-day vol: `DISTINCT ON` over all of `universe_risk_stats`, whose only
+  index leads with the date. LATERAL top-1 on a symbol-first index.
+
+3,520 → 126 ms (default), 2,108 → 84 ms (Secondary), as anon. Output proven
+identical: all 39 columns of `vw_nexus_holdings` for the default account
+against a freshly refreshed matview, and `vw_positions_current` EXCEPT ALL
+both ways for both accounts. **A plan that is fast only because the planner
+guessed well is a plan that fails the day the guess changes** -- the old read
+survived on a Hash Join it was never forced into.
+
 ### Withholding made two old fallbacks visible on the first day (2026-09-24)
 
 Seen on Atlas Secondary's first screen, and neither is specific to it -- the
