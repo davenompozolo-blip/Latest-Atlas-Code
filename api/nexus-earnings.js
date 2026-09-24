@@ -40,6 +40,18 @@ async function finnhub(path) {
 
 const ymd = d => d.toISOString().slice(0, 10);
 
+// MP-2: the browser's chosen portfolio arrives as ?portfolio= -- a query param
+// because this response is CDN-cached by URL and a request header is not part
+// of the cache key, so one account's cached answer would be served to the
+// other. It is forwarded to PostgREST as x-atlas-portfolio, where
+// atlas_active_portfolio() validates it; anything that is not a portfolio id
+// is dropped here and the server resolves the default portfolio.
+const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function portfolioHeader(req) {
+    const p = req && req.query ? req.query.portfolio : null;
+    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+}
+
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -57,7 +69,7 @@ export default async function handler(req, res) {
     try {
         // 1. Book — symbols, theme, signals, conviction, known next date.
         const hr = await fetchT(SB_URL + '/rest/v1/vw_nexus_holdings?select=symbol,sector,next_earnings_date,valuation_signal,quant_signal,technical_signal,conviction_score',
-            8000, { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY });
+            8000, { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...portfolioHeader(req) });
         const holdings = hr.ok ? await hr.json() : [];
         const bySymbol = new Map(holdings.map(h => [h.symbol, h]));
 

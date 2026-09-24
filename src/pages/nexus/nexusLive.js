@@ -39,6 +39,7 @@ import { getNexusModel as getBaselineModel } from './nexusMock.js';
 import { num, buildLiveSections, buildWindshield, buildSeasonal, buildChef, buildRead,
          buildRiskGauge, buildPerformanceGauge } from './nexusLiveCompute.js';
 import { toOptionsModel } from './nexusOptionsCompute.js';
+import { withPortfolio } from '../../lib/activePortfolio.js';
 
 // Live macro snapshot (FRED yields + regime + market quotes) from the
 // shared /api/macro endpoint. Same-origin, edge-cached; null on any
@@ -72,7 +73,7 @@ async function loadBoard() {
 
 async function loadEarnings() {
     try {
-        const r = await fetch('/api/nexus-earnings');
+        const r = await fetch(withPortfolio('/api/nexus-earnings'));
         if (!r.ok) return null;
         const j = await r.json();
         return j && j.ok ? j : null;
@@ -124,7 +125,7 @@ async function loadHoldingRows() {
 // renders a stated reason rather than a substituted number.
 async function loadReturnEngine() {
     try {
-        const { data, error } = await sb.from('mv_position_returns')
+        const { data, error } = await sb.from('vw_default_only_position_returns')
             .select('symbol, position_mwr_period_pct, position_mwr_pct, position_twr_pct, engine_status, engine_reason, days_held');
         if (error) throw error;
         const m = new Map();

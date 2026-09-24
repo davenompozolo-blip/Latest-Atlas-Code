@@ -22,13 +22,24 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const SCAN = ['src', 'api'];
 const BOOK = ['positions', 'account_snapshots', 'transactions', 'portfolio_equity_curve'];
 
+// MP-2: matviews refreshed by cron with no request context, so they always
+// describe the DEFAULT portfolio. Browser roles are revoked from them; read the
+// guarded vw_default_only_* view (or a guarded view built on them), which
+// answers nothing while another portfolio is active instead of attaching the
+// default book's figures to it.
+const BOOK_MATVIEWS = ['mv_bench_contribution', 'mv_book_candidate_map', 'mv_book_daily_weights',
+    'mv_book_ex_index', 'mv_nexus_holdings', 'mv_position_returns', 'mv_position_tier1',
+    'mv_position_tier2', 'mv_segment_ex_index'];
+
 // supabase-js:  .from('positions')      PostgREST path:  'positions?select=...'
 //                                       or  '/rest/v1/positions'
-const T = BOOK.join('|');
+const T = BOOK.concat(BOOK_MATVIEWS).join('|');
 const PATTERNS = [
     new RegExp(`\\.from\\(\\s*['"\`](${T})['"\`]\\s*\\)`, 'g'),
     new RegExp(`['"\`/](${T})\\?`, 'g'),
     new RegExp(`/rest/v1/(${T})\\b`, 'g'),
+    // supabase.js's loadView(name) helper takes the relation name bare.
+    new RegExp(`loadView\\(\\s*['"\`](${T})['"\`]`, 'g'),
 ];
 
 // Comment lines are stripped before scanning: the prose around these reads is
@@ -74,6 +85,10 @@ test('the detector finds the exact shapes that shipped before MP-0', () => {
         "sbGet('positions?select=quantity,average_cost&order=as_of_date.desc&limit=500')",
         ".from('portfolio_equity_curve')",
         "fetch(url + '/rest/v1/transactions')",
+        // MP-2: the three direct matview reads that shipped before it.
+        "loadView('mv_position_returns', [])",
+        "supabase.from('mv_book_candidate_map')",
+        "await sb.from('mv_position_returns')",
     ];
     for (const s of pre) assert.equal(findBookReads(s).length, 1, s);
 });
@@ -83,6 +98,8 @@ test('the scoped views and derived views are not flagged', () => {
         "sb.from('vw_active_positions').select('asset_id')",
         "sb.from('vw_positions_current').select('asset_id')",
         "sb.from('vw_filled_transactions').select('*')",
+        "sb.from('vw_default_only_position_returns').select('*')",
+        "sb.from('vw_default_only_book_candidate_map').select('*')",
         "sbGet('vw_active_account_snapshots?select=*')",
         "alpacaGet('/v2/positions')",
     ];

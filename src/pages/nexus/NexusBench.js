@@ -26,6 +26,7 @@ import {
 } from './nexusBenchCompute.js';
 import { trackSleeveComposition, SLEEVE_STALE_SESSIONS } from './nexusOpportunitiesCompute.js';
 import { thesisDrift, fmtScore, fmtVsSd } from './benchRegimeDrift.js';
+import { withPortfolio } from '../../lib/activePortfolio.js';
 
 const { useState, useEffect } = React;
 const e = React.createElement;
@@ -42,8 +43,8 @@ function useBench() {
     useEffect(function () {
         let alive = true;
         Promise.all([
-            fetch('/api/nexus-bench').then(r => r.json()).catch(() => null),
-            fetch('/api/nexus-opportunities').then(r => r.json()).catch(() => null),
+            fetch(withPortfolio('/api/nexus-bench')).then(r => r.json()).catch(() => null),
+            fetch(withPortfolio('/api/nexus-opportunities')).then(r => r.json()).catch(() => null),
         ]).then(([b, o]) => {
             if (!alive) return;
             setS({ bench: b && b.ok ? b : null, ledger: (o && o.ok && o.ledger) || [], loading: false });

@@ -30,6 +30,18 @@ async function fetchT(url, ms, headers) {
 
 const ymd = d => d.toISOString().slice(0, 10);
 
+// MP-2: the browser's chosen portfolio arrives as ?portfolio= -- a query param
+// because this response is CDN-cached by URL and a request header is not part
+// of the cache key, so one account's cached answer would be served to the
+// other. It is forwarded to PostgREST as x-atlas-portfolio, where
+// atlas_active_portfolio() validates it; anything that is not a portfolio id
+// is dropped here and the server resolves the default portfolio.
+const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function portfolioHeader(req) {
+    const p = req && req.query ? req.query.portfolio : null;
+    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+}
+
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -40,7 +52,7 @@ export default async function handler(req, res) {
     const fwd = {};
     if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
     if (req.headers.cookie) fwd.cookie = req.headers.cookie;
-    const sbHdr = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY };
+    const sbHdr = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...portfolioHeader(req) };
 
     try {
         // 1. Book — symbol, theme, weight.

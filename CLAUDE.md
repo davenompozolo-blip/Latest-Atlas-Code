@@ -5909,6 +5909,84 @@ Restored verbatim from 2bce506. **After merging a branch, grep `main` for the
 heading you added** -- a conflict resolved "take theirs" on a documentation file
 loses exactly the record of why the code is the way it is.
 
+### The browser chooses the book; single-book analytics refuse the others (2026-09-24)
+
+MP-2, the account switcher. **`atlas_active_portfolio()` now reads the
+`x-atlas-portfolio` request header**, validated against `portfolios`; absent,
+malformed or unknown falls back to the default. MP-0 made it the one choke
+point, so the 25 scoped views and 5 functions follow the switch with no change
+of their own. Proven through real PostgREST: no header -> 67 positions and
+1,189 verdict rows; Secondary's id -> 37 positions and 0 verdicts.
+
+**The hard part was never the live book -- it is everything cached.** Nine
+matviews are refreshed by cron with NO request context, so they always describe
+the default portfolio; seven tables (`position_verdicts`, `segment_verdicts`,
+`book_risk_daily`, `book_factor_betas`, `book_regime_cvar`,
+`book_model_diagnostics`, `var_backtest_runs`) are written nightly from the book
+and carry no `portfolio_id`. Joined on `asset_id` to another account's live rows,
+they attach the default book's conviction, verdicts and risk shares to any name
+held in both -- AAPL, AMD -- which reads as right and is about a different book.
+All of it is gated on `atlas_on_default_portfolio()`:
+
+- **11 views** read a source directly (found by walking `pg_rewrite` /
+  `pg_depend`, not by grep); each reference is wrapped in a guarded subquery, so
+  a LEFT JOIN comes back NULL and a wholly single-book view comes back empty.
+  Views built on them inherit it. `vw_nexus_holdings` on Secondary: 37 live rows,
+  **0 conviction scores** -- H-4's "analytics pending" state, which the UI
+  already renders honestly. Live risk is NOT gated and is Secondary's own:
+  `vw_risk_analysis` 36 rows, `vw_book_mctr` 34.
+- **The tables**: their anon/authenticated SELECT policy.
+- **The matviews** cannot carry RLS, so they are revoked from browser roles and
+  the two the app reads get `vw_default_only_*` views. A missed read now FAILS
+  (`42501`) instead of leaking. `mv_book_ex_index` keeps its grant:
+  `atlas_counterfactual_book` is SECURITY INVOKER and reads it on behalf of
+  `vw_position_tier2` -- a revoke there would have broken a view that anon reads,
+  found by listing the invoker functions views call before revoking anything.
+
+Every guard is behaviour-neutral on the default portfolio, proven by
+`EXCEPT ALL` both ways over 15 views (0 rows differ), and the Secondary case in
+the same rolled-back transaction by `set_config('request.headers', ...)`.
+
+**Two transports for one choice, and the difference matters.** Direct Supabase
+reads carry the HEADER (set once on the client in `supabase.js`). `/api/*`
+routes take a `?portfolio=` QUERY PARAM: they answer with `s-maxage` up to
+**6 hours**, the CDN caches by URL, and a request header is not part of the
+key -- a header alone would serve one account's cached answer to the other.
+Each route forwards it to PostgREST as the header. The route helpers take it as
+a **required FIRST argument**, `sb(ph, path)`: a call site that forgets it fails
+loudly, where an optional trailing argument would silently read the default.
+Threaded explicitly, never through module state -- Vercel can serve concurrent
+requests from one instance.
+
+**The switcher shows what the SERVER resolved** (`vw_portfolios.is_active`), not
+the client's belief; a stored id the server did not honour renders as a
+fall-back, never under the chosen name. Choosing **reloads the page**: loaders
+cache in module-level promises across the app, and a partial switch would put
+two books on one screen. A banner says, on a non-default account, which panels
+follow the switch and which are withheld and why -- without it the withheld
+panels read as "no data".
+
+**Two pre-existing holes closed in the same migration.** `book_model_diagnostics`
+had **RLS off** (open to anonymous writes -- the `book_regime_cvar` defect
+again). And **four SECURITY DEFINER writers were executable by anon** through the
+default PUBLIC grant -- `atlas_write_verdicts`, `atlas_write_segment_verdicts`,
+`atlas_refresh_position_returns`, `atlas_refresh_verdict_inputs` -- so anyone
+holding the public key could append permanent rows to the append-only verdict
+history. Revoked from PUBLIC, anon and authenticated; asserted with
+`has_function_privilege` inside the migration.
+
+**`--nx-text1` does not exist; the token is `--nx-text`.** Caught by checking
+every `var(--nx-*)` in the new component against the stylesheet before
+building -- the dead-`var()` failure that once left the whole app shell
+unstyled.
+
+**What is proven and what is not.** The database half is proven through real
+PostgREST. The API routes are syntax-checked and every `sb(` call carries the
+header (grep-asserted); they run on Vercel only after merge, since previews are
+SSO-gated. The switcher's logic is unit-tested (`activePortfolio.test.mjs`) and
+the strings are in a keyed bundle; **the render is not proven** -- the browser in
+this container cannot reach Supabase.
+
 ### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
 
 Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`

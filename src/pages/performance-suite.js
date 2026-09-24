@@ -147,7 +147,7 @@ export function PerformanceSuite() {
                 // snapshot, never from vw_position_returns: the view recomputes
                 // an IRR and a self-counterfactual per position and takes
                 // ~940ms, which has no business in a page load.
-                loadView('mv_position_returns', []),
+                loadView('vw_default_only_position_returns', []),
                 // The frozen-weight counterfactual, written nightly by
                 // atlas_write_verdicts. Not loadView: this table grows a row
                 // every weekday and must be read newest-first.
