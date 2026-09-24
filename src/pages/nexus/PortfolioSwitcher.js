@@ -7,8 +7,9 @@
 //
 // The banner is not decoration. On a non-default account the live book --
 // positions, P&L, account, live risk -- follows the switch, but the nightly
-// analytics (verdicts, segments, factor betas, VaR backtest, conviction,
-// contribution) are computed for the DEFAULT portfolio only until MP-4, and
+// analytics (verdicts, segments, factor betas, VaR backtest) are computed
+// for the DEFAULT portfolio only (conviction since MP-4d and contribution since
+// MP-4f are per account), and
 // the database withholds them rather than attach them to the wrong book.
 // Without the banner those withheld panels would read as "no data" with
 // nothing to say why. It also names the account an order will execute in:
@@ -141,8 +142,8 @@ export function PortfolioBanner() {
     if (st.onDefault !== false) return null;   // default account, or unknown: claim nothing
     return e('div', { role: 'status', style: bar },
         e('strong', null, 'Viewing ' + st.active.name + '. '),
-        'Positions, P&L, account, live risk and the holdings analytics (conviction, signals, valuation) are this account’s. ',
-        'Nightly analytics — verdicts, segments, contribution, factor betas and the VaR backtest — ',
+        'Positions, P&L, account, live risk, contribution and the holdings analytics (conviction, signals, valuation) are this account’s. ',
+        'Nightly analytics — verdicts, segments, factor betas and the VaR backtest — ',
         'are computed for the default account only, and are withheld here rather than shown against the wrong book. ',
         e('strong', null, 'Orders from this screen go to ' + st.active.name + '.'));
 }
