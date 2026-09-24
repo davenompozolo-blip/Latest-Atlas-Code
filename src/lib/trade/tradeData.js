@@ -194,13 +194,13 @@ export async function loadAssessment(symbol, { asOf = null } = {}) {
 export async function loadBook() {
     if (!sb) return { positions: [], account: null, available: false };
 
-    const posDate = await sb.from('positions').select('as_of_date').order('as_of_date', { ascending: false }).limit(1);
+    const posDate = await sb.from('vw_active_positions').select('as_of_date').order('as_of_date', { ascending: false }).limit(1);
     const asOf = posDate.data && posDate.data.length ? posDate.data[0].as_of_date : null;
     if (!asOf) return { positions: [], account: null, available: false, reason: 'no positions on file' };
 
     const [pos, acct] = await Promise.all([
-        sb.from('positions').select('quantity, average_cost, market_value, side, assets!inner(symbol, name, sector, asset_class)').eq('as_of_date', asOf),
-        sb.from('account_snapshots').select('*').order('as_of', { ascending: false }).limit(1),
+        sb.from('vw_active_positions').select('quantity, average_cost, market_value, side, assets!inner(symbol, name, sector, asset_class)').eq('as_of_date', asOf),
+        sb.from('vw_active_account_snapshots').select('*').order('as_of', { ascending: false }).limit(1),
     ]);
     fail('positions', pos.error); fail('account', acct.error);
 
@@ -394,7 +394,7 @@ export async function loadVolDrift() {
     // does not exist returned 400 on every load, so the drift indicator was
     // silently absent rather than visibly unavailable.
     const { data, error } = await sb
-        .from('portfolio_equity_curve')
+        .from('vw_active_equity_curve')
         .select('ts, equity, timeframe')
         .eq('timeframe', '1D')
         .order('ts', { ascending: true })

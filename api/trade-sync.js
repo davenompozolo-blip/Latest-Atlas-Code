@@ -141,8 +141,8 @@ async function loadContext() {
         sbGet('holding_vol_trailing?select=symbol,asof,vol_20d,z_move,ret_1d&order=asof.desc&limit=8000'),
         sbGet('options_positioning_snapshots?select=*&order=snapshot_date.desc&limit=3000'),
         sbGet('vol_dispersion_daily?select=*&order=date.desc&limit=200'),
-        sbGet('positions?select=quantity,average_cost,market_value,as_of_date,assets!inner(symbol,sector,asset_class)&order=as_of_date.desc&limit=500'),
-        sbGet('account_snapshots?select=*&order=as_of.desc&limit=1'),
+        sbGet('vw_active_positions?select=quantity,average_cost,market_value,as_of_date,assets!inner(symbol,sector,asset_class)&order=as_of_date.desc&limit=500'),
+        sbGet('vw_active_account_snapshots?select=*&order=as_of.desc&limit=1'),
     ]);
 
     // Latest risk-stat date only.
