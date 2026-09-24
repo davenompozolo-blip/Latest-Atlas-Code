@@ -5626,6 +5626,48 @@ permanently absent. Correct, and worth writing down: it is a gate that can
 never pass in the benign direction, and the next reader should not hunt for a
 bug behind an empty tile.
 
+### "Not loaded" was a claim about the symbol; the gap was the PERIOD (2026-09-24)
+
+Reported from the terminal: switching AAPL from Annual to Quarterly renders
+*"Statements for AAPL are not loaded yet"*, above a sentence blaming the Alpha
+Vantage free tier.
+
+**Both halves are false for that symbol.** AAPL carries **19 complete annual
+periods**, and it was loaded from **EDGAR**, which has no key and no daily cap
+-- so the copy blamed a quota that never applied to it. Measured over the
+loaded set: **9 symbols carry quarterly (all Alpha Vantage), 43 carry annual
+only** (the EDGAR cohort), so the wrong sentence was the MODAL one, not an
+edge case.
+
+**The panel had every fact and never looked at the period.**
+`vw_company_statement_coverage` publishes `aligned_annual_periods`,
+`income_quarterly`, `is_complete` and `source` per symbol. `NotLoaded` tested
+only `statements_present > 0 && !is_complete` -- **false for a symbol that is
+complete on the OTHER basis** -- so it fell through to the generic unloaded
+copy. Same shape as the EQ-4j / EQ-8b split: *not loaded*, *no framework* and
+*failed* need different sentences, and here a fourth was missing.
+
+`src/lib/statementPeriodAvailability.js` returns four states.
+`available` / `availableCount` are **absent from the shape** unless the other
+basis genuinely carries periods, so a switch to an equally empty basis cannot
+be rendered.
+
+**`COVERAGE_DISAGREES` is the state that stops this recurring one level down.**
+The function is only reached with an empty row set, so reaching it while
+coverage reports periods on the very basis asked for is two objects
+disagreeing, not an absence -- and calling that "not loaded" would be the exact
+defect being fixed. It is a fault to chase, and it says so.
+
+**EDGAR's quarterly facts are in the same payload, unfetched.**
+`edgarFacts.js` filters to `ANNUAL_FORMS` and requires a 330-400 day duration,
+so quarterly is **not requested** rather than unavailable -- one filter, no
+extra API calls, no quota. "Not loaded yet" invited waiting for something that
+would never arrive on its own; the copy now says the reader takes annual
+filings only. **Loading it is its own unit and is NOT done.**
+
+10 tests, **5 of which fail against the shipped predicate**, checked by
+reverting. The live coverage rows are the fixtures, not invented shapes.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
