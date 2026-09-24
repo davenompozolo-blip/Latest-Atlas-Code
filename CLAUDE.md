@@ -4692,6 +4692,41 @@ believing the panel. Test it with `{"symbols":["TGT"]}`, which returns in ~1.3s.
 "Total invocations 0" on that page is the dashboard's 24h-lagged analytics, not
 a claim about whether the function has run.
 
+### The geographic surface, and the domicile nobody had recorded (2026-09-24)
+
+`country_ref` / `security_geo_revenue` / `security_domicile` and
+`resolve_geo_exposure` / `geo_exposure_detail` / `geo_exposure_summary`;
+`<GeoSurface>` in `src/geo/`, first consumer `#/trade/geographic`. Full report
+in `docs/GEO_SURFACE_REPORT.md`.
+
+**There was no domicile column anywhere.** `vw_screener.country` COALESCEs a
+missing value to `'US'`, so HMY (Harmony Gold, Johannesburg) read as American.
+`security_domicile` records the fact with its source; an unknown domicile is an
+ABSENT row, never a default. The vendor field it seeds from also flaps night to
+night (AAPL 'US' on 09-22, NULL on 09-24), so it is recorded, not joined live.
+
+**A fund's domicile is not a revenue fallback.** Every fund in the book is a
+US-registered wrapper; falling back puts EWY on the United States, which is not
+a guess but known to be false. Funds without look-through go to `XX`.
+
+**Key Natural Earth on `ISO_A2_EH`, never `ISO_A2`** -- the latter is `CN-TW`
+for Taiwan and `-99` for France and Norway.
+
+**Revenue coverage is 0% until someone enters disclosures**, so the revenue map
+renders muted and the largest-gap figure is withheld. That is correct, not a
+bug: do not invent splits to make it look finished. The deferred trigger refuses
+a set that does not sum to 1.0000 including XX.
+
+**`maplibre-gl` is pinned to 5.x.** `@deck.gl/mapbox` 9.4 reads `map.transform`
+in interleaved mode and it is undefined under MapLibre 6 -- an error every
+frame that `vite build` cannot see. And key readiness on `style.load`, never
+`load`: `load` waits for every source, so a tile host that does not answer
+leaves the panel blank forever with no error.
+
+**Grep for `maplibregl` in the main bundle finds plotly**, which ships its own
+MapLibre. Read the sourcemap's `sources`, not the strings, to decide what is in
+a chunk.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
