@@ -7,10 +7,16 @@
 // Body params (all optional):
 //   period       - Alpaca period string e.g. '1A', '6M', 'all'  (default: 'all')
 //   timeframe    - Alpaca timeframe e.g. '1D', '1H'             (default: '1D')
-//   portfolio_id - UUID of a specific portfolio to tag rows      (auto-detected if omitted)
+//   portfolio_id - sync only this portfolio                     (every Alpaca portfolio if omitted)
+//
+// MP-1: every Alpaca portfolio is synced with its OWN credentials behind an
+// identity gate, one sync_log row each. Before MP-1 this took `limit 1` of the
+// Alpaca portfolios -- an arbitrary one once there are two -- and a passed
+// portfolio_id merely TAGGED the one global account's history with that id.
 //
 // Environment variables (Dashboard -> Edge Functions -> Secrets):
-//   ALPACA_API_KEY, ALPACA_API_SECRET, SUPABASE_DB_URL
+//   <credential_prefix>_KEY / _SECRET per Alpaca broker account
+//   (ALPACA_API_* for the original), SUPABASE_DB_URL
 //
 // == C1.3: stale provider snapshots ========================================
 //
@@ -53,7 +59,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
 
-const ALPACA_TRADING_BASE = 'https://paper-api.alpaca.markets'
 const FUNCTION_NAME = 'sync_portfolio_history'
 
 const ET_DATE = new Intl.DateTimeFormat('en-CA', {
@@ -61,11 +66,81 @@ const ET_DATE = new Intl.DateTimeFormat('en-CA', {
   year: 'numeric', month: '2-digit', day: '2-digit',
 })
 
-function alpacaHeaders(): Record<string, string> {
-  const key    = Deno.env.get('ALPACA_API_KEY')
-  const secret = Deno.env.get('ALPACA_API_SECRET')
-  if (!key || !secret) throw new Error('Missing ALPACA_API_KEY and/or ALPACA_API_SECRET')
-  return { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret }
+// ── Broker targets (MP-1) ───────────────────────────────────────────────────
+// Each Alpaca portfolio names its OWN credentials and the account they must
+// belong to. broker_accounts.credential_prefix is the NAME of a secret pair
+// (<prefix>_KEY / <prefix>_SECRET), never a value. There is no global key pair:
+// one pair for every portfolio is what wrote one account's book into every
+// portfolio row before MP-1.
+
+interface BrokerTarget {
+  portfolio_id: string
+  credential_prefix: string | null
+  account_number: string | null
+  is_paper: boolean
+}
+
+async function loadTargets(portfolioId: string | null): Promise<BrokerTarget[]> {
+  return await sql<BrokerTarget[]>`
+    select p.id as portfolio_id, b.credential_prefix,
+           b.alpaca_account_number as account_number, b.is_paper
+      from public.portfolios p
+      join public.broker_accounts b on b.id = p.broker_account_id
+     where b.broker = 'alpaca'
+     ${portfolioId ? sql`and p.id = ${portfolioId}` : sql``}
+     order by p.created_at, p.id
+  `
+}
+
+function tradingBase(t: BrokerTarget): string {
+  return t.is_paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'
+}
+
+function alpacaHeaders(t: BrokerTarget): Record<string, string> {
+  if (!t.credential_prefix) {
+    throw new Error(`portfolio ${t.portfolio_id}: its broker account names no credential_prefix`)
+  }
+  const key    = Deno.env.get(`${t.credential_prefix}_KEY`)
+  const secret = Deno.env.get(`${t.credential_prefix}_SECRET`)
+  if (!key || !secret) {
+    throw new Error(`Missing ${t.credential_prefix}_KEY and/or ${t.credential_prefix}_SECRET`)
+  }
+  return {
+    'APCA-API-KEY-ID': key,
+    'APCA-API-SECRET-KEY': secret,
+  }
+}
+
+async function alpacaGet<T = unknown>(t: BrokerTarget, path: string): Promise<T> {
+  const url = new URL(path, tradingBase(t))
+  const resp = await fetch(url.toString(), { headers: alpacaHeaders(t) })
+  const text = await resp.text()
+  if (!resp.ok) {
+    throw new Error(`Alpaca ${path} failed: ${resp.status} ${text.slice(0, 500)}`)
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`Alpaca ${path} returned non-JSON: ${text.slice(0, 200)}`)
+  }
+}
+
+// IDENTITY GATE. The credentials must report the account the portfolio is
+// registered to, or nothing is written. A mis-set credential_prefix is the
+// pre-MP-1 defect reached by configuration instead of code -- one account's
+// book silently written into another's portfolio -- and it would look healthy.
+async function verifiedAccount<T extends { account_number?: unknown }>(t: BrokerTarget): Promise<T> {
+  if (!t.account_number) {
+    throw new Error(`portfolio ${t.portfolio_id}: its broker account names no alpaca_account_number`)
+  }
+  const acct = await alpacaGet<T>(t, '/v2/account')
+  if (acct.account_number !== t.account_number) {
+    throw new Error(
+      `IDENTITY MISMATCH: ${t.credential_prefix}_* report account ${String(acct.account_number)}, ` +
+      `portfolio ${t.portfolio_id} is registered to ${t.account_number}. Nothing written.`
+    )
+  }
+  return acct
 }
 
 function toNumericOrNull(v: unknown): number | null {
@@ -122,35 +197,50 @@ Deno.serve(async (req) => {
   // the same reason A0 records details.mode and details.scope.
   const mode = period === 'all' ? 'backfill' : 'window'
 
+  // One account per iteration, each with its own sync_log row: one account
+  // failing is recorded against it and blocks nothing else.
+  const targets = await loadTargets(portfolioId)
+  if (targets.length === 0) {
+    const [logRow] = await sql<{ id: number }[]>`
+      insert into public.sync_log (function_name, status, source, details, finished_at, error_message)
+      values (${FUNCTION_NAME}, 'error', 'edge_function', ${sql.json({ period, timeframe, mode })}, now(),
+              ${portfolioId ? `no Alpaca portfolio with id ${portfolioId}` : 'no Alpaca portfolios registered'})
+      returning id
+    `
+    return jsonResponse({ error: `${FUNCTION_NAME} failed`, detail: 'no matching Alpaca portfolio', sync_log_id: logRow.id }, 500)
+  }
+
+  const results: Record<string, unknown>[] = []
+  let failures = 0
+  for (const t of targets) {
+    const r = await syncOne(t, period, timeframe, mode)
+    if (!r.ok) failures += 1
+    results.push(r)
+  }
+  return jsonResponse({ ok: failures === 0, portfolios: targets.length, failures, results },
+                      failures === 0 ? 200 : 500)
+})
+
+async function syncOne(t: BrokerTarget, period: string, timeframe: string,
+                       mode: string): Promise<Record<string, unknown>> {
+  const resolvedPortfolioId = t.portfolio_id
   const [logRow] = await sql<{ id: number }[]>`
-    insert into public.sync_log (function_name, status, source, details)
+    insert into public.sync_log (function_name, status, source, details, portfolio_id)
     values (${FUNCTION_NAME}, 'running', 'edge_function',
-            ${sql.json({ period, timeframe, mode })})
+            ${sql.json({ period, timeframe, mode, portfolio_id: t.portfolio_id, account_number: t.account_number })},
+            ${t.portfolio_id})
     returning id
   `
   const logId = logRow.id
 
   try {
-    // -- Resolve portfolio_id -----------------------------------------------
-    let resolvedPortfolioId: string
-    if (portfolioId) {
-      resolvedPortfolioId = portfolioId
-    } else {
-      const rows = await sql<{ id: string }[]>`
-        select p.id
-        from public.portfolios p
-        join public.broker_accounts b on b.id = p.broker_account_id
-        where b.broker = 'alpaca'
-        limit 1
-      `
-      if (rows.length === 0) throw new Error('No Alpaca portfolio found in DB')
-      resolvedPortfolioId = rows[0].id
-    }
+    // Identity gate before anything is fetched or written.
+    await verifiedAccount<{ account_number?: string }>(t)
 
     // -- Fetch from Alpaca --------------------------------------------------
     const params = new URLSearchParams({ period, timeframe })
-    const url    = `${ALPACA_TRADING_BASE}/v2/account/portfolio/history?${params}`
-    const resp   = await fetch(url, { headers: alpacaHeaders() })
+    const url    = `${tradingBase(t)}/v2/account/portfolio/history?${params}`
+    const resp   = await fetch(url, { headers: alpacaHeaders(t) })
     const text   = await resp.text()
     if (!resp.ok) throw new Error(`Alpaca portfolio/history failed: ${resp.status} ${text.slice(0, 500)}`)
 
@@ -254,6 +344,7 @@ Deno.serve(async (req) => {
     const details = {
       period, timeframe, mode,
       portfolio_id:            resolvedPortfolioId,
+      account_number:          t.account_number,
       rows_from_alpaca:        timestamp.length,
       valid_rows:              validRows.length,
       stale_snapshots_flagged: staleDates.length,
@@ -269,7 +360,7 @@ Deno.serve(async (req) => {
        where id = ${logId}
     `
 
-    return jsonResponse({ ok: true, status, ...details, upserted }, 200)
+    return { ok: true, status, sync_log_id: logId, ...details, upserted }
 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -279,9 +370,9 @@ Deno.serve(async (req) => {
          set status = 'error', finished_at = now(), error_message = ${message}
        where id = ${logId}
     `.catch(e => console.error('failed to close sync_log row:', e))
-    return jsonResponse({ error: `${FUNCTION_NAME} failed`, detail: message }, 500)
+    return { ok: false, portfolio_id: t.portfolio_id, sync_log_id: logId, detail: message }
   }
-})
+}
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {

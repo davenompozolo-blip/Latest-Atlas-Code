@@ -1,4 +1,11 @@
-// Edge Function: sync_alpaca_positions (v3 — side + account snapshot)
+// Edge Function: sync_alpaca_positions (v4 — one account per portfolio)
+//
+// v4 (MP-1): each Alpaca portfolio is synced with ITS OWN credentials
+// (broker_accounts.credential_prefix), behind an identity gate on
+// /v2/account's account_number, in its own transaction with its own sync_log
+// row. v3 fetched one account with a global key pair and wrote that book into
+// EVERY portfolio row, so a second portfolio would have received a copy of the
+// first. One account failing no longer blocks or touches another.
 //
 // Self-contained single-file version for Supabase Dashboard paste-deploy.
 // All dependencies inlined — no `../_shared/` imports required.
@@ -10,20 +17,50 @@
 //   3. sync_log details include account snapshot values.
 //
 // Environment variables (Dashboard -> Edge Functions -> Secrets):
-//   ALPACA_API_KEY, ALPACA_API_SECRET, SUPABASE_DB_URL
+//   <credential_prefix>_KEY / <credential_prefix>_SECRET for every Alpaca
+//   broker account (ALPACA_API_* for the original), SUPABASE_DB_URL
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
 
-// ── Alpaca helpers ──────────────────────────────────────────────────────────
+// ── Broker targets (MP-1) ───────────────────────────────────────────────────
+// Each Alpaca portfolio names its OWN credentials and the account they must
+// belong to. broker_accounts.credential_prefix is the NAME of a secret pair
+// (<prefix>_KEY / <prefix>_SECRET), never a value. There is no global key pair:
+// one pair for every portfolio is what wrote one account's book into every
+// portfolio row before MP-1.
 
-const ALPACA_TRADING_BASE = 'https://paper-api.alpaca.markets'
+interface BrokerTarget {
+  portfolio_id: string
+  credential_prefix: string | null
+  account_number: string | null
+  is_paper: boolean
+}
 
-function alpacaHeaders(): Record<string, string> {
-  const key    = Deno.env.get('ALPACA_API_KEY')
-  const secret = Deno.env.get('ALPACA_API_SECRET')
+async function loadTargets(portfolioId: string | null): Promise<BrokerTarget[]> {
+  return await sql<BrokerTarget[]>`
+    select p.id as portfolio_id, b.credential_prefix,
+           b.alpaca_account_number as account_number, b.is_paper
+      from public.portfolios p
+      join public.broker_accounts b on b.id = p.broker_account_id
+     where b.broker = 'alpaca'
+     ${portfolioId ? sql`and p.id = ${portfolioId}` : sql``}
+     order by p.created_at, p.id
+  `
+}
+
+function tradingBase(t: BrokerTarget): string {
+  return t.is_paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'
+}
+
+function alpacaHeaders(t: BrokerTarget): Record<string, string> {
+  if (!t.credential_prefix) {
+    throw new Error(`portfolio ${t.portfolio_id}: its broker account names no credential_prefix`)
+  }
+  const key    = Deno.env.get(`${t.credential_prefix}_KEY`)
+  const secret = Deno.env.get(`${t.credential_prefix}_SECRET`)
   if (!key || !secret) {
-    throw new Error('Missing ALPACA_API_KEY and/or ALPACA_API_SECRET')
+    throw new Error(`Missing ${t.credential_prefix}_KEY and/or ${t.credential_prefix}_SECRET`)
   }
   return {
     'APCA-API-KEY-ID': key,
@@ -31,9 +68,9 @@ function alpacaHeaders(): Record<string, string> {
   }
 }
 
-async function alpacaGet<T = unknown>(path: string): Promise<T> {
-  const url = new URL(path, ALPACA_TRADING_BASE)
-  const resp = await fetch(url.toString(), { headers: alpacaHeaders() })
+async function alpacaGet<T = unknown>(t: BrokerTarget, path: string): Promise<T> {
+  const url = new URL(path, tradingBase(t))
+  const resp = await fetch(url.toString(), { headers: alpacaHeaders(t) })
   const text = await resp.text()
   if (!resp.ok) {
     throw new Error(`Alpaca ${path} failed: ${resp.status} ${text.slice(0, 500)}`)
@@ -43,6 +80,24 @@ async function alpacaGet<T = unknown>(path: string): Promise<T> {
   } catch {
     throw new Error(`Alpaca ${path} returned non-JSON: ${text.slice(0, 200)}`)
   }
+}
+
+// IDENTITY GATE. The credentials must report the account the portfolio is
+// registered to, or nothing is written. A mis-set credential_prefix is the
+// pre-MP-1 defect reached by configuration instead of code -- one account's
+// book silently written into another's portfolio -- and it would look healthy.
+async function verifiedAccount<T extends { account_number?: unknown }>(t: BrokerTarget): Promise<T> {
+  if (!t.account_number) {
+    throw new Error(`portfolio ${t.portfolio_id}: its broker account names no alpaca_account_number`)
+  }
+  const acct = await alpacaGet<T>(t, '/v2/account')
+  if (acct.account_number !== t.account_number) {
+    throw new Error(
+      `IDENTITY MISMATCH: ${t.credential_prefix}_* report account ${String(acct.account_number)}, ` +
+      `portfolio ${t.portfolio_id} is registered to ${t.account_number}. Nothing written.`
+    )
+  }
+  return acct
 }
 
 function toNumeric(v: unknown): number {
@@ -78,10 +133,11 @@ interface SyncCounts {
   positions_upserted?: number
 }
 
-async function openSyncLog(functionName: string, source: string, parentId: number | null): Promise<number> {
+async function openSyncLog(functionName: string, source: string, parentId: number | null,
+                           portfolioId: string | null): Promise<number> {
   const rows = await sql<{ id: number }[]>`
-    insert into public.sync_log (status, source, function_name, parent_id)
-    values ('running', ${source}, ${functionName}, ${parentId})
+    insert into public.sync_log (status, source, function_name, parent_id, portfolio_id)
+    values ('running', ${source}, ${functionName}, ${parentId}, ${portfolioId})
     returning id
   `
   return rows[0].id
@@ -128,6 +184,7 @@ interface AlpacaPosition {
 }
 
 interface AlpacaAccount {
+  account_number?: string
   cash?: string
   equity?: string
   buying_power?: string
@@ -153,26 +210,17 @@ interface PositionsResult {
 
 // ── Positions + Account task ────────────────────────────────────────────────
 
-async function runPositionsAndAccount(portfolioId: string | null): Promise<PositionsResult> {
-  const portfolios = await sql<{ portfolio_id: string }[]>`
-    select p.id as portfolio_id
-    from public.portfolios p
-    join public.broker_accounts b on b.id = p.broker_account_id
-    where b.broker = 'alpaca'
-    ${portfolioId ? sql`and p.id = ${portfolioId}` : sql``}
-  `
+async function runPositionsAndAccount(t: BrokerTarget): Promise<PositionsResult> {
+  // ONE portfolio per call, fetched with that portfolio's own credentials. The
+  // single-element list keeps the write path below unchanged from v3, where it
+  // looped over every Alpaca portfolio with one account's data.
+  const portfolios = [{ portfolio_id: t.portfolio_id }]
 
-  if (portfolios.length === 0) {
-    return { positions_seen: 0, positions_upserted: 0,
-             positions_exited: 0, reconcile_skipped: 0, portfolios: 0,
-             symbols: [], options_count: 0, shorts_count: 0,
-             account_equity: null, account_cash: null }
-  }
-
-  // Fetch positions and account in parallel
+  // Fetch positions and account in parallel. verifiedAccount throws on an
+  // identity mismatch, and the throw lands before the transaction opens.
   const [raw, account] = await Promise.all([
-    alpacaGet<AlpacaPosition[]>('/v2/positions'),
-    alpacaGet<AlpacaAccount>('/v2/account'),
+    alpacaGet<AlpacaPosition[]>(t, '/v2/positions'),
+    verifiedAccount<AlpacaAccount>(t),
   ])
 
   // `for (const p of raw)` accepts any iterable, so a 200 carrying a string
@@ -362,39 +410,66 @@ Deno.serve(async (req) => {
   const source = typeof payload?.source === 'string' ? payload.source : 'edge_function'
   const parentId = typeof payload?.parent_sync_log_id === 'number' ? payload.parent_sync_log_id : null
 
-  let syncLogId: number | null = null
+  // One account per iteration, each with its own sync_log row: a failure in
+  // one (bad credentials, an identity mismatch, an endpoint hiccup) is recorded
+  // against THAT portfolio and does not block or roll back another.
+  const targets = await loadTargets(portfolioId)
 
-  try {
-    syncLogId = await openSyncLog('sync_alpaca_positions', source, parentId)
-    const result = await runPositionsAndAccount(portfolioId)
-    await closeSyncLogSuccess(
-      syncLogId,
-      { positions_seen: result.positions_seen, positions_upserted: result.positions_upserted },
-      {
-        portfolios: result.portfolios,
-        options_count: result.options_count,
-        shorts_count: result.shorts_count,
-        account_equity: result.account_equity,
-        account_cash: result.account_cash,
-        // Legible on its own: "exited 1" is the record that a position left the
-        // book on this run, and reconcile_skipped > 0 says the gate refused.
-        positions_exited: result.positions_exited,
-        reconcile_skipped: result.reconcile_skipped,
-        synced_as_of_date: new Date().toISOString().slice(0, 10),
-      }
-    )
-    // Update parser heartbeat on successful sync
-    await sql`select update_parser_heartbeat('ok', null)`.catch(() => {/* non-fatal */})
-    return jsonResponse({ sync_log_id: syncLogId, ...result }, 200)
-  } catch (err) {
-    await closeSyncLogError(syncLogId, err)
-    const message = err instanceof Error ? err.message : String(err)
-    console.error('sync_alpaca_positions failed:', message)
-    return jsonResponse(
-      { sync_log_id: syncLogId, error: 'sync_alpaca_positions failed', detail: message },
-      500
-    )
+  if (targets.length === 0) {
+    // A no-op must not answer 200: no registered Alpaca portfolio (or a
+    // portfolio_id that matches none) is a configuration fault, not a quiet day.
+    const logId = await openSyncLog('sync_alpaca_positions', source, parentId, null)
+    const err = new Error(portfolioId
+      ? `no Alpaca portfolio with id ${portfolioId}`
+      : 'no Alpaca portfolios registered')
+    await closeSyncLogError(logId, err)
+    console.error('sync_alpaca_positions failed:', err.message)
+    return jsonResponse({ sync_log_id: logId, error: 'sync_alpaca_positions failed', detail: err.message }, 500)
   }
+
+  const results: Record<string, unknown>[] = []
+  let failures = 0
+
+  for (const t of targets) {
+    let syncLogId: number | null = null
+    try {
+      syncLogId = await openSyncLog('sync_alpaca_positions', source, parentId, t.portfolio_id)
+      const result = await runPositionsAndAccount(t)
+      await closeSyncLogSuccess(
+        syncLogId,
+        { positions_seen: result.positions_seen, positions_upserted: result.positions_upserted },
+        {
+          portfolio_id: t.portfolio_id,
+          account_number: t.account_number,
+          portfolios: result.portfolios,
+          options_count: result.options_count,
+          shorts_count: result.shorts_count,
+          account_equity: result.account_equity,
+          account_cash: result.account_cash,
+          // Legible on its own: "exited 1" is the record that a position left the
+          // book on this run, and reconcile_skipped > 0 says the gate refused.
+          positions_exited: result.positions_exited,
+          reconcile_skipped: result.reconcile_skipped,
+          synced_as_of_date: new Date().toISOString().slice(0, 10),
+        }
+      )
+      results.push({ portfolio_id: t.portfolio_id, sync_log_id: syncLogId, ok: true, ...result })
+    } catch (err) {
+      failures += 1
+      await closeSyncLogError(syncLogId, err)
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`sync_alpaca_positions failed for portfolio ${t.portfolio_id}:`, message)
+      results.push({ portfolio_id: t.portfolio_id, sync_log_id: syncLogId, ok: false, detail: message })
+    }
+  }
+
+  if (failures === 0) {
+    // Update parser heartbeat only when every account synced
+    await sql`select update_parser_heartbeat('ok', null)`.catch(() => {/* non-fatal */})
+  }
+  // 500 when ANY account failed, so pg_cron's job_run_details shows it; the
+  // body says which, and every healthy account's rows are already committed.
+  return jsonResponse({ portfolios: targets.length, failures, results }, failures === 0 ? 200 : 500)
 })
 
 function jsonResponse(body: unknown, status: number): Response {

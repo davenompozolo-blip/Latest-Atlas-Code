@@ -1,5 +1,14 @@
 // Shared Alpaca API client + helpers.
 //
+// MARKET DATA ONLY (data.alpaca.markets), where any key pair returns the same
+// answer. NEVER use this for an ACCOUNT endpoint (/v2/account, /v2/positions,
+// /v2/account/activities, /v2/account/portfolio/history, orders): the key pair
+// here is global, and an account endpoint answers for whichever account owns
+// it. Account syncs resolve credentials per portfolio from
+// broker_accounts.credential_prefix behind an identity gate -- see
+// sync_alpaca_positions v4 (MP-1). The two account-level task files that used
+// this client were deleted for that reason.
+//
 // All five sync tasks talk to Alpaca through here so auth, base URLs,
 // OCC detection, and numeric coercion live in exactly one place.
 
