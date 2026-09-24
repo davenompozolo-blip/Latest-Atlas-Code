@@ -5446,6 +5446,129 @@ burned on data that does not move. Coverage is the 52 symbols carrying
 statements; the rest of the universe is the same call again.
 
 
+### A supplementary read took the whole statement layer down (2026-09-24)
+
+Reported from the terminal, on every ticker tested: the Financials tab read
+*"The statement feed did not answer — canceling statement due to statement
+timeout"*, and the Background tab, one panel away, read *"Statements for AAPL
+are not loaded."* Two different sentences, one cause, and neither of them
+true — AAPL carries 19 complete annual periods.
+
+**`vw_company_fundamentals` was never the problem: 4.7 ms symbol-filtered.**
+The failure was `vw_company_fundamental_peers` at **6,938 ms** against anon's
+3,000 ms cap — a 100% failure rate on a query nobody had timed, because EQ-2
+flagged it as *"trivial at ten symbols ... not measured at scale"* and EQ-8a
+then took the statement layer from 10 symbols to 62. **A growth-linked node is
+a clock, not a constant**, and this one crossed the cap between two units of
+the same week.
+
+**The cost was not the cohort, it was re-deriving it per row.** `long` holds
+the whole universe (46,159 rows) because a peer median needs the cohort and
+the symbol filter can only apply after it; the per-row LATERAL then scanned
+that entire CTE once for each of AAPL's 589 output rows — **27.2M rows
+filtered, `temp read=286,356` blocks spilling to disk**. Grouping the cohort
+once into ordered `(value, symbol)` arrays makes the lateral unnest ~9
+elements: **6,938 → 392 ms**, semantics identical, proven by `EXCEPT ALL` both
+ways over AAPL (589), JPM (3,131, the financial profile) and SONY+CPER (930) —
+4,650 rows, 0 differences in either direction.
+
+**And EQ-8a's own precedence subquery was the base's cost.** The correlated
+`WHERE i.source = (SELECT ...)` is evaluated PER ROW: 19 times on a
+symbol-filtered read (invisible), **1,615 times inside the peer view, for
+157,545 of its 163,745 buffers**. Hoisted to a grouped CTE joined once; 1,489
+rows, 0 mixed-source symbols, `EXCEPT ALL` clean both ways over the whole view.
+Third instance of this exact shape here, after `atlas_counterfactual_frozen`
+(once per CALL) and `vw_position_nav_daily` (once per REFERENCE). **Compute it
+once and hand it down.**
+
+**A supplementary read must not be able to refuse the primary one.** The three
+reads were one `Promise.all`, so the peers' rejection discarded fundamentals
+that had already succeeded in 4.7 ms. `coverage` had a `.catch` and `peers` did
+not — the asymmetry was never a decision. The peer medians now fail alone, are
+logged at error level, and say so on the result: a silently empty peer set is
+indistinguishable from a cohort nobody else is in, which is a real and
+different answer.
+
+**The Background tab collapsed three states into two.**
+`setRows(res.state === STATE_LOADED ? res.rows : [])` turned a transport
+failure into an empty array, and the panel printed *"statements are not
+loaded"* — a claim about the company, on a query that was cancelled. The
+module publishes `loaded` / `not_loaded` / `failed` precisely so that cannot
+happen, and one consumer threw two of them away. **Fifth layer for "never let
+a transport failure render as a statement about the data."**
+
+### The panels graded on evidence they did not have (2026-09-24)
+
+EQ-9. `src/lib/equityVerdicts.js` is the one place that decides what the
+Equity Research surfaces may SAY. Five fabrications, each measured against the
+52 symbols carrying statements.
+
+**1. A 9-point F-Score formed from fewer than nine criteria.** `piotroski()`
+returned `determinable ? passed : null`, so a reading from three tests was
+emitted as a score out of nine and read under bands defined over nine. Live on
+**29 of 52 symbols**: SONY and CPER resolve THREE criteria and published
+**"2 / 9 · WEAK"** — where 2 of the 3 that resolved had passed. TSM, ABEV, HMY,
+PBR and TM printed the same on four.
+
+**The panel had a guard for exactly this and it was dead.** `pfPartial` was
+`!pfFromTable && pfKnown < 9`, and `pfFromTable` was `piotroski_f != null`,
+which the statement path satisfies for every symbol — so on the one case it
+was written for it evaluated false, `pfKnown` was set to a literal 9, and the
+definitive band rendered. Sixth instance of a gate that can never pass.
+
+**2. The Sloan fallback reconstructed a balance sheet out of a market
+multiple.** `mktCap / (pb || 3) + totalDebt` as "total assets" — equity plus
+debt is not assets, and `pb || 3` SUBSTITUTES a price-to-book of 3 when none is
+on file. The same algebra deleted from the Altman card on PR #806, still live
+one card across, feeding the sentence *"Earnings are high-quality"*.
+
+**3. Capital Allocation graded two rows from the existence of a row.**
+`grade: capGrade ? 'C+' : null` for buyback accretion and `capGrade ? 'A−' :
+null` for the M&A record — no input of any kind, on either. The `'RISK-ON'`
+string literal G-4 removed from the chrome, in a letter grade. ROIC was
+`inp.roe * 0.6`, a made-up factor then differenced against a WACC to publish
+*"value-creating"*; `bbYield` was `-(fcf - cash) / mktCap` under the name
+"buyback yield"; and `overallGrade` ended `: 'B'`, so a filer with nothing
+measured got a B in 64-point type.
+
+**4. The header ran a second fair-value blend that violated the rule the first
+one states.** `fairValueComposite.js` says in its own header: *"when an input
+can't be trusted, drop it. If nothing survives, return null — never fabricate
+a number."* The strip's fallback ran a ten-year DCF on a substituted 10% growth
+rate and 20% operating margin, a multiple leg on a substituted 18× EV/EBITDA,
+and a leg that was trailing EPS × a flat 20 — then averaged the survivors and
+drove BUY / ACCUMULATE / HOLD / REDUCE off the result.
+
+**A ladder of `>` comparisons falls through to its last rung on a null**, and
+that rung was `REDUCE · overvalued`. So a ticker the engine could not value
+rendered the most negative verdict on the board, in red, indistinguishable
+from a measured one. The same shape as Altman's `null > 2.60` falling into
+DISTRESS, which PR #806 fixed one card away.
+
+**5. The header read a table that does not ship.** It took `p.derived` from
+`equity_fundamentals_derived`, which EQ-5b measured at **0 occurrences in the
+production bundle** — so the live path was always
+`roe > 0.20 ? 'B+' : '—'`: a letter grade on the same scale, from one ratio,
+marked only "prov.". It reads the statement layer now.
+
+**`{ key: undefined }` IS NOT AN ABSENT KEY**, and my own module shipped that
+bug for twenty minutes. `'spread' in out` is true for it and `Object.keys`
+lists it, so a consumer testing presence — the very check the module exists to
+enable — sees a figure nobody measured. **Found by the test, not by reading**:
+the absence assertion failed on the first run. Assign the key only when there
+is a value.
+
+**`vite build` is not a scope audit, twice over.** It reported clean while
+`VerdictStrip` called `useStatementDerived(p.symbol)` and **`symbol` was not
+among its props** — a hook that could never resolve, which is the dead-gate
+shape again and invisible to the bundler. Caught by grepping the call site.
+
+20 tests, and **11 of them fail against the shipped behaviour**, checked by
+restoring it rather than assumed. Every new path confirmed in `dist/` by a
+string only it can produce, with `equity_fundamentals_derived` (0) as the
+control — the EQ-5b rule, because this module's sibling `equity-research.js`
+still has an effect body rollup does not emit.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

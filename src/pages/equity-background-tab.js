@@ -16,7 +16,7 @@ import React from 'react';
 import { T } from './equity/equityTheme.js';
 import { sb } from './config.js';
 import {
-    loadStatementLayer, STATE_LOADED,
+    loadStatementLayer, STATE_LOADED, STATE_FAILED,
 } from './equity/equityStatements.js';
 import { companyPhase, revenueCagr, numOrNull, finite } from './equity/statementRows.js';
 import { loadCompanyProfile } from './equity/companyProfile.js';
@@ -59,12 +59,15 @@ export function BackgroundTab({ symbol, rawOverview }) {
     const [theme, setTheme]   = useState(undefined); // undefined = loading, null = none
     const [asset, setAsset]   = useState(null);
     const [rows,  setRows]    = useState(null);
+    const [rowsState, setRowsState] = useState(null);
+    const [rowsError, setRowsError] = useState(null);
     const [profile, setProfile] = useState(null); // null = loading
 
     useEffect(function () {
         let cancelled = false;
         if (!symbol) return;
         setTheme(undefined); setAsset(null); setRows(null); setProfile(null);
+        setRowsState(null); setRowsError(null);
         sb.from('position_themes').select('theme').eq('symbol', symbol).maybeSingle()
             .then(function (r) { if (!cancelled) setTheme((r.data && r.data.theme) || null); })
             .catch(function () { if (!cancelled) setTheme(null); });
@@ -72,7 +75,16 @@ export function BackgroundTab({ symbol, rawOverview }) {
             .then(function (r) { if (!cancelled && r.data) setAsset(r.data); })
             .catch(function () {});
         loadStatementLayer(symbol, 'annual').then(function (res) {
-            if (!cancelled) setRows(res.state === STATE_LOADED ? res.rows : []);
+            // KEEP THE STATE. This was `res.state === STATE_LOADED ? res.rows : []`,
+            // so a transport failure arrived as an empty array and the Company
+            // phase panel printed "statements are not loaded" — a claim about
+            // the company, printed when the query had been cancelled. That is
+            // the split `equityStatements` publishes three states for.
+            if (!cancelled) {
+                setRows(res.state === STATE_LOADED ? res.rows : []);
+                setRowsState(res.state);
+                setRowsError(res.state === STATE_FAILED ? (res.error || null) : null);
+            }
         });
         loadCompanyProfile(symbol).then(function (res) {
             if (!cancelled) setProfile(res);
@@ -180,9 +192,13 @@ export function BackgroundTab({ symbol, rawOverview }) {
             rows == null
                 ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted2 } }, 'Reading the statements…')
                 : !rows.length
-                    ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.7 } },
-                        'Statements for ' + symbol + ' are not loaded, so the phase cannot be established. '
-                      + 'It is not assumed to be mature by default.')
+                    ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: rowsState === STATE_FAILED ? T.amber : T.muted, lineHeight: 1.7 } },
+                        rowsState === STATE_FAILED
+                            ? 'The statement feed did not answer, so the phase cannot be established. '
+                              + 'This is a transport failure, not a statement about ' + symbol + ' — the '
+                              + 'filings may well be loaded.' + (rowsError ? ' (' + rowsError + ')' : '')
+                            : 'Statements for ' + symbol + ' are not loaded, so the phase cannot be established. '
+                              + 'It is not assumed to be mature by default.')
                     : !phase
                         ? h('div', { style: { fontFamily: T.mono, fontSize: 11, color: T.muted, lineHeight: 1.7 } },
                             'Not enough of a filing history to place this company in a phase.')
