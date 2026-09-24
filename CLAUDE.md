@@ -6045,6 +6045,35 @@ SSO-gated. The switcher's logic is unit-tested (`activePortfolio.test.mjs`) and
 the strings are in a keyed bundle; **the render is not proven** -- the browser in
 this container cannot reach Supabase.
 
+### Withholding made two old fallbacks visible on the first day (2026-09-24)
+
+Seen on Atlas Secondary's first screen, and neither is specific to it -- the
+second account simply guaranteed the conditions the default account only hits
+on a bad night.
+
+**The Risk tile showed the mock.** `liveOr()` has marked a fallen-back gauge
+`live: false` since G-6, but **`RiskGauge`, `PerformanceGauge` and the rail's
+Risk figure never read the mark** -- only G-6's consumer did. With
+`book_risk_daily` withheld, the tile rendered `nexusMock`'s "73 / 100%" and
+"Marginal VaR rose on the rate move" as the book's reading: the "gauge carried
+from the mock" defect a fourth time. A marked gauge now renders NOT MEASURED,
+refused at the renderer so no fallback path can reach the screen.
+**Marking a value is half the rule; every renderer has to read the mark.**
+
+**"Industrials carries 0% of factor risk."** `buildConcentration` read
+`var_contribution_pct || 0`, and ranked the "fragility cluster" on a column of
+zeros -- an arbitrary four names (BE, NVT, CAT) published as a finding. Factor
+share now comes from measured names only, the note says "k of N measured" when
+partial, and with nothing measured `topFactorPct` and `fragilityCluster` are
+ABSENT from the result. `nexusFactorAbsence.test.mjs`: 3 of 4 fail on the old
+code (the fully-measured case is meant to be unchanged).
+
+**The ADD / HOLD / TRIM reads on Secondary are legitimate, checked not assumed.**
+They come from `computeRead` over the per-symbol composite fair value
+(`compByTk` -- a fact about the stock, whichever account holds it) and "room"
+measured on the account's own live weights. Withheld conviction only touches the
+watch/exit branches. Not changed.
+
 ### The "missing from the bundle" anomaly was the build, not rollup (2026-09-24)
 
 Correction to the 2026-09-21 tree-shaking entry and to EQ-5b. `src/lib/supabase.js`

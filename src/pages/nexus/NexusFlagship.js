@@ -185,7 +185,9 @@ function NexusRail({ model }) {
             e(RailItem, { label: 'Today', value: p ? p.todayUp + '↑ ' + p.todayDown + '↓' : null,
                 tone: p ? (p.todayUp > p.todayDown ? 'tone-up' : p.todayUp < p.todayDown ? 'tone-down' : '') : '',
                 title: 'names up / down today' }),
-            e(RailItem, { label: 'Risk', value: risk && risk.budgetUsedPct != null ? risk.budgetUsedPct + '%' : null,
+            // A gauge marked live:false is the structural BASELINE (nexusMock),
+            // not a measurement -- never print its number as the book's.
+            e(RailItem, { label: 'Risk', value: risk && risk.live !== false && risk.budgetUsedPct != null ? risk.budgetUsedPct + '%' : null,
                 tone: risk && risk.limitPct != null && risk.budgetUsedPct > risk.limitPct ? 'tone-down' : '',
                 title: risk && risk.limitPct != null ? 'of a ' + risk.limitPct + '% budget' : null }),
             vix ? e(RailItem, { label: 'VIX', value: vix.value, tone: toneClass(vix.tone) }) : null,
@@ -261,7 +263,23 @@ function chipClass(verdict) {
     return 'neutral';
 }
 
+// A gauge liveOr() marked live:false carries nexusMock's structural baseline --
+// "73 / 100%", "Marginal VaR rose on the rate move" -- which renders exactly
+// like a working gauge. It is refused here, at the renderer, so no fallback
+// path can put a synthetic figure on screen: on a non-default account the
+// risk history is withheld by design (MP-2), and on the default account the
+// feed can simply fail. Either way the tile says what it cannot show.
+function AbsentGauge({ title, why }) {
+    return e('div', { className: 'nf-card nf-gauge nf-fade' },
+        e('div', { className: 'nf-card-h' }, e('h3', null, title), e('span', { className: 'nf-chip neutral' }, 'NOT MEASURED')),
+        e('div', { className: 'nf-note', style: { marginTop: 12 } }, why)
+    );
+}
+
 function RiskGauge({ g }) {
+    if (!g || g.live === false) {
+        return e(AbsentGauge, { title: 'Risk', why: 'No live risk reading for this book — the risk history did not answer, or is computed for the default account only. Not showing a placeholder figure in its place.' });
+    }
     const usedFrac = Math.min(1, g.budgetUsedPct / (g.limitPct || 100));
     const barColor = g.budgetUsedPct >= g.limitPct ? 'var(--danger)' : g.budgetUsedPct >= 80 ? 'var(--warn)' : 'var(--success)';
     return e('div', { className: 'nf-card nf-gauge nf-fade' },
@@ -279,6 +297,9 @@ function RiskGauge({ g }) {
 }
 
 function PerformanceGauge({ g }) {
+    if (!g || g.live === false) {
+        return e(AbsentGauge, { title: 'Performance', why: 'No live performance reading for this book. Not showing a placeholder figure in its place.' });
+    }
     const rel = g.bookPct - g.benchPct;
     return e('div', { className: 'nf-card nf-gauge nf-fade' },
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Performance'), e('span', { className: 'nf-chip ' + chipClass(g.verdictChip) }, g.verdictChip)),
@@ -299,9 +320,14 @@ function ConcentrationGauge({ g }) {
         e('div', { className: 'nf-card-h' }, e('h3', null, 'Concentration'), e('span', { className: 'nf-chip ' + chipClass(g.verdictChip) }, g.verdictChip)),
         e('div', { className: 'nf-gauge-top' },
             e('span', { className: 'nf-gauge-big' }, g.effectiveN.toFixed(1), e('span', { className: 'nf-gauge-unit' }, ' eff N / ' + g.nominalN)),
-            e('span', { className: 'nf-mono tone-warn', style: { fontSize: 11 } }, 'top factor ' + g.topFactorPct + '%')
+            g.topFactorPct != null
+                ? e('span', { className: 'nf-mono tone-warn', style: { fontSize: 11 } }, 'top factor ' + g.topFactorPct + '%')
+                : e('span', { className: 'nf-mono', style: { fontSize: 11, color: 'var(--text3)' } }, 'factor risk not measured')
         ),
-        e('div', { className: 'nf-cluster' }, 'Fragility cluster: ' + (g.fragilityCluster || []).join(' · ')),
+        // Only a cluster ranked on MEASURED contributions is a finding.
+        g.fragilityCluster && g.fragilityCluster.length
+            ? e('div', { className: 'nf-cluster' }, 'Fragility cluster: ' + g.fragilityCluster.join(' · '))
+            : null,
         e('div', { className: 'nf-note' }, g.note)
     );
 }
