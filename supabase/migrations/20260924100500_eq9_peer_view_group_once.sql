@@ -44,8 +44,18 @@ begin
     if v_cut < 1 then
         raise exception 'EQ-9b: could not find the final SELECT of the peer view';
     end if;
-    if position('LEFT JOIN LATERAL' in v_def) < 1 then
-        raise exception 'EQ-9b: expected the per-row LATERAL this migration replaces';
+    -- THE ANCHOR MUST DISTINGUISH PATCHED FROM UNPATCHED. A first version
+    -- asserted `position('LEFT JOIN LATERAL' in v_def) >= 1`, which the
+    -- REPLACEMENT text also satisfies -- so the guard could never fire, and a
+    -- re-run was stopped only by Postgres rejecting the duplicate `grp` CTE
+    -- name. Luck, not design: this file's own recurring "gate that can never
+    -- pass", inverted into a gate that can never fire. Assert on what only the
+    -- OLD body contains, and refuse outright if the new one is already there.
+    if position('FROM long o' in v_def) < 1 then
+        raise exception 'EQ-9b: expected the per-row LATERAL over `long` that this migration replaces';
+    end if;
+    if position(', grp AS (' in v_def) > 0 then
+        raise exception 'EQ-9b: the grp CTE is already present -- this migration has been applied';
     end if;
     v_head := substr(v_def, 1, v_cut - 1);
 
