@@ -1,3 +1,4 @@
+import { gateHeadline } from '../lib/headlineStats.js';
 import React from 'react';
 // ============================================================
 // ATLAS Terminal — Performance Suite (Main Wrapper)
@@ -343,12 +344,18 @@ export function PerformanceSuite() {
     var cmd = cmdData || MOCK_COMMAND;
     var m   = metrics;
 
-    var sharpe   = cmd.sharpe_ratio  != null ? cmd.sharpe_ratio  : (m ? m.sharpe   : null);
-    var maxDD    = cmd.drawdown_pct  != null ? cmd.drawdown_pct  : (m ? m.maxDD    : null);
+    // Every statistic is gated on the history it needs (headlineStats.js): a
+    // two-session account annualised to +1121% with a Sharpe of 11.22.
+    var sessions = hasNav ? navSeries.length - 1 : 0;
+    var gated    = gateHeadline(Object.assign({}, m || {}, cmd.drawdown_pct != null ? { maxDD: cmd.drawdown_pct } : {}),
+                                sessions, cmd.sharpe_ratio != null ? cmd.sharpe_ratio : null);
+    var sharpe   = 'sharpe'    in gated ? gated.sharpe    : null;
+    var maxDD    = 'maxDD'     in gated ? gated.maxDD     : null;
     var totalRet = m ? m.totalReturn : null;
-    var annRet   = m ? m.annReturn   : null;
-    var annVol   = m ? m.annVol      : null;
-    var winRate  = m ? m.winRate     : null;
+    var annRet   = 'annReturn' in gated ? gated.annReturn : null;
+    var annVol   = 'annVol'    in gated ? gated.annVol    : null;
+    var winRate  = 'winRate'   in gated ? gated.winRate   : null;
+    function why(key, text) { return gated.withheld[key] || text; }
     var ytd      = periods ? periods.ytd : null;
 
     // Account Equity = latest equity value from portfolio_equity_curve (via navSeries)
@@ -432,34 +439,34 @@ export function PerformanceSuite() {
         h('div', { style: hb },
             h('div', { style: hl }, 'Ann. Return'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: rc(annRet) } }, pct(annRet, 1)),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'CAGR p.a.')
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, why('annReturn', 'CAGR p.a.'))
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Sharpe Ratio'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: shC(sharpe) } }, sharpe != null ? sharpe.toFixed(2) : '—'),
             h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
-                sharpe != null && sharpe > 1.5 ? 'Excellent risk-adj.' : sharpe != null && sharpe > 0.5 ? 'Good risk-adj.' : 'Monitor')
+                sharpe == null ? why('sharpe', '—') : sharpe > 1.5 ? 'Excellent risk-adj.' : sharpe > 0.5 ? 'Good risk-adj.' : 'Monitor')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Max Drawdown'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: ddC(maxDD) } }, maxDD != null ? (maxDD * 100).toFixed(2) + '%' : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Peak-to-trough')
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, why('maxDD', 'Peak-to-trough'))
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Ann. Volatility'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: volC(annVol) } }, pct(annVol, 1)),
             h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } },
-                annVol != null && annVol > 0.25 ? 'High vol' : annVol != null && annVol > 0.15 ? 'Moderate vol' : 'Low vol')
+                annVol == null ? why('annVol', '—') : annVol > 0.25 ? 'High vol' : annVol > 0.15 ? 'Moderate vol' : 'Low vol')
         ),
         h('div', { style: div }),
         h('div', { style: hb },
             h('div', { style: hl }, 'Day Win Rate'),
             h('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: winRate != null && winRate > 0.55 ? '#10b981' : 'rgba(255,255,255,0.75)' } },
                 winRate != null ? (winRate * 100).toFixed(1) + '%' : '—'),
-            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, 'Positive days')
+            h('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, why('winRate', 'Positive days'))
         ),
         h(BookBaselineTile, { baseline: baseline }),
         h('div', { style: { paddingLeft: 20, display: 'flex', alignItems: 'center' } },
