@@ -6714,6 +6714,58 @@ The writer never persisted them (it gates on a CVaR snapshot), but the function
 now returns no rows. `supabase/tests/mp6_per_account_factor_layer.sql` asserts
 it, the C3 reproduction, a singular design, and per-account isolation under anon.
 
+### PCM reads the axes as exposure and risk, never as a forecast (R-1, 2026-09-25)
+
+PCM's regime conditioning was retired with the Growth x Inflation quadrant on
+2026-09-10 and never replaced, so on both accounts the optimiser ran with a
+zeroed tilt vector and a "regime conditioning off" note. It is back, reading
+the intermarket axes directly.
+
+**The retirement's objection was right, and narrower than it looked.** It
+refused to map the axes onto Growth/Quality/Momentum/Value/LowVol tilts
+because the only bridge ran through `cyclical`, which the BOOK has no
+measurable exposure to. That is about STYLE tilts via the book's exposure.
+`cluster_identity` already fits every cluster on market plus the three axes,
+with t-stats, and 98% of each book's market value maps onto it (94% / 96%
+carrying an axis exposure with |t| > 2). Those are facts about the stocks, so a
+new account has them on day one. `vw_position_axis_exposure` publishes them per
+position for the active account, the exposure ABSENT where |t| <= 2;
+`vw_regime_axis_state` publishes today's z per axis and the active account's
+regime-CVaR bucket and vol ratio for it. Aggregated, the position exposures
+corroborate the independently estimated book betas (dollar -0.0031 vs -0.0048,
+concentration +0.0010 vs +0.0011, cyclical +0.0006 vs +0.0004).
+
+**The first design was a trend-persistence tilt, and it was measured before it
+shipped.** Exposure x recent axis drift gave tailwinds up to +0.9%/day (BE,
+CRWV) while concentration sat at +2.2 sigma. So the persistence was tested: an
+axis's mean daily score over one block against the next, over 13 years --
+**-0.005 / -0.027 / +0.007 at 20 sessions** (206 blocks), and mildly
+REVERTING at 5 (concentration -0.087, t ~ -2.5). Recent drift does not persist,
+so the tilt -- and the favourable/counter weight bounds, which were the same
+tilt by another name -- would have injected a view the axes' own history
+refutes. **Test the premise of a signal before wiring it into an allocation.**
+
+What ships (`src/lib/pcmRegime.js`, 8 tests):
+- **Exposure budget.** The optimal book may not carry more aggregate exposure
+  to an axis than the current book does -- it can reduce a bet, never pile
+  further into one. A soft penalty, zero inside every budget; in the test the
+  unconstrained optimiser took concentration exposure 0.0020 -> 0.0056 and the
+  budgeted one held 0.0022.
+- **Risk scale.** Covariance x (regime-CVaR vol ratio of today's bucket)^2, the
+  largest across the three axes, and which axis set it is reported. An account
+  with no regime CVaR yet runs at 1 and says so.
+
+**Two unit defects in the same card.** FRED publishes `BAMLH0A0HYM2` and the
+2s10s spread in PERCENT. PCM compared HY against 400 and printed "bps", so the
+credit overlay could never fire and the footer read "HY spreads 3 bps" for a
+~300 bp spread; the scan panel printed 2s10s as "+0bp" beside a chip reading
+"+0.26%". Every other page already read them as percent.
+
+**A column of zeros was rendered as winners and losers.** With no overlay
+firing every macro alignment is exactly 0, and the card split the list in half
+by position -- 18 green "+0.00" names above 20 red "0.00" names. `splitRanked`
+drops zeros from both ends and the card says there is no ranking to show.
+
 ### Two ledger defects only a notional order could produce (2026-09-25)
 
 Atlas Secondary's first verdict preflight refused on `ledger_coherence`. Both

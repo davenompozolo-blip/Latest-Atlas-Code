@@ -1,3 +1,5 @@
+import { exposuresBySymbol, aggregateExposure, exposureBudgets, exposurePenaltyGrad,
+         regimeRiskScale, splitRanked, pctToBps } from '../lib/pcmRegime.js';
 // ============================================================
 // ATLAS PCM — In-browser portfolio optimizer
 // Implements: Min Variance, ERC (Risk Parity), Max Sharpe,
@@ -484,79 +486,35 @@ export function perSymbolFactors(hist) {
     return { mom: mom, growth: ret3m, quality: quality, lowvol: -vol, value: -ret12m };
 }
 
-// ── Macro regime conditioning: RETIRED 2026-09-10 ───────────────────────────
+// ── Regime conditioning: the intermarket-axis framework (R-1, 2026-09-25) ───
 //
 // PCM used to condition allocations on the Growth x Inflation quadrant label
-// from /api/macro: a switch on 'Goldilocks' / 'Reflation' / 'Stagflation' /
-// 'Deflation' set a five-factor tilt vector, and a per-regime sector table
-// supplied 45% of every position's regime score.
+// from /api/macro. That quadrant was retired in Phase D (2026-09-10) and was
+// NOT repointed at the axes as a STYLE tilt: the only bridge from an axis to a
+// Growth/Quality/Momentum/Value/LowVol tilt ran through `cyclical`, which the
+// book carries no measurable exposure to (t = 0.95). That still holds.
 //
-// That quadrant is retired (Phase D), superseded by factor_axes /
-// factor_axis_scores / book_factor_betas. It is NOT repointed at the axes,
-// and the reason is specific rather than general: `cyclical` is the only
-// plausible bridge from an intermarket axis to a style tilt, and the book
-// carries NO MEASURABLE EXPOSURE to it (t = 0.95, not significant). Any
-// mapping would condition a live allocation on an exposure the data says is
-// not there -- a fabricated input to a real decision, which is worse than a
-// fabricated input to a display.
+// What replaces it reads the axes directly, per position, and is measured:
+// each held name's cluster exposure to cyclical / concentration / dollar from
+// cluster_identity (published only where |t| > 2), and the regime-CVaR vol
+// ratio of the bucket today's reading sits in. See src/lib/pcmRegime.js.
 //
-// Restoring this needs a style-factor exposure model that does not exist. It
-// is a B-track item, not a Phase D one. Do not attempt a partial restoration
-// off the existing axes.
-//
-// Exported because the PCM surface must SHOW that conditioning is off and
-// why. A neutral tilt vector nobody knows is a default reads like a
-// considered prior -- the same failure class as an insignificant beta
-// rendering as a number.
+// It enters the optimiser as an EXPOSURE BUDGET and a RISK SCALE, never as a
+// return tilt: an axis's recent drift does not persist (20-session block
+// correlation -0.005 / -0.027 / +0.007 over 13 years; mildly reverting at 5),
+// so tilting expected returns toward the rising axes would be a view the
+// axes' own history refutes. The favourable/counter weight bounds went for
+// the same reason -- they were that tilt by another name.
 export var REGIME_CONDITIONING = {
-    active:       false,
-    retiredOn:    '2026-09-10',
-    supersededBy: 'factor_axes / factor_axis_scores / book_factor_betas',
-    reason:       'The Growth x Inflation quadrant this read was retired in Phase D. '
-                + 'No honest mapping exists from the three intermarket axes to a '
-                + 'Growth/Quality/Momentum/Value/LowVol tilt: the only plausible bridge '
-                + '(cyclical) carries no measurable book exposure (t = 0.95).',
-    unblocksWhen: 'A style-factor exposure model exists -- the book regressed against '
-                + 'Growth/Quality/Momentum/Value/LowVol with per-factor significance '
-                + 'reported on the same terms as book_factor_betas.',
+    active:     true,
+    since:      '2026-09-25',
+    basis:      'intermarket axes: per-position exposure budget + regime-CVaR risk scale',
+    quadrantRetiredOn: '2026-09-10',
+    reason:     'Each position\u2019s measured cluster exposure to the cyclical, concentration and '
+              + 'dollar axes (|t| > 2 only) caps the optimal book at the current book\u2019s aggregate '
+              + 'exposure per axis; covariance is scaled by the regime-CVaR ratio of today\u2019s bucket. '
+              + 'No return tilt: recent axis drift does not persist (20-session correlation \u2248 0).',
 };
-
-export function computeRegimeScores(positions, histBySymbol, macroSignals) {
-    var tilts     = macroToFactorTilts(macroSignals);
-    // The per-regime sector thesis was 45% of `combined` and was keyed entirely
-    // on the retired quadrant label. It contributes nothing now, and is zero
-    // rather than renormalised: rescaling the remaining 55% back to full weight
-    // would present a narrower measurement at its old confidence.
-
-    return positions.map(function(pos) {
-        var f = perSymbolFactors(histBySymbol[pos.symbol]);
-        var factorScore = 0;
-        if (f && tilts) {
-            var raw = tilts.mom     * Math.tanh(f.mom     * 5)
-                    + tilts.quality * Math.tanh(f.quality * 2)
-                    + tilts.lowvol  * Math.tanh(f.lowvol  * 5)
-                    + tilts.value   * Math.tanh(f.value   * 5)
-                    + tilts.growth  * Math.tanh(f.growth  * 8);
-            factorScore = Math.max(-1, Math.min(1, raw / 5));
-        }
-        var sector      = pos.sector || '';
-        var sectorScore = 0;   // retired with the quadrant; see REGIME_CONDITIONING
-        var combined    = Math.max(-1, Math.min(1, factorScore * 0.55 + sectorScore * 0.45));
-        var regimeClass = combined > 0.25 ? 'favorable' : combined < -0.25 ? 'counter' : 'neutral';
-        return {
-            symbol:      pos.symbol,
-            sector:      sector,
-            regimeScore: combined,
-            factorScore: factorScore,
-            sectorScore: sectorScore,
-            regimeClass: regimeClass,
-            // What the score actually rests on now. Never 'regime'.
-            basis:       tilts ? 'credit_curve_overlay_only' : 'none',
-            isOption:    !!(pos.asset_class && pos.asset_class.includes('option')),
-            factors:     f,
-        };
-    });
-}
 
 // Map macro signals → factor tilt vector (values −1 to +1).
 //
@@ -575,8 +533,9 @@ function macroToFactorTilts(signals) {
         t.quality += 0.3; t.lowvol += 0.3; t.mom -= 0.2;
     }
 
-    // Elevated HY spreads (>400 bps): risk-off credit overlay
-    if (signals.hySpreads != null && signals.hySpreads > 400) {
+    // Elevated HY spreads (>400 bps): risk-off credit overlay. FRED publishes
+    // the series in PERCENT; compared raw against 400 this could never fire.
+    if (signals.hySpreads != null && pctToBps(signals.hySpreads) > 400) {
         t.quality += 0.2; t.lowvol += 0.2; t.mom -= 0.2;
     }
 
@@ -621,7 +580,7 @@ export async function fetchMacroSignals() {
 }
 
 // Gradient ascent on anchored, entropy-regularized, sector-diversified Sharpe
-function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors, lambdaOv, gammaOv, etaOv, minWArr, maxWArr) {
+function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, maxW, sectorIdx, nSectors, lambdaOv, gammaOv, etaOv, minWArr, maxWArr, extraGrad) {
     var n = means.length;
     var minW = 0.005;  // 0.5% hard floor — let the Sharpe gradient actually differentiate
     maxW = maxW || 0.30;
@@ -659,12 +618,14 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
             for (var i = 0; i < n; i++) sectorW[sectorIdx[i]] += w[i];
         }
 
+        // extraGrad: the axis-exposure budget (R-1). Zero inside every budget.
+        var gExtra = extraGrad ? extraGrad(w) : null;
         var grad = means.map(function(mu, i) {
             var gSharpe   = (mu - sharpe * mrc[i]) / vol;
             var gTurnover = -2 * lambda * (w[i] - w0[i]);
             var gEntropy  = -gamma * (Math.log(Math.max(w[i], 1e-12)) + 1);
             var gSector   = hasSectors ? -2 * eta * sectorW[sectorIdx[i]] : 0;
-            return gSharpe + gTurnover + gEntropy + gSector;
+            return gSharpe + gTurnover + gEntropy + gSector + (gExtra ? gExtra[i] : 0);
         });
 
         var stepped = w.map(function(wi, i) { return wi + lr * grad[i]; });
@@ -677,8 +638,10 @@ function anchoredEntropyOptimizer(means, cov, currentWeights, riskTolerance, max
 }
 
 // Full ATLAS Adaptive run — call this instead of runOptimizer when mode==='atlas'
-// regimeScores: output of computeRegimeScores — drives per-position weight bounds
-export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals, overrides, regimeScores) {
+// regimeFrame: { exposureRows, axisRows } from vw_position_axis_exposure and
+// vw_regime_axis_state (loadRegimeFrame in pcm.js). Absent -> no budget, no
+// risk scale, and the result says so.
+export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSignals, overrides, regimeFrame) {
     var n = inputs.symbols.length;
     var totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
 
@@ -724,35 +687,28 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
     var maxW = ips && ips.concentration_limit ? ips.concentration_limit / 100 : 0.30;
     var rt   = ips ? ips.risk_tolerance : 5;
 
-    // Per-position weight bounds from ML regime classification
-    var minWArr = null, maxWArr = null;
-    if (regimeScores && regimeScores.length > 0) {
-        var regimeBySymbol = {};
-        regimeScores.forEach(function(rs) { regimeBySymbol[rs.symbol] = rs; });
-        minWArr = inputs.symbols.map(function(sym) {
-            var rs = regimeBySymbol[sym];
-            if (!rs) return 0.005;
-            if (rs.regimeClass === 'favorable') return 0.02;
-            if (rs.regimeClass === 'counter')   return 0.001;
-            return 0.005;
-        });
-        maxWArr = inputs.symbols.map(function(sym) {
-            var rs = regimeBySymbol[sym];
-            if (!rs) return maxW;
-            if (rs.regimeClass === 'favorable') return Math.min(0.45, maxW * 1.75);
-            if (rs.regimeClass === 'counter')   return Math.min(0.06, maxW * 0.35);
-            return maxW;
-        });
-    }
+    // Regime frame (R-1): exposure budget + risk scale.
+    var exp = exposuresBySymbol(regimeFrame ? regimeFrame.exposureRows : null);
+    var risk = regimeRiskScale(regimeFrame ? regimeFrame.axisRows : null);
+    var k2 = risk.scale * risk.scale;
+    var cov = k2 === 1 ? inputs.cov : inputs.cov.map(function(row) { return row.map(function(v) { return v * k2; }); });
+    var hasFrame = !!(regimeFrame && regimeFrame.exposureRows);
+    var exposureBefore = aggregateExposure(inputs.symbols, currentWeights, exp.bySymbol);
+    var budgets = hasFrame ? exposureBudgets(exposureBefore, exp.bySymbol) : null;
+    var extraGrad = hasFrame
+        ? function(w) { return exposurePenaltyGrad(inputs.symbols, w, exp.bySymbol, budgets); }
+        : null;
 
-    var weights = anchoredEntropyOptimizer(adjMeans, inputs.cov, currentWeights, rt, maxW,
+    var weights = anchoredEntropyOptimizer(adjMeans, cov, currentWeights, rt, maxW,
                                             sectorIdx, sectorList.length,
                                             overrides ? overrides.lambda : null,
                                             overrides ? overrides.gamma  : null,
                                             overrides ? overrides.eta    : null,
-                                            minWArr, maxWArr);
+                                            null, null, extraGrad);
+    var exposureAfter = aggregateExposure(inputs.symbols, weights, exp.bySymbol);
 
-    var vol    = portVol(weights, inputs.cov) * Math.sqrt(252) * 100;
+    // Reported under the regime-scaled covariance the optimiser actually used.
+    var vol    = portVol(weights, cov) * Math.sqrt(252) * 100;
     var ret    = weights.reduce(function(s, w, i) { return s + w * adjMeans[i]; }, 0) * 252 * 100;
     var sharpe = vol > 0 ? ret / vol : 0;
     var lambda = (overrides && overrides.lambda != null) ? overrides.lambda
@@ -772,12 +728,12 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
     }).filter(function(s) { return s.weight > 0.005; })
       .sort(function(a, b) { return b.weight - a.weight; });
 
-    var alignedRanked = inputs.symbols.map(function(sym, i) {
+    // Only a non-zero alignment is a ranking. With no overlay firing every
+    // alignment is exactly 0, and splitting that column in half painted an
+    // arbitrary half green and the rest red.
+    var aligned = splitRanked(inputs.symbols.map(function(sym, i) {
         return { sym: sym, a: macroAlignments[i] };
-    }).sort(function(a, b) { return b.a - a.a; });
-
-    // Cap each alignment list to half the universe so they never overlap
-    var alignHalf = Math.max(1, Math.floor(n / 2));
+    }), 'a');
 
     return {
         symbols: inputs.symbols,
@@ -803,10 +759,18 @@ export function runAtlasAdaptive(inputs, positions, histBySymbol, ips, macroSign
             cpiYoY:      macroSignals ? macroSignals.cpiYoY      : null,
             tilts:       tilts,
             lambda:      lambda,
-            topAligned:  alignedRanked.slice(0, alignHalf),
-            botAligned:  alignedRanked.slice(n - alignHalf).reverse(),
+            topAligned:  aligned.top,
+            botAligned:  aligned.bottom,
+            flatAligned: aligned.flat,
             sectorBreakdown: sectorBreakdown,
-            regimeScores: regimeScores || null,
+            regimeFrame: hasFrame ? {
+                axes:           regimeFrame.axisRows || [],
+                exposureBefore: exposureBefore,
+                exposureAfter:  exposureAfter,
+                budgets:        budgets,
+                risk:           risk,
+                withheld:       exp.withheld,
+            } : null,
         },
     };
 }
