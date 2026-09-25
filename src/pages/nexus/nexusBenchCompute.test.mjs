@@ -118,8 +118,27 @@ test('benchDiagnostics: partial contribution coverage is stated on the strip', (
     assert.equal(cov.level, 'bad');
     assert.match(cov.label, /75\.87% of book/);
     assert.match(cov.label, /12 holdings/);
+    // no breakdown → a neutral count, never an assumed reason
+    assert.doesNotMatch(cov.label, /transaction history/);
+    assert.match(cov.label, /12 holdings not measured/);
     // full coverage → no coverage chip at all
     assert.equal(benchDiagnostics({ ...base, navCoveragePct: 100, contribUncovered: 0 }).find(i => i.key === 'coverage'), undefined);
+});
+
+test('benchDiagnostics: the coverage chip names each reason, never one assumed for all', () => {
+    const base = { fvTotal: null, writerRows: 1, writerLastRun: NOW, claimsAvailable: true, contributionBasis: 'view', nowIso: NOW };
+    // Atlas Secondary on its first day: 38 names, one priced session each.
+    const young = benchDiagnostics({ ...base, contribUncovered: 38,
+        contribUncoveredReasons: { no_priced_position_days: 38 } }).find(i => i.key === 'coverage');
+    assert.match(young.label, /38 held too briefly to measure/);
+    assert.doesNotMatch(young.label, /transaction history/);
+    const mixed = benchDiagnostics({ ...base, contribUncovered: 3,
+        contribUncoveredReasons: { no_priced_position_days: 2, no_transaction_history: 1 } }).find(i => i.key === 'coverage');
+    assert.match(mixed.label, /2 held too briefly to measure, 1 no transaction history/);
+    // a breakdown that does not account for every name is not trusted
+    const short = benchDiagnostics({ ...base, contribUncovered: 5,
+        contribUncoveredReasons: { no_priced_position_days: 2 } }).find(i => i.key === 'coverage');
+    assert.match(short.label, /5 holdings not measured/);
 });
 
 test('thesisClock: never renders zero, never infers an entry date', () => {
