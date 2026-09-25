@@ -6708,6 +6708,14 @@ and skip an account with no betas rather than erroring. Proven before applying:
 under the default account the scoped functions reproduce every stored
 2026-09-24 regime-CVaR row (15/15) and 99% backtest row (8/8).
 
+**The regime-CVaR writer filled per snapshot, so a partial one was permanent.**
+It checked for ANY row at (account, as_of, version, conf) and wrote nothing if
+one existed, so an axis missing from a night's snapshot could never be repaired
+and the re-run logged `skipped`. It fills per AXIS now (`mp6b`); axes still
+absent are named in `details.axes_missing` and graded `partial`. Proven in a
+rolled-back run: a snapshot holding only `dollar` was completed, 10 written
+beside 5 present (CodeRabbit, PR #837).
+
 **An account with no estimate made `atlas_var_backtest` return 8 rows built on
 NULL betas** -- zero exceptions against no prediction, which reads as a pass.
 The writer never persisted them (it gates on a CVaR snapshot), but the function
