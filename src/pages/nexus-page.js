@@ -10,7 +10,7 @@ import '../styles/nexus-theme.css';
 import { useFreshnessGate } from '../lib/useFreshnessGate.js';
 import { weightedMove, withheldSharePct } from '../lib/weightedMove.js';
 import { analyticsPending, convictionOf, actionOf, partitionByAnalytics,
-         sortByConviction, ANALYTICS_PENDING_LABEL } from '../lib/holdingsAnalytics.js';
+         sortByConviction, unscoredLabel } from '../lib/holdingsAnalytics.js';
 import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 import { NexusRiskPill } from './nexus/NexusRiskPill.js';
 import { PortfolioSwitcher, PortfolioBanner } from './nexus/PortfolioSwitcher.js';
@@ -457,7 +457,9 @@ function ConvictionPanel({ holdings }) {
                     e('div', { className: 'nx-sg', style: { background: vBg, color: vCol } },
                         e('span', { className: 'nx-sg-lbl' }, 'Valuation'), h.valuation_signal || 'Fair'),
                     e('div', { className: 'nx-sg', style: { background: mBg, color: mCol } },
-                        e('span', { className: 'nx-sg-lbl' }, 'Macro'), h.macro_signal || 'Ntrl'),
+                        // Not a macro read: a sector's rate sensitivity crossed
+                        // with the stock's own trend. Outside conviction since C-1.
+                        e('span', { className: 'nx-sg-lbl', title: 'Sector rate sensitivity × the stock\'s own price trend. Not a macro or regime reading, and not part of conviction.' }, 'Rate×trend'), h.macro_signal || 'Ntrl'),
                     e('div', { className: 'nx-sg', style: { background: tBg, color: tCol } },
                         e('span', { className: 'nx-sg-lbl' }, 'Technical'), h.technical_signal || '—'),
                     e('div', { className: 'nx-sg', style: { background: qBg, color: qCol } },
@@ -465,10 +467,10 @@ function ConvictionPanel({ holdings }) {
                 ),
                 s == null
                     // No bar and no number: a meter drawn at any width is a
-                    // reading, and there is none. ANALYTICS_PENDING_LABEL says
-                    // which half of the row is missing.
+                    // reading, and there is none. unscoredLabel says whether the
+                    // score is still coming or will not come (no fundamental leg).
                     ? e('div', { className: 'nx-meter' },
-                        e('div', { className: 'nx-ms', style: { color: 'var(--nx-text3)' } }, ANALYTICS_PENDING_LABEL))
+                        e('div', { className: 'nx-ms', style: { color: 'var(--nx-text3)' } }, unscoredLabel(h)))
                     : e('div', { className: 'nx-meter' },
                         e('div', { className: 'nx-mt' },
                             e('div', { className: 'nx-mf', style: { width: s + '%', background: SC(s) } })
@@ -489,8 +491,8 @@ function ConvictionPanel({ holdings }) {
                     // and quality_grade, both of which are undefined on a row
                     // whose analytics are pending -- it rendered "undefined tech".
                     h.nexus_insight || (analyticsPending(h)
-                        ? ANALYTICS_PENDING_LABEL + ' — weight ' + h.weight_pct + '%'
-                        : 'Weight ' + h.weight_pct + '% · ' + h.technical_signal + ' tech · ' + h.quality_grade + ' quality')
+                        ? unscoredLabel(h) + ' — weight ' + h.weight_pct + '%'
+                        : 'Weight ' + h.weight_pct + '% · ' + h.technical_signal + ' tech · ' + (h.quality_grade || 'not graded') + ' quality')
                 )
             );
         })
@@ -518,7 +520,9 @@ function IntelCanvas({ holdings }) {
 
     const qualDist = useMemo(function() {
         const g = holdings.reduce(function(m, h) {
-            const k = h.quality_grade || 'C';
+            // Absent is not C: since C-1 a grade exists only with a complete
+            // F-Score, and most ETFs never have one.
+            const k = h.quality_grade || 'Not graded';
             m[k] = (m[k] || 0) + 1;
             return m;
         }, {});
@@ -926,7 +930,7 @@ function NexusHoldings({ holdings, disabled }) {
                         e('div', { className: 'nx-eq' },
                             e('div', { className: 'nx-eq-l' }, 'Nexus Intelligence'),
                             e('div', { className: 'nx-eq-v', style: { color: s == null ? 'var(--nx-text3)' : SC(s) } },
-                                s == null ? ANALYTICS_PENDING_LABEL : (actionOf(h) || '—') + ' — ' + s + '/100'),
+                                s == null ? unscoredLabel(h) : (actionOf(h) || '—') + ' — ' + s + '/100'),
                             e('div', { className: 'nx-eq-d' },
                                 'Technical: ' + (h.technical_signal || '?') +
                                 ' · Quality: ' + (h.quality_grade || '?') +
@@ -983,7 +987,7 @@ function NexusHoldings({ holdings, disabled }) {
                         e('th', { className: 'nx-cg nx-cg-id',   colSpan: 1 }, 'Identity'),
                         e('th', { className: 'nx-cg nx-cg-port', colSpan: 4 }, 'Portfolio'),
                         e('th', { className: 'nx-cg nx-cg-val',  colSpan: 3 }, 'Valuation'),
-                        e('th', { className: 'nx-cg nx-cg-mac',  colSpan: 3 }, 'Macro'),
+                        e('th', { className: 'nx-cg nx-cg-mac',  colSpan: 3 }, 'Rate · FX'),
                         e('th', { className: 'nx-cg nx-cg-rsk',  colSpan: 3 }, 'Risk'),
                         e('th', { className: 'nx-cg nx-cg-sig',  colSpan: 3 }, 'Signal'),
                         e('th', { className: 'nx-cg nx-cg-act',  colSpan: 1 }, 'Action')
@@ -1003,7 +1007,7 @@ function NexusHoldings({ holdings, disabled }) {
                         e('th', { className: 'nx-sh' }, 'DCF Δ'),
                         e('th', { className: 'nx-sh' }, 'Fwd P/E'),
                         e('th', { className: 'nx-sh' }, 'PEG'),
-                        e('th', { className: 'nx-sh' }, 'Regime'),
+                        e('th', { className: 'nx-sh', title: 'Sector rate sensitivity × the stock\'s own price trend. Not a regime reading.' }, 'Rate×trend'),
                         e('th', { className: 'nx-sh' }, 'Rate Sens.'),
                         e('th', { className: 'nx-sh' }, 'FX Expo.'),
                         e(SH, { col: 'beta',                label: 'Beta' }),
@@ -1064,7 +1068,7 @@ function NexusHoldings({ holdings, disabled }) {
                             e('td', { className: 'nx-c-sig' },
                                 e('span', {
                                     className: 'nx-sscore',
-                                    title: s == null ? ANALYTICS_PENDING_LABEL : undefined,
+                                    title: s == null ? unscoredLabel(h) : undefined,
                                     style: s == null
                                         ? { background: 'transparent', color: 'var(--nx-text3)' }
                                         : { background: SBG(s), color: SC(s) },

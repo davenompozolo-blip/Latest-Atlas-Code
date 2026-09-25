@@ -106,7 +106,7 @@
  * @typedef {Object} Holding            one Live Object row
  * @property {string} tk
  * @property {string} theme
- * @property {number} conviction        0–100   (PCM)
+ * @property {?number} conviction       0–100, null when no fundamental leg (C-1)
  * @property {number} todayPct          (Performance)
  * @property {number} contribPct        to book P&L (Performance)
  * @property {number} componentVar      signed % of total VaR (Risk)
