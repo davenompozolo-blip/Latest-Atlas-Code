@@ -6805,6 +6805,34 @@ activity stored in `metadata`. BCHUSD still differs by ~0.25% -- Alpaca takes
 the crypto fee in coins -- and is gated per position as `ledger_mismatch`,
 which is a size disagreement the preflight correctly does not refuse on.
 
+### A timed-out view rendered a sample book as the real one (2026-09-25)
+
+`loadView(name, fallback)` returned its fallback on ANY error, and four pages
+passed MOCK data as that fallback. So a `vw_command_centre` cancelled at the 3s
+anon cap rendered **$119,500 NAV, +21.94%, Sharpe 1.35, health 72** on Portfolio
+Home, Performance and the Command Centre -- the "gauge carried from the mock"
+defect, with no gauge. PCM was worse: its allocation, factor, risk and drift
+state was **initialised** to mocks, so L6 printed *"Rebalancing Triggered 7.2%"*
+with NVDA/BND/IEFA trades nobody computed, L3 kept the sample factor grid when
+no position had 30 bars, and L7 sent all of it to Claude as the book.
+
+`loadView` and every book mock are **deleted**, not deprecated -- a helper that
+hides a failure is one import from being used again.
+`src/lib/noMockFallback.test.mjs` fails any `loadView(` or `MOCK_*` in `src/`
+(`MOCK_PCM_IPS` excepted: an editable form template marked unsaved, not a claim
+about the book); it finds the pre-fix pages when they are restored.
+
+`src/lib/feedStates.js` loads several views through `loadViewState` and never
+rejects: a throwing loader fails only its own feed. `FeedNotice` names the
+failed or partial feeds on the page; `FeedFailed` replaces an empty state only
+when the emptiness came from a failure. **Four empty answers is an empty book;
+one failed feed is not**, so the "run Alpaca sync first" EmptyState is reserved
+for the first. A null figure is rendered neutral -- `(x || 0) >= 0` painted a
+missing return green.
+
+`vw_transactions` now reports `partial` on Performance when it hits the
+1,000-row cap; `loadView` used to hand back the truncated rows as complete.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

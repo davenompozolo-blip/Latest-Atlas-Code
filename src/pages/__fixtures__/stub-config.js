@@ -2,4 +2,4 @@
 // is a Vite construct and undefined under bare node. The panel never calls sb
 // in a pure render, so null is enough.
 export const sb = null;
-export const loadView = async () => [];
+export const loadViewState = async () => ({ state: 'empty', rows: [] });

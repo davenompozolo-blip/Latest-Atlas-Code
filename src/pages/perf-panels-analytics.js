@@ -2,7 +2,7 @@ import React from 'react';
 import { Chart, registerables } from 'chart.js';
 import { perSymbolFactors } from './pcm-optimizer.js';
 import { Loading } from './components.js';
-import { loadView } from './config.js';
+import { loadViewState } from './config.js';
 
 Chart.register(...registerables);
 
@@ -1286,8 +1286,12 @@ export function RegimeSlicerPanel(props) {
 
     useEffect(function() {
         var cancelled = false;
-        loadView('market_regime_windows', []).then(function(rows) {
-            if (cancelled || !Array.isArray(rows) || !rows.length) return;
+        // DEFAULT_REGIME_WINDOWS are the window DEFINITIONS, not data about the
+        // book, so keeping them when the table does not answer is sound;
+        // loadViewState logs the failure rather than swallowing it.
+        loadViewState('market_regime_windows').then(function(res) {
+            var rows = res.rows;
+            if (cancelled || !rows.length) return;
             var wins = rows
                 .map(normalizeRegimeWindow)
                 .sort(function(a, b) { return a.sort_order - b.sort_order; });

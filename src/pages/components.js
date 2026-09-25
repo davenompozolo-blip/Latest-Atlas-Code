@@ -7,7 +7,8 @@ import React from 'react';
 // SyncStatusPill) that reuse the shared data layer.
 // ============================================================
 
-import { sb, loadView, triggerRefresh } from './config.js';
+import { sb, loadViewState, triggerRefresh } from './config.js';
+import { feedNoticeText } from '../lib/feedStates.js';
 import { heroBadgeCls } from './utils.js';
 
 const { useState, useEffect, useRef } = React;
@@ -22,6 +23,28 @@ export function EmptyState({ message }) {
     return React.createElement('div', { className: 'empty-state' },
         React.createElement('div', { style: { fontSize: 36, marginBottom: 12 } }, '⚠'),
         React.createElement('div', null, message || 'No data available — run Alpaca sync first')
+    );
+}
+
+// --- Feed notice ---
+// Says which of a page's views did not answer or were truncated. Rendered
+// beside whatever did load, so a cancelled query reads as a cancelled query
+// and never as "no data" or as the book being empty.
+export function FeedNotice({ problems }) {
+    var text = feedNoticeText(problems);
+    if (!text) return null;
+    return React.createElement('div', {
+        role: 'status',
+        style: { border: '1px solid var(--border-2)', borderLeft: '3px solid var(--amber)', borderRadius: 6,
+                 padding: '8px 12px', marginBottom: 12, fontSize: 11, lineHeight: 1.5, color: 'var(--text-2)' }
+    }, text + ' Reload to retry.');
+}
+
+// The page's primary feed did not answer: say so, never "run Alpaca sync first".
+export function FeedFailed({ view }) {
+    return React.createElement('div', { className: 'empty-state' },
+        React.createElement('div', { style: { fontSize: 36, marginBottom: 12 } }, '\u26A0'),
+        React.createElement('div', null, (view || 'This feed') + ' did not answer (usually a timed-out query, not missing data). Reload to retry.')
     );
 }
 
@@ -137,13 +160,21 @@ export function SyncStatusPill() {
     var _s = useState(null);
     var sync = _s[0];
     var setSync = _s[1];
+    var _f = useState(false);
+    var statusFailed = _f[0];
+    var setStatusFailed = _f[1];
 
     useEffect(function() {
         if (!sb) return;
         var prevSyncedAt = null;
         function load() {
-            loadView('vw_sync_status', []).then(function(rows) {
-                var row = rows && rows.length ? rows[0] : null;
+            loadViewState('vw_sync_status').then(function(res) {
+                // A read that did not answer keeps the last known row: the
+                // pill must not claim there is no sync data because a status
+                // query timed out.
+                if (res.state === 'failed') { setStatusFailed(true); return; }
+                setStatusFailed(false);
+                var row = res.rows && res.rows.length ? res.rows[0] : null;
                 setSync(row);
                 if (row && row.last_synced_at && row.last_synced_at !== prevSyncedAt) {
                     if (prevSyncedAt !== null) triggerRefresh();
@@ -158,7 +189,7 @@ export function SyncStatusPill() {
 
     if (!sb) return null;
     if (!sync) {
-        return React.createElement('div', { className: 'sync-pill', title: 'No sync data yet' },
+        return React.createElement('div', { className: 'sync-pill', title: statusFailed ? 'Sync status did not answer' : 'No sync data yet' },
             React.createElement('span', { className: 'dot' }),
             'SYNC —'
         );

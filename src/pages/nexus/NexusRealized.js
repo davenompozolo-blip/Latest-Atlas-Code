@@ -20,7 +20,7 @@
 
 import React from 'react';
 import Plotly from 'plotly.js-dist-min';
-import { sb, loadView, loadViewState } from '../config.js';
+import { sb, loadViewState } from '../config.js';
 import { computeBrinsonAttribution, BENCHMARKS, verdictForEffect, RETURN_SINCE_ENTRY } from '../../lib/attributionEngine.js';
 import {
     alignSeries, computeMetrics, rollingBeta, makeRequestGate,
@@ -397,6 +397,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     // It must never render as "no P&L" -- that is a statement about the book.
     const [homeFailed, setHomeFailed] = useState(false);
     const [perfRows, setPerfRows] = useState(null);
+    const [perfFailed, setPerfFailed] = useState(false);
     const [navRows, setNavRows] = useState(null);
     const [residHist, setResidHist] = useState(null); // null = loading/unavailable
     const [attrHist, setAttrHist] = useState(null);
@@ -413,8 +414,10 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
             setHomeFailed(unusable);
             setHomeRows(unusable ? [] : r.rows);
         });
-        loadView('vw_performance_suite', []).then(r => ok(true) && setPerfRows(r || []));
-        loadView('vw_portfolio_nav_daily', []).then(r => ok(true) && setNavRows(r || []));
+        // A cancelled read must not read as "none loaded": attribution says
+        // which, and the NAV series simply stays absent from the chart.
+        loadViewState('vw_performance_suite').then(r => { if (!ok(true)) return; setPerfFailed(r.state === 'failed'); setPerfRows(r.rows); });
+        loadViewState('vw_portfolio_nav_daily').then(r => ok(true) && setNavRows(r.rows));
         if (sb) {
             const since = new Date(Date.now() - 100 * 86400000).toISOString().slice(0, 10);
             sb.from('sector_pnl_residuals').select('date, sector, residual').gte('date', since)
@@ -805,7 +808,9 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                             href: '#', style: { color: 'var(--cyan)' },
                             onClick: ev => { ev.preventDefault(); window.dispatchEvent(new CustomEvent('atlas:navigate', { detail: { tab: 'performance' } })); },
                         }, 'PERF → Brinson Analysis'), '. Both read the same attribution engine.')))
-                : e('div', { className: 'nb-empty' }, 'Attribution needs vw_performance_suite rows with sectors — none loaded.')),
+                : e('div', { className: 'nb-empty' }, perfFailed
+                    ? 'vw_performance_suite did not answer — no attribution is shown. This is a transport failure, not a reading about the book.'
+                    : 'Attribution needs vw_performance_suite rows with sectors — none loaded.')),
 
         // ═══ BEAT 08 — Evidence ═══
         e(BeatHead, { no: '08', title: 'Evidence', why: 'Everything above is an assertion. This is the bench where you test one: chart anything against the book and read the metrics off the exact window you are looking at.' }),

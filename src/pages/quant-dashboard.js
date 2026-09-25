@@ -6,8 +6,9 @@ import React from 'react';
 // aggregate banner strip, and routes between the four panels.
 // ============================================================
 
-import { loadView } from './config.js';
-import { Loading, EmptyState, HeroCard, NarrativeStrip } from './components.js';
+import { loadViewState } from './config.js';
+import { loadFeeds } from '../lib/feedStates.js';
+import { Loading, EmptyState, HeroCard, NarrativeStrip, FeedNotice, FeedFailed } from './components.js';
 import { SignalsPanel } from './quant-signals.js';
 import { RollingPanel } from './quant-rolling.js';
 import { CorrelationPanel } from './quant-correlation.js';
@@ -20,21 +21,19 @@ export function QuantDashboard() {
     const [rolling, setRolling]         = useState(null);
     const [correlation, setCorrelation] = useState(null);
     const [drawdown, setDrawdown]       = useState(null);
+    const [feeds, setFeeds]             = useState({ states: {}, problems: [] });
     const [loading, setLoading]         = useState(true);
     const [activePanel, setActivePanel] = useState('signals');
 
     useEffect(() => {
         function load() {
-            Promise.all([
-                loadView('vw_quant_dashboard', []),
-                loadView('vw_quant_rolling_returns', []),
-                loadView('vw_quant_correlation', []),
-                loadView('vw_quant_drawdown', []),
-            ]).then(([s, r, c, d]) => {
-                setSignals(s || []);
-                setRolling(r || []);
-                setCorrelation(c || []);
-                setDrawdown(d || []);
+            const FEEDS = ['vw_quant_dashboard', 'vw_quant_rolling_returns', 'vw_quant_correlation', 'vw_quant_drawdown'];
+            loadFeeds(FEEDS, loadViewState).then(f => {
+                setFeeds(f);
+                setSignals(f.rows.vw_quant_dashboard);
+                setRolling(f.rows.vw_quant_rolling_returns);
+                setCorrelation(f.rows.vw_quant_correlation);
+                setDrawdown(f.rows.vw_quant_drawdown);
                 setLoading(false);
             });
         }
@@ -51,6 +50,11 @@ export function QuantDashboard() {
     const dd  = drawdown || [];
 
     if (!sig.length && !roll.length && !corr.length && !dd.length) {
+        // Four empty answers is an empty book; any feed failing is not.
+        if (feeds.problems.some(p => p.state === 'failed'))
+            return React.createElement('div', null,
+                React.createElement(FeedNotice, { problems: feeds.problems }),
+                React.createElement(FeedFailed, { view: 'The quant feeds' }));
         return React.createElement(EmptyState, null);
     }
 
@@ -87,6 +91,7 @@ export function QuantDashboard() {
 
     return React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Quant Dashboard'),
+        React.createElement(FeedNotice, { problems: feeds.problems }),
 
         // === Aggregate regime banner — Hero Cards ===
         React.createElement('div', { className: 'hero-grid', style: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, marginBottom: 20 } },

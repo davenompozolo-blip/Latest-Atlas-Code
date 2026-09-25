@@ -18,7 +18,7 @@ export const supabase = supabaseAnonKey
 // Legacy alias used throughout existing pages
 export const sb = supabase
 
-// loadView's contract swallows every failure into `fallback`, so a caller
+// The retired loadView swallowed every failure into a fallback, so a caller
 // cannot tell "the view answered with nothing" from "the query was cancelled
 // at the 3s anon cap" -- and the Nexus realized layer printed "No sector P&L
 // for this period yet" for the second (2026-09-24, inside the nightly chain
@@ -47,19 +47,3 @@ export async function loadViewState(viewName) {
   return { state: 'failed', rows: [], error: (lastErr && lastErr.message) || String(lastErr) }
 }
 
-export async function loadView(viewName, fallback = []) {
-  if (!supabase) return fallback
-  try {
-    const { data, error } = await supabase.from(viewName).select('*')
-    if (error) throw error
-    if (data && data.length) {
-      window.__ATLAS_DATA_MODE__ = 'live'
-      return data
-    }
-    console.warn(`[ATLAS] ${viewName}: empty result — using fallback`)
-    return fallback
-  } catch (e) {
-    console.warn(`[ATLAS] ${viewName}:`, e.message)
-    return fallback
-  }
-}

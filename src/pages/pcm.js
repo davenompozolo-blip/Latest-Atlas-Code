@@ -4,14 +4,14 @@ import React from 'react';
 // 7-Layer Decision Engine — Vite build
 // ============================================================
 
-import { sb, loadView } from './config.js';
+import { sb, loadViewState } from './config.js';
 import { fetchPaged } from '../lib/pagedRead.js';
-import {
-    MOCK_PCM_IPS, MOCK_PCM_ALLOCATION, MOCK_PCM_FACTORS,
-    MOCK_PCM_RISK, MOCK_PCM_DRIFT,
-} from './config.js';
+// Only the IPS default survives: it is the starting template of an editable
+// form, marked unsaved until the user saves it. The allocation, factor, risk and
+// drift mocks were rendered as the book whenever a feed did not answer.
+import { MOCK_PCM_IPS } from './config.js';
 import { fmtCurrency } from './utils.js';
-import { Loading } from './components.js';
+import { Loading, FeedFailed } from './components.js';
 import {
     computeFactorScores, computePortfolioMetrics, computeRiskRows,
     buildOptimizerInputs, runOptimizer,
@@ -172,6 +172,9 @@ function AllocationGap({ rows }) {
 // ─── Layer 3: Factor Grid ────────────────────────────────────────────────────
 function FactorGrid({ factors, loading, activeShare }) {
     if (loading) return h(Loading, { text: 'Computing factor exposures…' });
+    // No history to score on is not a neutral book: say so, never a sample grid.
+    if (!factors || !factors.length) return h('div', { className: 'empty-state' },
+        'Factor exposures not measured — no held position has the 30 priced sessions a score needs.');
     return h('div', null,
         h('div', { className: 'kpi-grid kpi-grid-4' },
             factors.map(function(f) {
@@ -865,7 +868,7 @@ function TradeList({ trades, positions, onExecute }) {
     );
 }
 
-function RebalancingPanel({ positions, drift, optimizerResult }) {
+function RebalancingPanel({ positions, drift, driftFailed, optimizerResult }) {
     // If L5 ran, generate ticker-level trades from optimizer output
     if (optimizerResult && optimizerResult.symbols && optimizerResult.symbols.length > 0) {
         const totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
@@ -932,7 +935,9 @@ function RebalancingPanel({ positions, drift, optimizerResult }) {
                     });
                   })})
                 : h('div', { style: { color: 'var(--text-3)', padding: 20, textAlign: 'center' } },
-                    'No drift data. Complete L5 to generate ticker-level trades.')
+                    driftFailed
+                        ? 'vw_pcm_drift did not answer (usually a timed-out query, not missing data). Reload to retry, or complete L5 for ticker-level trades.'
+                        : 'No drift data. Complete L5 to generate ticker-level trades.')
         ),
         h('div', { className: 'chip chip-muted', style: { marginTop: 12, display: 'inline-block' } },
             '💡 Complete Layer 5 to unlock ticker-level trade recommendations'
@@ -955,7 +960,7 @@ function AIReport({ ips, allocation, factors, risk, drift, positions }) {
             body: JSON.stringify({
                 mode: 'pcm_report',
                 context: { ips: ips, allocation: allocation, factors: factors,
-                           top_risk: risk.slice(0, 5), drift: drift },
+                           top_risk: (risk || []).slice(0, 5), drift: drift },
             }),
         })
         .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, body: j }; }); })
@@ -1108,12 +1113,17 @@ function LayerSidebar({ layerStatus, ips, activeLayer, setActive }) {
 export function PortfolioConstruction() {
     const [ips, setIps]                     = useState(MOCK_PCM_IPS);
     const [ipsSaved, setIpsSaved]           = useState(false);
-    const [alloc, setAlloc]                 = useState(MOCK_PCM_ALLOCATION);
-    const [factors, setFactors]             = useState(MOCK_PCM_FACTORS);
+    // Feed states: 'loading' | 'ok' | 'empty' | 'failed'. A feed that did not
+    // answer renders as that, never as a sample book.
+    const [alloc, setAlloc]                 = useState(null);
+    const [allocState, setAllocState]       = useState('loading');
+    const [factors, setFactors]             = useState(null);
     const [factorLoading, setFactorLoading] = useState(false);
-    const [risk, setRisk]                   = useState(MOCK_PCM_RISK);
+    const [risk, setRisk]                   = useState([]);
     const [riskRows, setRiskRows]           = useState([]);
-    const [drift, setDrift]                 = useState(MOCK_PCM_DRIFT);
+    const [drift, setDrift]                 = useState(null);
+    const [driftState, setDriftState]       = useState('loading');
+    const [homeState, setHomeState]         = useState('loading');
     const [portfolioMetrics, setPortfolioMetrics] = useState(null);
     const [activeLayer, setActiveLayer]     = useState('L1');
     const [layerStatus, setLayerStatus]     = useState({
@@ -1153,14 +1163,14 @@ export function PortfolioConstruction() {
 
     // ── Load PCM view data ────────────────────────────────────────────────────
     useEffect(function() {
-        loadView('vw_pcm_allocation', MOCK_PCM_ALLOCATION).then(function(rows) {
-            if (rows && rows.length) setAlloc(rows);
+        loadViewState('vw_pcm_allocation').then(function(res) {
+            setAlloc(res.rows); setAllocState(res.state === 'partial' ? 'ok' : res.state);
         });
-        loadView('vw_pcm_risk', MOCK_PCM_RISK).then(function(rows) {
-            if (rows && rows.length) setRisk(rows);
+        loadViewState('vw_pcm_risk').then(function(res) {
+            setRisk(res.rows);
         });
-        loadView('vw_pcm_drift', null).then(function(rows) {
-            if (rows && rows.length) setDrift(rows[0]);
+        loadViewState('vw_pcm_drift').then(function(res) {
+            setDrift(res.rows[0] || null); setDriftState(res.state);
         });
     }, []);
 
@@ -1172,8 +1182,9 @@ export function PortfolioConstruction() {
         // Load all portfolio positions from vw_portfolio_home (full 55+), then query
         // assets only for those symbols so we never hit the PostgREST 1 000-row cap
         // on a large assets table full of historical instruments.
-        loadView('vw_portfolio_home', []).then(function(homeRows) {
-            homeRows = homeRows || [];
+        loadViewState('vw_portfolio_home').then(function(homeRes) {
+            setHomeState(homeRes.state);
+            var homeRows = homeRes.rows || [];
 
             // Collect distinct symbols so the assets query is scoped to the portfolio
             const portfolioSymbols = homeRows
@@ -1420,7 +1431,11 @@ export function PortfolioConstruction() {
         if (activeLayer === 'L1') return h(IPSForm, { ips: ips, setIps: setIps, onSave: saveIPS, saved: ipsSaved });
 
         if (activeLayer === 'L2') return h('div', null,
-            h(AllocationGap, { rows: alloc }),
+            allocState === 'loading' ? h(Loading, { text: 'Loading allocation…' })
+                : allocState === 'failed' ? h(FeedFailed, { view: 'vw_pcm_allocation' })
+                : allocState === 'empty' ? h('div', { className: 'empty-state' },
+                    'No allocation bands on file for this account.')
+                : h(AllocationGap, { rows: alloc }),
             nextBtn('L2')
         );
 
@@ -1467,8 +1482,10 @@ export function PortfolioConstruction() {
                                         : null;
                                 })()
                               )
-                            : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
-                                'No position data available — ensure portfolio is synced.')
+                            : homeState === 'failed'
+                                ? h(FeedFailed, { view: 'vw_portfolio_home' })
+                                : h('div', { style: { color: 'var(--text-3)', padding: '20px 0', textAlign: 'center' } },
+                                    'No position data available — ensure portfolio is synced.')
                 ),
                 nextBtn('L4')
             );
@@ -1490,6 +1507,7 @@ export function PortfolioConstruction() {
             h(RebalancingPanel, {
                 positions:       posRef.current,
                 drift:           drift,
+                driftFailed:     driftState === 'failed',
                 optimizerResult: optimizerResult,
             }),
             nextBtn('L6')
