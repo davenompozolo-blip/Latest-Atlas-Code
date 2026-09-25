@@ -6188,7 +6188,7 @@ account" divides by what the data can support, not by table:
 |---|---|---|
 | `book_risk_daily` vol / VaR / Euler shares | **yes** | `vw_book_mctr` + `vw_risk_analysis` are request-scoped and already right |
 | verdicts, segments | **yes since MP-5** (was: not yet) | the return engine's inputs (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) are per-account `__acct` stores recomputed under each account's header; a new account's names read `one_sided` until they have priced history -- recorded nightly, not withheld |
-| factor betas, regime CVaR, VaR backtest | no | regress the account's own daily returns; there are none. `book_factor_betas` has **no writer in the database at all** -- B0/C3 estimated it outside |
+| factor betas, regime CVaR, VaR backtest | **yes since MP-6** | estimated nightly per account from its own settled returns; a new account logs `insufficient_history` until it has 60 sessions |
 
 `book_risk_daily` is keyed `(portfolio_id, as_of, logic_version)`; the column
 defaults to the default account so `atlas_write_verdicts` is unchanged except
@@ -6659,6 +6659,60 @@ to the job it was written about.
 account has one or two. They are recomputable later from
 `portfolio_equity_curve`, which is already recorded per account, so waiting
 loses nothing. `book_factor_betas` also still has no writer in the database.
+
+### The factor layer is estimated per account, and it had no writer (MP-6, 2026-09-25)
+
+`book_factor_betas` had **no writer in the database**: B0 and C3 estimated it
+outside and inserted coefficients, the last set on 2026-09-09 on a window ending
+2026-09-04. So every consumer -- the regime CVaR, the VaR backtest, the drift
+gate, Nexus's axis and book-vs-market panels -- has read betas **three weeks
+stale** on the default account, and none at all on any other.
+
+`atlas_book_factor_betas_estimate()` is the C3 specification for the ACTIVE
+account and `atlas_write_book_factor_betas()` (cron 23:42 Mon-Sat, before the
+regime CVaR that reads it) appends one set per account per new window. **It was
+proven by reproduction before it was trusted:** on the C3 sample (n = 168,
+window ending 2026-09-04) every beta, standard error, t-stat and R² agrees with
+the stored set to 1e-12.
+
+**The standard errors are Newey-West with 4 lags and no small-sample scaling**,
+and nothing recorded that. Classical OLS reproduces the betas exactly and puts
+market's t at 10.14 against the published 6.93 -- same coefficients, different
+evidence, and a significance flag that could flip on it. NW lags 1-10 with and
+without the n/(n-k) scaling were tried against the stored errors; only NW(4)
+unscaled lands on 1.0000 for all five. 4 is floor(4 (n/100)^(2/9)) at both
+n = 168 and n = 174, so the rule is the usual one. **When a published figure
+carries a standard error, identify the estimator by reproduction too, not only
+the coefficients.**
+
+`atlas_ols(y, x, nw_lag)` is the one OLS solver -- the Gauss-Jordan from the
+cluster-identity job, lifted -- and a singular design returns no rows.
+
+**60-session floor, recorded not guessed around.** Atlas Secondary logs
+`skipped / insufficient_history` nightly until it has 60 settled sessions. An
+unchanged window logs `skipped / already estimated for this window` -- the
+equity curve lands at 01:00, so most nights the first run after it is the one
+that writes.
+
+**Joining the two request-scoped views inline took over 60 s.** The planner
+nested `vw_factor_return_panel` (a window over every SPY bar plus a pivot of
+every axis score) inside the book's rows and re-evaluated it per session. Both
+are `MATERIALIZED` CTEs now: 3.5 s for the whole estimate.
+
+`book_factor_betas`, `book_regime_cvar`, `var_backtest_runs` and
+`book_model_diagnostics` carry `portfolio_id` in their keys and read policies;
+the two views MP-2 guarded (`vw_position_risk_thesis`,
+`vw_var_backtest_distribution`) filter by the active account instead. The
+regime CVaR and backtest writers loop the accounts, one `sync_log` row each,
+and skip an account with no betas rather than erroring. Proven before applying:
+under the default account the scoped functions reproduce every stored
+2026-09-24 regime-CVaR row (15/15) and 99% backtest row (8/8).
+
+**An account with no estimate made `atlas_var_backtest` return 8 rows built on
+NULL betas** -- zero exceptions against no prediction, which reads as a pass.
+The writer never persisted them (it gates on a CVaR snapshot), but the function
+now returns no rows. `supabase/tests/mp6_per_account_factor_layer.sql` asserts
+it, the C3 reproduction, a singular design, and per-account isolation under anon.
 
 ### Two ledger defects only a notional order could produce (2026-09-25)
 
