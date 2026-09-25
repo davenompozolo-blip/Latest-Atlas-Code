@@ -134,6 +134,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const SRC = new URL('..', import.meta.url).pathname;          // src/
+// api/ too: the Vercel routes read the same view and api/nexus-bench.js was
+// defaulting conviction to 0 where no src/ scan could see it (C-1).
+const API = new URL('../../api/', import.meta.url).pathname;
 const SELF = 'lib/holdingsAnalytics.js';
 
 function jsFiles(dir, out = []) {
@@ -166,9 +169,10 @@ test('DETECTOR: the scanner catches the exact pre-fix shape', () => {
 });
 
 test('no source file defaults a withheld verdict field', () => {
-    const files = jsFiles(SRC);
+    const files = jsFiles(SRC).concat(jsFiles(API));
     // A scan that reaches nothing passes trivially.
     assert.ok(files.length > 50, `expected to scan the app, saw ${files.length} files`);
+    assert.ok(files.some(f => f.includes('/api/nexus-bench.js')), 'the scan must reach api/');
 
     const offenders = [];
     for (const f of files) {

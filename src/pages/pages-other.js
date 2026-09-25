@@ -819,7 +819,9 @@ export function CommandCentre() {
         React.createElement(FeedNotice, { problems: feeds.problems }),
         // Health Score Hero
         React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
-            React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 12px' } },
+            // No score, no band: healthCls(undefined) is 'weak', which painted a
+            // feed that did not answer in the red of a failing book.
+            React.createElement('div', { className: 'health-score ' + (c.atlas_health_score == null ? '' : healthCls(c.atlas_health_score)), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 12px' } },
                 c.atlas_health_score != null ? Math.round(c.atlas_health_score) : '—'),
             React.createElement('div', { style: { fontSize: 18, fontWeight: 600 } }, 'ATLAS Health Score'),
             React.createElement('div', null, React.createElement('span', { className: 'badge ' + badgeCls(c.portfolio_health_status), style: { marginTop: 8, fontSize: 13, padding: '5px 16px' } }, c.portfolio_health_status))

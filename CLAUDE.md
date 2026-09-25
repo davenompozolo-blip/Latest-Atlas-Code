@@ -6833,6 +6833,57 @@ missing return green.
 `vw_transactions` now reports `partial` on Performance when it hits the
 1,000-row cap; `loadView` used to hand back the truncated rows as complete.
 
+### Conviction was half price trend, and "quality" was your own P&L (C-1, 2026-09-25)
+
+The Nexus conviction score -- which drives recommended_action, the Drift tab's
+target weights and the bench docket -- was 35% DCF upside, 25% "macro", 25%
+technical trend and 15% "quality". Two of the four legs did not measure what
+they were named for:
+
+- **macro** was a sector label (rate sensitivity) crossed with the stock's OWN
+  price regime. No rate, spread or regime input anywhere; it correlated 0.78
+  with the technical leg, so the score counted trend twice.
+- **quality** was `vw_portfolio_home.quality_score`: the stock's Sharpe, its
+  vol, YOUR gain on cost, and 20 points for being <= 10% of the book. So the
+  same stock graded differently per account -- 18 of 38 shared names graded
+  lower on Atlas Secondary (NVDA, AAPL, MSFT B/B+ -> C) only because they were
+  bought yesterday -- and the size term fed back into the Drift target it was
+  computed against.
+
+Now valuation 0.35, trend 0.25, quality 0.15, where quality is the **Piotroski
+F-Score** from the statement layer (`vw_company_piotroski`), the same nine
+tests and completeness rule as Equity Research. A partial F-Score is not a
+lower score: the leg is absent and renormalised out, as valuation already was.
+**A name with neither a DCF nor a complete F-Score gets NO conviction**
+(`conviction_basis = 'no_fundamental_leg'`, mostly ETFs: 20 of 62 on Primary,
+10 of 38 on Secondary). Trend alone would be a verdict with nothing behind it.
+The formula is one function, `atlas_conviction()`: `vw_nexus_holdings`
+recomputes the score off the live mark and carried a second copy.
+
+**Withheld is not pending.** `holdingsAnalytics.js` tells them apart
+(`convictionWithheld`, `unscoredLabel`); "Analytics pending" on an ETF would
+promise a score that never comes. And **`targetWeights` keys on a score being
+on file**, not on `!analyticsPending` -- a withheld row is not pending, and
+counting it gave a 0% target, which `sizeTrade` reads as an exit.
+`api/nexus-bench.js` defaulted conviction to 0 (`?? 0`); the H-4 scanner only
+walked `src/` and now walks `api/` too.
+
+**Gross profit was missing for 158 operating rows** (PG, AMZN, ABBV, BMY,
+GILD: revenue and cost of revenue tagged, no GrossProfit line), which blanked
+gross margin in Equity Research and killed the ninth F-Score test.
+`vw_company_fundamentals` derives it (reported always wins, financials never
+derived, `gross_profit_reported` says which): revenue - cost matches the
+reported line on 1,072 of 1,076 rows within 0.5%.
+
+Also fixed on the way: `recommended_action` fell through to Exit for a 75+ name
+at exactly 10.0% weight; `nexus_insight` concatenated with `||` so a missing
+grade blanked the sentence; `qualDist` counted an ungraded name as C;
+`mv_nexus_holdings` still computed the old score every 10 minutes for no
+reader and is dropped. The "Macro"/"Regime" labels on the Nexus card and table
+now read **Rate×trend**, which is what they measure.
+`supabase/tests/c1_conviction_contract.sql` 18/18; `convictionBasis.test.mjs`
+2 of 6 fail against the old `targetWeights` membership.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

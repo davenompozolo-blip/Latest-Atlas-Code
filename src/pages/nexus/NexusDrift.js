@@ -62,7 +62,7 @@ function ConcentrationCard({ concentration }) {
 }
 
 // ── Off-balance names — drift from target ─────────────────────
-function DriftMap({ rows, scale }) {
+function DriftMap({ rows, scale, untargeted }) {
     return e('div', { className: 'nf-card nf-holdings nf-fade' },
         e('div', { className: 'nf-card-h' },
             e('h3', null, 'Off balance'),
@@ -92,7 +92,9 @@ function DriftMap({ rows, scale }) {
                                     : e('span', { className: 'nd-act ' + r.side }, r.side === 'trim' ? 'trim' : 'add')));
                     }))
                 )),
-        e('div', { className: 'nb-foot' }, 'Target weight is conviction-implied (∝ PCM, normalised to the invested book). Overweight → trim, underweight → add. A small dead-band reads as on-target.')
+        e('div', { className: 'nb-foot' },
+            'Target weight is conviction-implied (valuation, F-Score quality and trend), normalised over the names that carry a score. Overweight → trim, underweight → add. A small dead-band reads as on-target.'
+            + (untargeted ? ' ' + untargeted + (untargeted === 1 ? ' holding carries' : ' holdings carry') + ' no score and so no target.' : ''))
     );
 }
 
@@ -138,7 +140,10 @@ export function NexusDriftPanel({ model }) {
         e(ConcentrationCard, { concentration }),
 
         // 3. OFF-BALANCE NAMES
-        e(DriftMap, { rows, scale: nameScale }),
+        e(DriftMap, { rows, scale: nameScale,
+            // Stated rather than silently dropped: most are ETFs with no DCF
+            // and no F-Score, which since C-1 have no conviction to target.
+            untargeted: model.holdings.filter(h => h.targetWeightPct == null).length }),
 
         // 4. THEME DRIFT
         e(ThemeDriftStrip, { themes, scale: themeScale }),
