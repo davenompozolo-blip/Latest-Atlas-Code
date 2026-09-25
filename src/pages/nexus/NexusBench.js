@@ -261,11 +261,16 @@ function AnnotatedTape({ row, series }) {
 }
 
 // ── 6.2 Story vs Tape — the jaws ──────────────────────────────
-function JawsChart({ row, series, docket, seriesByTk }) {
+function JawsChart({ row, series, docket, seriesByTk, tapeDown }) {
     const tape = cumulativeFromCloses(series);
     const story = themeComposite(seriesByTk, docket, row.theme, row.tk);
     const j = buildJaws(tape, story);
-    if (!j) return e('div', { className: 'nb-empty' }, 'No price series in window — tape unavailable, no line invented.');
+    // tapeDown: the price feed did not answer (api/nexus-bench tapeAvailable
+    // false). That is a transport failure and must not read as a statement
+    // that this name has no bars.
+    if (!j) return e('div', { className: 'nb-empty' }, tapeDown
+        ? 'Tape unavailable — the price feed did not answer. This is a transport failure, not a reading about the name.'
+        : 'No price series in window — tape unavailable, no line invented.');
     if (j.mode === 'tape-only') {
         return e('div', null,
             e(SimpleLine, { pts: j.tape.map(p => p.v), color: 'var(--text2)' }),
@@ -406,7 +411,7 @@ export function ClaimDrift({ rows }) {
 
 // ── Trial panel (expanded row) ────────────────────────────────
 const CLAIM_ICON = { confirmed: '✓', contradicted: '✗', pending: '·' };
-function TrialPanel({ row, series, docket, seriesByTk, res }) {
+function TrialPanel({ row, series, docket, seriesByTk, res, tapeDown }) {
     const fresh = thesisFreshness(row.thesisUpdatedAt);
     // Two columns: the exhibit (chart, then claims) on the left at the chart's
     // own width, the thesis as a card on the right absorbing the remainder.
@@ -422,7 +427,7 @@ function TrialPanel({ row, series, docket, seriesByTk, res }) {
             e('div', { className: 'bn-trial-exhibit' },
                 e('div', { className: 'bn-trial-jaws' },
                     e('span', { className: 'bn-lab' }, 'STORY v TAPE'),
-                    e(JawsChart, { row, series, docket, seriesByTk })),
+                    e(JawsChart, { row, series, docket, seriesByTk, tapeDown })),
                 e('div', { className: 'bn-trial-claims' },
                     e('span', { className: 'bn-lab' }, 'CLAIMS v EVIDENCE'),
                     row.claims.length
@@ -606,7 +611,7 @@ function SignalChips({ check }) {
         check.partial ? e('span', { className: 'bn-partial', title: check.missingKeys.join(', ') + ' missing' }, 'Partial — input missing') : null);
 }
 
-function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, total, navUsd }) {
+function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, total, navUsd, tapeDown }) {
     const [open, setOpen] = useState({});
     const built = docket.map(row => {
         const derived = deriveIntegrity(row.claims);
@@ -689,7 +694,7 @@ function DocketTable({ docket, series, ledger, writerRows, cortexByTk, sleeves, 
                                     e(IntegrityChip, { integrity, derived: derivedOnly }),
                                     tally.total ? e('span', { className: 'bn-tally' }, tally.confirmed + '✓ ' + tally.contradicted + '✗ ' + tally.pending + '·') : null,
                                     e(FreshnessStamp, { fresh })))));
-                        if (isOpen) out.push(e(TrialPanel, { key: row.tk + '-trial', row, series: series[row.tk], docket, seriesByTk: series, res }));
+                        if (isOpen) out.push(e(TrialPanel, { key: row.tk + '-trial', row, series: series[row.tk], docket, seriesByTk: series, res, tapeDown }));
                         return out;
                     }))))),
         e(RulingBlock, { cutRows: cuts, sellRows, ledger, sleeves, navUsd }));
@@ -721,6 +726,7 @@ export function NexusBenchPanel() {
         e(DocketTable, {
             docket: shown, series, ledger, writerRows: diagnostics.writerRows, cortexByTk,
             sleeves: bench.sleeves, total: docket.length, navUsd: bench.navUsd,
+            tapeDown: bench.tapeAvailable === false,
         }));
 }
 

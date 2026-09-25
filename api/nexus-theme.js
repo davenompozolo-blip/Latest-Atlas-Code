@@ -10,6 +10,7 @@
 
 import { dailyReturns, themeReturnSeries, cumMomentum, beta, scaleReturnsToVol } from '../src/pages/nexus/nexusThemeCompute.js';
 import { closeSeriesFromAlpaca } from '../src/pages/nexus/nexusBoardCompute.js';
+import { assetIdsPath, bookPricesPath, symbolById } from '../src/lib/bookPriceRead.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
@@ -29,6 +30,20 @@ async function fetchT(url, ms, headers) {
 }
 
 const ymd = d => d.toISOString().slice(0, 10);
+
+// A healthy answer is cached for six hours (prices move nightly). A DEGRADED
+// one must not be: on 2026-09-24 a timed-out price read produced a 200 with
+// every theme's momentum null, the CDN served it as a HIT, and the Theme page
+// read "Momentum pending -- price history syncing" for data that was there.
+// A failure answers 503 with no-store; a partial answer is cached briefly and
+// says what is missing.
+const CACHE_OK = 's-maxage=21600, stale-while-revalidate=86400';
+const CACHE_DEGRADED = 's-maxage=60';
+function unavailable(res, reason) {
+    console.error('[nexus-theme] unavailable: ' + reason);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(503).json({ ok: false, error: reason, themes: [] });
+}
 
 // MP-2: the browser's chosen portfolio arrives as ?portfolio= -- a query param
 // because this response is CDN-cached by URL and a request header is not part
@@ -57,49 +72,62 @@ export default async function handler(req, res) {
     try {
         // 1. Book — symbol, theme, weight.
         const hr = await fetchT(SB_URL + '/rest/v1/vw_nexus_holdings?select=symbol,theme,weight_pct', 8000, sbHdr);
-        const holdings = hr.ok ? await hr.json() : [];
+        if (!hr.ok) return unavailable(res, 'holdings feed HTTP ' + hr.status);
+        const holdings = await hr.json();
+        // A genuinely empty book is an answer, not a failure.
         if (!holdings.length) return res.status(200).json({ ok: true, asOf: new Date().toISOString(), themes: [] });
         const symbols = [...new Set(holdings.map(h => h.symbol))];
 
+        const ar = await fetchT(SB_URL + '/rest/v1/' + assetIdsPath(symbols), 8000, sbHdr);
+        if (!ar.ok) return unavailable(res, 'asset lookup HTTP ' + ar.status);
+        const symOf = symbolById(await ar.json());
+
         // 2. Book closes — one price_history query (joined to assets for the symbol).
         const since = ymd(new Date(Date.now() - (BETA_DAYS + 12) * 86_400_000));
-        // DESC + paged, not `order=asc&limit=20000`.
-        //
-        // PostgREST caps a response at 1,000 rows whatever `limit` asks for, so
-        // the old query returned the OLDEST 1,000 rows of the window and
-        // silently dropped everything after them. Measured: every one of the
-        // 1,000 rows came back stamped the same single date, and `priceAsOf`
-        // published 2026-07-08 while the book's newest bar was 2026-08-21.
-        // Theme momentum and the factor betas were being computed on a tape
-        // that stopped six weeks early, with no error and no gap in the shape
-        // of the data to give it away.
-        //
-        // Ordering DESC means a truncation loses the oldest rows instead: a
-        // short tape is usable, a stale one is a lie. Paging then restores the
-        // full window (~70 symbols x 72 days, so 3-4 pages), and the rows are
-        // reversed back to ascending because dailyReturns() walks forward.
-        const pBase = SB_URL + '/rest/v1/price_history'
-            + '?select=price_date,close,assets!inner(symbol)'
-            + '&assets.symbol=in.(' + symbols.join(',') + ')'
-            + '&price_date=gte.' + since
-            + '&order=price_date.desc,asset_id.asc';
+        // Paged, not `order=asc&limit=20000`: PostgREST caps a response at
+        // 1,000 rows whatever `limit` asks for, and a single read once kept
+        // the OLDEST rows (priceAsOf read 2026-07-08 against a book at
+        // 2026-08-21). The path is src/lib/bookPriceRead.js -- asset-major,
+        // filtered on asset_id; see its header for why. A cap or a failed page
+        // is REPORTED (pricesComplete), because an asset-major truncation
+        // drops whole names. Each symbol's closes are sorted ascending below
+        // because dailyReturns() walks forward.
+        const pBase = SB_URL + '/rest/v1/' + bookPricesPath([...symOf.keys()], since);
         const priceRows = [];
-        for (let page = 0; page < 8; page++) {
-            const r = await fetchT(pBase + '&limit=1000&offset=' + page * 1000, 10000, sbHdr);
-            if (!r.ok) break;
+        let pricesComplete = true;
+        for (let page = 0; ; page++) {
+            if (page >= 8) { pricesComplete = false; console.error('[nexus-theme] price read hit the 8-page cap'); break; }
+            // One retry: a cold buffer cache can cost the first attempt the
+            // 3s anon cap (seen 2026-09-25) and the second is then warm.
+            const get = () => fetchT(pBase + '&limit=1000&offset=' + page * 1000, 10000, sbHdr).catch(e => ({ ok: false, status: (e && e.name) || 'error' }));
+            let r = await get();
+            if (!r.ok) r = await get();
+            if (!r.ok) {
+                // A failed first page is no tape at all -- never publish that
+                // as themes whose momentum is merely pending.
+                const body = r.text ? await r.text().catch(() => '') : '';
+                if (page === 0) return unavailable(res, 'price history HTTP ' + r.status + ' ' + body.slice(0, 200));
+                pricesComplete = false;
+                console.error('[nexus-theme] price page ' + page + ' HTTP ' + r.status + ' -- tape truncated ' + body.slice(0, 200));
+                break;
+            }
             const batch = await r.json();
             priceRows.push(...batch);
             if (batch.length < 1000) break;
         }
-        priceRows.reverse();
         const closesBySymbol = new Map();
         for (const row of priceRows) {
-            const sym = row.assets && row.assets.symbol;
+            const sym = symOf.get(row.asset_id);
             const close = Number(row.close);
             if (!sym || !(close > 0)) continue;
             if (!closesBySymbol.has(sym)) closesBySymbol.set(sym, []);
             closesBySymbol.get(sym).push({ date: row.price_date, close });
         }
+        for (const closes of closesBySymbol.values()) closes.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+        // The newest bar in the tape -- a max, not the last row, since the
+        // read is asset-major.
+        let priceAsOf = null;
+        for (const row of priceRows) if (row.price_date && (!priceAsOf || row.price_date > priceAsOf)) priceAsOf = row.price_date;
         const retBySymbol = new Map();
         for (const [sym, closes] of closesBySymbol) retBySymbol.set(sym, dailyReturns(closes));
 
@@ -170,12 +198,16 @@ export default async function handler(req, res) {
             };
         });
 
-        res.setHeader('Cache-Control', 's-maxage=21600, stale-while-revalidate=86400');
+        const factorsComplete = ['rate', 'usd', 'oil'].every(k => factorMoves[k] != null);
+        const degraded = [];
+        if (!pricesComplete) degraded.push('prices_partial');
+        if (!factorsComplete) degraded.push('factors_partial');
+        res.setHeader('Cache-Control', degraded.length ? CACHE_DEGRADED : CACHE_OK);
         return res.status(200).json({
             ok: true,
             asOf: new Date().toISOString(),
             betaDays: BETA_DAYS,
-            priceAsOf: priceRows.length ? priceRows[priceRows.length - 1].price_date : null,
+            priceAsOf,
             themes,
             // Beat 05 (Realized transmission) computes implied = Σ β_f × move_f
             // and needs these. They were being computed above and then dropped
@@ -185,8 +217,12 @@ export default async function handler(req, res) {
             // When the factor proxy fetch fails, betas AND moves are null — the
             // panel needs to say which leg is missing instead of a bare dash.
             factorsAvailable: ['rate', 'usd', 'oil'].some(k => factorMoves[k] != null),
+            // A consumer that writes history (theme-leadership-snapshot) must
+            // refuse a partial tape; a surface should say it is partial.
+            pricesComplete,
+            degraded,
         });
     } catch (e) {
-        return res.status(200).json({ ok: false, error: (e && e.message) || 'theme error', themes: [] });
+        return unavailable(res, (e && e.message) || 'theme error');
     }
 }

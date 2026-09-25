@@ -11,6 +11,8 @@
 // vw_nexus_price_freshness (verdict suspension), price_history (tapes).
 // Degrades explicitly, never throws, never invents.
 
+import { assetIdsPath, bookPricesPath, symbolById } from '../src/lib/bookPriceRead.js';
+
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
@@ -73,7 +75,7 @@ async function sb(ph, path, ms) {
 // page so the tape never loses its most recent months. null on failure.
 async function sbPaged(ph, path, pages, ms) {
     const out = [];
-    for (let p = 0; p < pages; p++) {
+    const page = async p => {
         const ac = new AbortController();
         const t = setTimeout(() => ac.abort(), ms || 12000);
         try {
@@ -81,13 +83,29 @@ async function sbPaged(ph, path, pages, ms) {
                 signal: ac.signal,
                 headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...ph, Range: (p * 1000) + '-' + (p * 1000 + 999) },
             });
-            if (!r.ok) return p === 0 ? null : out;
-            const rows = await r.json();
-            out.push(...rows);
-            if (rows.length < 1000) break;
-        } catch { return p === 0 ? null : out; }
-        finally { clearTimeout(t); }
+            if (r.ok) return await r.json();
+            console.error('[nexus-bench] paged ' + path.split('?')[0] + ' page ' + p + ' → HTTP ' + r.status + ' '
+                + (await r.text().catch(() => '')).slice(0, 200));
+            return null;
+        } catch (e) {
+            console.error('[nexus-bench] paged ' + path.split('?')[0] + ' page ' + p + ' → ' + ((e && e.message) || String(e)));
+            return null;
+        } finally { clearTimeout(t); }
+    };
+    for (let p = 0; p < pages; p++) {
+        // One retry: a cold buffer cache can cost the first attempt the 3s
+        // anon cap, and the second is then warm (seen 2026-09-25).
+        const rows = (await page(p)) || (await page(p));
+        if (!rows) {
+            if (p === 0) return null;
+            out.truncated = true;   // a later page failed: reported, not silent
+            return out;
+        }
+        out.push(...rows);
+        if (rows.length < 1000) return out;
     }
+    out.truncated = true;           // hit the page cap with pages still coming
+    console.error('[nexus-bench] paged ' + path.split('?')[0] + ' hit the ' + pages + '-page cap');
     return out;
 }
 
@@ -124,6 +142,10 @@ export default async function handler(req, res) {
         // to read the whole universe — see the note on that query.
         const holdings = await sb(ph, 'vw_nexus_holdings?select=symbol,asset_name,sector,theme,weight_pct,market_value,daily_return_pct,total_return_pct,unrealised_return_pct,conviction_score,var_contribution_pct,dcf_upside_pct,current_price,quant_signal,technical_signal,valuation_signal,quality_grade');
         const heldSymbols = [...new Set((holdings || []).map(h => h.symbol).filter(Boolean))];
+        // Resolve the book to asset ids so the tape filters price_history on
+        // its own indexed columns (src/lib/bookPriceRead.js).
+        const heldAssets = heldSymbols.length ? await sb(ph, assetIdsPath(heldSymbols)) : [];
+        const symOf = symbolById(heldAssets);
 
         // TAPES. This read `price_history` for the whole 1,500-name universe
         // with no symbol filter, ordered price_date ASC, and stopped after
@@ -156,11 +178,9 @@ export default async function handler(req, res) {
             sb(ph, 'vw_holding_vol_latest?select=symbol,asof,ret_1d,vol_20d,z_move,days_old,vol_trigger,abstain_reason'),
             sb(ph, 'scrapbook_companies?select=ticker,thesis_summary,updated_at'),
             sb(ph, 'vw_nexus_price_freshness?select=symbol,days_old'),
-            heldSymbols.length
-                ? sbPaged(ph, 'price_history?select=price_date,close,assets!inner(symbol)&interval=eq.1d'
-                    + '&assets.symbol=in.(' + heldSymbols.join(',') + ')'
-                    + '&price_date=gte.' + since + '&order=price_date.desc,asset_id.asc', 6)
-                : Promise.resolve([]),
+            symOf.size
+                ? sbPaged(ph, bookPricesPath([...symOf.keys()], since), 10)
+                : Promise.resolve(heldSymbols.length ? null : []),
             sb(ph, 'cortex_signals?select=signal_class,title,relevance,candidates,is_muted&is_muted=eq.false&order=generated_at.desc&limit=60'),
             // fv_untrust_reason explains the coverage number on the strip
             sb(ph, 'nexus_holdings?select=tk,fv_trustworthy,fv_untrust_reason'),
@@ -235,7 +255,7 @@ export default async function handler(req, res) {
         // price series per held symbol, downsampled
         const series = {};
         for (const row of prices || []) {
-            const tk = row.assets && row.assets.symbol;
+            const tk = symOf.get(row.asset_id);
             const close = num(row.close);
             if (!tk || !heldSet.has(tk) || !(close > 0)) continue;
             (series[tk] = series[tk] || []).push({ date: row.price_date, close });
@@ -404,7 +424,10 @@ export default async function handler(req, res) {
         const navUsd = (headroom || []).length ? num(headroom[0].nav_usd) : null;
 
         res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, funding, diagnostics, cortex, sleeves, navUsd });
+        // tapeAvailable separates "the price feed did not answer" from "this
+        // name has no bars in the window" -- the second is a fact about the
+        // name, the first must never be rendered as one.
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, tapeAvailable: prices != null, tapeComplete: prices != null && !prices.truncated, funding, diagnostics, cortex, sleeves, navUsd });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'bench error', docket: [], series: {}, diagnostics: [] });
     }

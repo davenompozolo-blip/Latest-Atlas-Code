@@ -471,3 +471,35 @@ export function breadthNote(d) {
     if (d.spread >= 2) return 'spread ' + d.spread + 'pp';
     return 'breadth tight';
 }
+
+// ── Momentum feed state (what the empty-state sentence may claim) ──
+// The Theme page rendered "Momentum pending — price history syncing" for a
+// failed feed, a loading one and a genuinely empty one alike: every failure of
+// /api/nexus-theme (a 503, a network error, a timed-out price read) fell into
+// the same catch. On 2026-09-24 the price read was being cancelled at the 3s
+// anon cap and the page reported a sync delay that did not exist.
+//
+// Four states, four sentences. `failed` is a transport fact and must never be
+// rendered as a statement about the data; `partial` says the tape the momentum
+// was computed on is incomplete; only `empty` may say nothing is measured.
+export const MOMENTUM_LOADING = 'loading';
+export const MOMENTUM_FAILED = 'failed';
+export const MOMENTUM_PARTIAL = 'partial';
+export const MOMENTUM_EMPTY = 'empty';
+export const MOMENTUM_OK = 'ok';
+
+export function momentumFeedState(series, rows) {
+    if (!series || !series.loaded) return { state: MOMENTUM_LOADING, text: 'Loading momentum…' };
+    if (series.failed) {
+        return {
+            state: MOMENTUM_FAILED,
+            text: 'Momentum unavailable — the theme feed did not answer. This is a transport failure, not a reading about the themes.',
+        };
+    }
+    const measured = (rows || []).filter(r => r.momentum5d != null).length;
+    if (!measured) return { state: MOMENTUM_EMPTY, text: 'No momentum measured — no theme has a priced tape in the window.' };
+    if ((series.degraded || []).includes('prices_partial')) {
+        return { state: MOMENTUM_PARTIAL, text: 'Momentum computed on a partial price tape — the feed truncated; treat as provisional.' };
+    }
+    return { state: MOMENTUM_OK, text: null };
+}
