@@ -47,7 +47,13 @@ function sideOf(side) {
 
 export function normaliseFill(a) {
   const { symbol, assetClass } = fillSymbol(a.symbol)
-  const q = toNumber(a.qty ?? a.cum_qty ?? 0)
+  // A fill's own quantity, never the order's cum_qty: on a partial fill that
+  // is the running total, and recording it as this fill overstates the ledger.
+  const raw = a.qty
+  if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+    throw new Error(`Fill ${JSON.stringify(a.id ?? null)} carries no qty`)
+  }
+  const q = toNumber(raw)
   let side = sideOf(a.side)
   if (q < 0) side = side === 'buy' ? 'sell' : 'buy'
   return {

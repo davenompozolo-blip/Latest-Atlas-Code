@@ -43,6 +43,11 @@ test('options and plain tickers keep their class', () => {
   assert.equal(fillSymbol(' BRK.B ').symbol, 'BRK.B');
 });
 
+test('a fill without its own qty refuses; cum_qty is an order total, not this fill', () => {
+  assert.throws(() => normaliseFill({ symbol: 'X', side: 'buy', cum_qty: '40.528525' }));
+  assert.throws(() => normaliseFill({ symbol: 'X', side: 'buy', qty: '  ' }));
+});
+
 test('an unreadable quantity or side refuses rather than guessing', () => {
   assert.throws(() => normaliseFill({ symbol: 'X', side: 'buy', qty: 'abc' }));
   assert.throws(() => normaliseFill({ symbol: 'X', side: 'hold', qty: '1' }));

@@ -6187,7 +6187,7 @@ account" divides by what the data can support, not by table:
 | analytic | per account now? | why |
 |---|---|---|
 | `book_risk_daily` vol / VaR / Euler shares | **yes** | `vw_book_mctr` + `vw_risk_analysis` are request-scoped and already right |
-| verdicts, segments | **yes since MP-5** (was: not yet) | rest on the return engine's matviews (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) -- all default-book by construction -- and would grade every Secondary name not measurable for weeks |
+| verdicts, segments | **yes since MP-5** (was: not yet) | the return engine's inputs (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) are per-account `__acct` stores recomputed under each account's header; a new account's names read `one_sided` until they have priced history -- recorded nightly, not withheld |
 | factor betas, regime CVaR, VaR backtest | no | regress the account's own daily returns; there are none. `book_factor_betas` has **no writer in the database at all** -- B0/C3 estimated it outside |
 
 `book_risk_daily` is keyed `(portfolio_id, as_of, logic_version)`; the column

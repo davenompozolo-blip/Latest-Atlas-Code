@@ -7,10 +7,13 @@ do $$
 declare
   v_default uuid := public.atlas_default_portfolio();
   v_other   uuid := (select id from public.portfolios where id <> public.atlas_default_portfolio() order by name limit 1);
-  n_view int; n_store int;
+  v_acct    uuid;
+  n_only_view int; n_only_store int;
   m text;
 begin
-  if v_other is null then raise notice 'only one portfolio; isolation checks skipped'; return; end if;
+  -- A single-portfolio database still gets the type and privilege checks;
+  -- only the second-account isolation pass needs v_other.
+  if v_other is null then raise notice 'only one portfolio; second-account isolation checks skipped'; end if;
 
   foreach m in array array['mv_book_daily_weights','mv_book_ex_index','mv_position_returns',
                            'mv_position_tier1','mv_position_tier2','mv_segment_ex_index'] loop
@@ -18,13 +21,20 @@ begin
     if (select relkind from pg_class where oid = ('public.' || m)::regclass) <> 'v' then
       raise exception '% is not a view', m;
     end if;
-    -- 2. each account sees exactly its own stored rows
-    foreach v_default in array array[public.atlas_default_portfolio(), v_other] loop
-      perform set_config('request.headers', json_build_object('x-atlas-portfolio', v_default::text)::text, true);
-      execute format('select count(*) from public.%I', m) into n_view;
-      execute format('select count(*) from public.%I where portfolio_id = $1', m || '__acct') into n_store using v_default;
-      if n_view <> n_store then
-        raise exception '% for %: view % rows, store % rows', m, v_default, n_view, n_store;
+    -- 2. each account sees exactly its own stored rows -- compared row for
+    --    row both ways, so a view serving another account's rows fails even
+    --    when the counts happen to match.
+    foreach v_acct in array array_remove(array[v_default, v_other], null) loop
+      perform set_config('request.headers', json_build_object('x-atlas-portfolio', v_acct::text)::text, true);
+      -- jsonb, because the store carries portfolio_id and the view does not.
+      execute format('select count(*) from (select to_jsonb(v) j from public.%I v except all
+                        select to_jsonb(s) - ''portfolio_id'' from public.%I s where s.portfolio_id = $1) d',
+                     m, m || '__acct') into n_only_view using v_acct;
+      execute format('select count(*) from (select to_jsonb(s) - ''portfolio_id'' j from public.%I s where s.portfolio_id = $1
+                        except all select to_jsonb(v) from public.%I v) d',
+                     m || '__acct', m) into n_only_store using v_acct;
+      if n_only_view <> 0 or n_only_store <> 0 then
+        raise exception '% for %: % rows only in the view, % only in the store', m, v_acct, n_only_view, n_only_store;
       end if;
     end loop;
     -- 3. storage is not reachable from the browser roles
@@ -52,7 +62,8 @@ begin
   end if;
   if v_other is not null then
     perform set_config('request.headers', json_build_object('x-atlas-portfolio', v_other::text)::text, true);
-    if exists (select 1 from public.position_verdicts where portfolio_id <> v_other) then
+    if exists (select 1 from public.position_verdicts where portfolio_id <> v_other)
+       or exists (select 1 from public.segment_verdicts where portfolio_id <> v_other) then
       raise exception 'anon on % sees another account''s verdicts', v_other;
     end if;
   end if;
