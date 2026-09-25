@@ -11,13 +11,14 @@ import React from 'react';
 // P&L attribution.
 // ============================================================
 
-import { loadView, MOCK_POSITIONS, MOCK_COMMAND } from './config.js';
+import { loadViewState } from './config.js';
+import { loadFeeds, feedFailed } from '../lib/feedStates.js';
 import {
     fmt, fmtPct, fmtCurrency, cls,
     DEFAULT_COLS, ALL_COLS, getVisibleCols,
     cellValue, cellClass, cellStyle, qualityPill
 } from './utils.js';
-import { Loading, HeroCard, NarrativeStrip } from './components.js';
+import { Loading, HeroCard, NarrativeStrip, FeedNotice, FeedFailed } from './components.js';
 import { returnStatus } from './utils.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1133,6 +1134,7 @@ export function PortfolioHome() {
     var _cm = useState(false), showCols = _cm[0], setShowCols = _cm[1];
     var _ec = useState(null), earningsData = _ec[0], setEarningsData = _ec[1];
     var _tx = useState([]), txData = _tx[0], setTxData = _tx[1];
+    var _fs = useState({ states: {}, problems: [] }), feeds = _fs[0], setFeeds = _fs[1];
     var _sq = useState(''), srch = _sq[0], setSrch = _sq[1];
     var _tf = useState('ALL'), tFilt = _tf[0], setTFilt = _tf[1];
     var _sk = useState('market_value'), sortK = _sk[0], setSortK = _sk[1];
@@ -1153,18 +1155,16 @@ export function PortfolioHome() {
 
     useEffect(function() {
         function load() {
-            Promise.all([
-                loadView('vw_portfolio_home', MOCK_POSITIONS),
-                loadView('vw_command_centre', [MOCK_COMMAND]),
-                loadView('vw_portfolio_nav_daily', []),
-                loadView('vw_earnings_calendar', []),
-                loadView('vw_transactions', []),
-            ]).then(function(res) {
-                setPositions(res[0]);
-                setCommand(res[1][0] || MOCK_COMMAND);
-                setNavData(res[2]);
-                setEarningsData(res[3]);
-                setTxData(res[4] || []);
+            // No mock fallback: a view that did not answer is reported as
+            // such, never replaced by sample positions or a sample NAV.
+            loadFeeds(['vw_portfolio_home', 'vw_command_centre', 'vw_portfolio_nav_daily',
+                       'vw_earnings_calendar', 'vw_transactions'], loadViewState).then(function(res) {
+                setPositions(res.rows.vw_portfolio_home);
+                setCommand(res.rows.vw_command_centre[0] || null);
+                setNavData(res.rows.vw_portfolio_nav_daily);
+                setEarningsData(res.rows.vw_earnings_calendar);
+                setTxData(res.rows.vw_transactions);
+                setFeeds(res);
                 setLoading(false);
             });
         }
@@ -1471,14 +1471,17 @@ export function PortfolioHome() {
     }, [positions, srch, tFilt, sortK, sortD]);
 
     if (loading) return React.createElement(Loading, null);
-    var c = command || MOCK_COMMAND;
+    if (feedFailed(feeds.states, 'vw_portfolio_home')) return React.createElement('div', null,
+        React.createElement(FeedNotice, { problems: feeds.problems }),
+        React.createElement(FeedFailed, { view: 'The holdings feed (vw_portfolio_home)' }));
+    var c = command || {};
     var activeCols = ALL_COLS.filter(function(col) { return visCols.indexOf(col.key) >= 0; });
     var wqSum = 0, wqMv = 0;
     positions.forEach(function(p) { var mv = Math.abs(Number(p.market_value) || 0); wqSum += (Number(p.quality_score) || 0) * mv; wqMv += mv; });
     var avgQuality = wqMv > 0 ? Math.round(wqSum / wqMv) : null;
     var qualColor = avgQuality == null ? 'rgba(255,255,255,0.4)' : avgQuality >= 60 ? '#10b981' : avgQuality >= 40 ? '#f59e0b' : '#ef4444';
-    var retPct = Number(c.unrealised_return_pct);
-    var retColor = retPct >= 0 ? '#10b981' : '#ef4444';
+    var retPct = c.unrealised_return_pct != null ? Number(c.unrealised_return_pct) : null;
+    var retColor = retPct == null ? 'rgba(255,255,255,0.4)' : retPct >= 0 ? '#10b981' : '#ef4444';
     var div = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
     var hb = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
     var hl = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'Figtree' };
@@ -1502,6 +1505,7 @@ export function PortfolioHome() {
         : 'Margin \u00b7 ' + (leverageRatio != null ? leverageRatio.toFixed(2) + '\u00d7 leverage' : 'leveraged');
 
     return React.createElement('div', null,
+        React.createElement(FeedNotice, { problems: feeds.problems }),
         // Hero Pulse Bar
         React.createElement('div', { style: { position: 'relative', background: 'linear-gradient(135deg,rgba(0,212,255,0.04),rgba(99,102,241,0.04))', border: '1px solid rgba(0,212,255,0.12)', borderTop: '3px solid #00d4ff', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px 0', overflow: 'hidden' } },
             React.createElement('div', { style: hb },
@@ -1524,8 +1528,8 @@ export function PortfolioHome() {
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },
                 React.createElement('div', { style: hl }, 'Unrealised P&L'),
-                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: Number(c.unrealised_pnl) >= 0 ? '#10b981' : '#ef4444' } }, fmtCurrency(c.unrealised_pnl)),
-                React.createElement('div', { style: { fontSize: 10, color: retColor, marginTop: 3, fontFamily: 'JetBrains Mono' } }, (retPct >= 0 ? '+' : '') + (retPct * 100).toFixed(2) + '% total return')
+                React.createElement('div', { style: { fontFamily: 'JetBrains Mono', fontSize: 18, fontWeight: 700, color: c.unrealised_pnl == null ? 'rgba(255,255,255,0.4)' : Number(c.unrealised_pnl) >= 0 ? '#10b981' : '#ef4444' } }, fmtCurrency(c.unrealised_pnl)),
+                React.createElement('div', { style: { fontSize: 10, color: retColor, marginTop: 3, fontFamily: 'JetBrains Mono' } }, retPct == null ? 'total return \u2014' : (retPct >= 0 ? '+' : '') + (retPct * 100).toFixed(2) + '% total return')
             ),
             React.createElement('div', { style: div }),
             React.createElement('div', { style: hb },

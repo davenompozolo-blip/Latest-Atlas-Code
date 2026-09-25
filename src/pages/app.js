@@ -1,5 +1,5 @@
 import React from 'react';
-import { sb, loadView, MOCK_COMMAND } from './config.js';
+import { sb } from './config.js';
 import { ConfigPrompt } from './components.js';
 import { NexusPage, NexusShell } from './nexus-page.js';
 import { NexusFlagshipPage } from './nexus/NexusFlagship.js';

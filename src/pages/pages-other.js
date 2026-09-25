@@ -8,9 +8,10 @@ import React from 'react';
 // CommandCentre.
 // ============================================================
 
-import { sb, loadView, MOCK_COMMAND, normalizeCommand } from './config.js';
+import { sb, loadViewState, normalizeCommand } from './config.js';
+import { loadFeeds } from '../lib/feedStates.js';
 import { fmt, fmtPct, fmtCurrency, cls, badgeCls, healthCls, useChart, returnStatus, sharpeStatus, ddStatus } from './utils.js';
-import { Loading, EmptyState, HeroCard } from './components.js';
+import { Loading, EmptyState, HeroCard, FeedNotice } from './components.js';
 import { buildAccountSyncView, statusTone, ACCOUNT_SYNC_LOADED, ACCOUNT_SYNC_EMPTY } from '../lib/accountSyncView.js';
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -653,202 +654,8 @@ function RiskCard({ row: r, maxVar }) {
 import { RiskAnalysisV2 as _RiskAnalysisV2 } from './risk-v2.js';
 export function RiskAnalysis() { return React.createElement(_RiskAnalysisV2, null); }
 
-function _RiskAnalysisOld() {
-    const [risk, setRisk] = useState(null);
-    const [command, setCommand] = useState(null);
-    const [navData, setNavData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [tab, setTab] = useState('breakdown');
-    const [riskSortKey, setRiskSortKey] = useState('dollar_var_95_daily');
-    const [riskSortDir, setRiskSortDir] = useState('desc');
-
-    useEffect(() => {
-        function load() {
-            Promise.all([
-                loadView('vw_risk_analysis', []),
-                loadView('vw_command_centre', [MOCK_COMMAND]),
-                loadView('vw_portfolio_nav_daily', []),
-            ]).then(([r, c, n]) => {
-                setRisk(r);
-                setCommand(c[0] || MOCK_COMMAND);
-                setNavData(n);
-                setLoading(false);
-            });
-        }
-        load();
-        window.addEventListener('atlas:refresh', load);
-        return () => window.removeEventListener('atlas:refresh', load);
-    }, []);
-
-    if (loading) return React.createElement(Loading, null);
-    if (!risk || !risk.length) return React.createElement(EmptyState, null);
-
-    const c = normalizeCommand(command || MOCK_COMMAND);
-    const highRisk = risk.filter(r => r.risk_tier === 'High Risk').length;
-    const modRisk  = risk.filter(r => r.risk_tier === 'Moderate Risk').length;
-    const lowRisk  = risk.filter(r => r.risk_tier === 'Low Risk').length;
-
-    // ---- Shared tab bar (Performance Suite style) ----------------------
-    const TABS = [
-        { id: 'breakdown',  label: 'BREAKDOWN',   sub: 'Position Risk' },
-        { id: 'corerisk',   label: 'CORE RISK',    sub: 'VaR & Vol' },
-        { id: 'montecarlo', label: 'MONTE CARLO',  sub: 'GBM Simulation' },
-    ];
-    const tabBar = React.createElement('div', { style: { display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.07)' } },
-        TABS.map(function(t) {
-            var a = t.id === tab;
-            return React.createElement('button', {
-                key: t.id, onClick: function() { setTab(t.id); },
-                style: { padding: '10px 24px 12px', border: 'none', borderBottom: '2px solid ' + (a ? '#00d4ff' : 'transparent'), background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, transition: 'all 0.15s ease', marginBottom: -1 }
-            },
-                React.createElement('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1.2, fontFamily: 'JetBrains Mono', color: a ? '#00d4ff' : 'rgba(255,255,255,0.42)' } }, t.label),
-                React.createElement('span', { style: { fontSize: 9.5, color: a ? 'rgba(0,212,255,0.55)' : 'rgba(255,255,255,0.2)', fontFamily: 'Figtree' } }, t.sub)
-            );
-        })
-    );
-
-    if (tab === 'corerisk') {
-        return React.createElement('div', null,
-            React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-            tabBar, React.createElement(CoreRiskTab, { navData: navData, command: c })
-        );
-    }
-    if (tab === 'montecarlo') {
-        return React.createElement('div', null,
-            React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-            tabBar, React.createElement(MonteCarloTab, { navData: navData, command: c })
-        );
-    }
-
-    // ---- Risk KPI pulse bar --------------------------------------------
-    var hl  = { fontSize: 9, letterSpacing: 1.8, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 4, fontFamily: 'Figtree' };
-    var hb  = { display: 'flex', flexDirection: 'column', justifyContent: 'center' };
-    var sep = { width: 1, background: 'rgba(255,255,255,0.06)', margin: '0 20px', flexShrink: 0 };
-    var mono = function(v, sz, col) { return { fontFamily: 'JetBrains Mono', fontSize: sz || 18, fontWeight: 700, color: col || 'rgba(255,255,255,0.85)' }; };
-    var sub  = function(txt, col) { return React.createElement('div', { style: { fontSize: 10, color: col || 'rgba(255,255,255,0.3)', marginTop: 2, fontFamily: 'JetBrains Mono' } }, txt); };
-
-    var ddPct  = c.drawdown_pct != null ? c.drawdown_pct : null;
-    var ddCol  = ddPct != null && ddPct < -10 ? '#ef4444' : '#f59e0b';
-    var shCol  = c.sharpe_ratio > 1 ? '#10b981' : c.sharpe_ratio > 0 ? '#f59e0b' : '#ef4444';
-    var soCol  = c.sortino_ratio > 1 ? '#10b981' : c.sortino_ratio > 0 ? '#f59e0b' : '#ef4444';
-    var hrCol  = highRisk > 0 ? '#ef4444' : '#10b981';
-
-    var riskBar = React.createElement('div', {
-        style: { background: 'linear-gradient(135deg,rgba(239,68,68,0.05),rgba(245,158,11,0.03))', border: '1px solid rgba(239,68,68,0.18)', borderRadius: 10, padding: '14px 22px', marginBottom: 16, display: 'flex', alignItems: 'center' }
-    },
-        React.createElement('div', { style: hb },
-            React.createElement('div', { style: hl }, 'Portfolio VaR 95%'),
-            React.createElement('div', { style: mono(null, 22, '#ef4444') }, c.dollar_var_95 != null ? fmtCurrency(c.dollar_var_95) : '—'),
-            sub('Max 1-day loss (95% conf.)')
-        ),
-        React.createElement('div', { style: sep }),
-        React.createElement('div', { style: hb },
-            React.createElement('div', { style: hl }, 'Max Drawdown'),
-            React.createElement('div', { style: mono(null, 18, ddCol) }, ddPct != null ? ddPct.toFixed(2) + '%' : '—'),
-            sub('Peak-to-trough')
-        ),
-        React.createElement('div', { style: sep }),
-        React.createElement('div', { style: hb },
-            React.createElement('div', { style: hl }, 'Sharpe Ratio'),
-            React.createElement('div', { style: mono(null, 18, shCol) }, c.sharpe_ratio != null ? c.sharpe_ratio.toFixed(2) : '—'),
-            sub(c.sharpe_ratio > 1.5 ? 'Excellent' : c.sharpe_ratio > 0.5 ? 'Good' : 'Monitor')
-        ),
-        React.createElement('div', { style: sep }),
-        React.createElement('div', { style: hb },
-            React.createElement('div', { style: hl }, 'Sortino Ratio'),
-            React.createElement('div', { style: mono(null, 18, soCol) }, c.sortino_ratio != null ? c.sortino_ratio.toFixed(2) : '—'),
-            sub('Downside-adj.')
-        ),
-        React.createElement('div', { style: sep }),
-        React.createElement('div', { style: hb },
-            React.createElement('div', { style: hl }, 'High Risk Positions'),
-            React.createElement('div', { style: mono(null, 18, hrCol) }, String(highRisk)),
-            sub(highRisk + ' of ' + risk.length + ' flagged')
-        ),
-        React.createElement('div', { style: sep }),
-        React.createElement('div', { style: hb },
-            React.createElement('div', { style: hl }, 'Moderate Risk'),
-            React.createElement('div', { style: mono(null, 18, '#f59e0b') }, String(modRisk)),
-            sub(lowRisk + ' positions low risk')
-        )
-    );
-
-    // ---- Chart area: donut (1fr) + Risk scatter (2fr) --------------------
-    var charts = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, marginBottom: 14 } },
-        React.createElement('div', { className: 'card' },
-            React.createElement('div', { className: 'card-title' }, 'Risk Tier Distribution'),
-            React.createElement(RiskTierDonut, { high: highRisk, mod: modRisk, low: lowRisk }),
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 } },
-                [['High Risk', '#ef4444', highRisk], ['Moderate Risk', '#f59e0b', modRisk], ['Low Risk', '#10b981', lowRisk]].map(function(t) {
-                    return React.createElement('div', { key: t[0], style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                        React.createElement('span', { style: { fontSize: 10, color: t[1], fontFamily: 'Figtree' } }, t[0]),
-                        React.createElement('span', { style: { fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: 700, color: t[1] } }, t[2])
-                    );
-                })
-            )
-        ),
-        React.createElement('div', { className: 'card' },
-            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
-                React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Volatility vs VaR  ·  Risk Bubble Map'),
-                React.createElement('div', { style: { fontSize: 10, color: 'rgba(255,255,255,0.22)', fontFamily: 'Figtree' } }, 'Bubble size = market value')
-            ),
-            React.createElement(RiskScatter, { rows: risk })
-        )
-    );
-
-    // ---- Position card grid --------------------------------------------
-    var maxVar = Math.max.apply(null, risk.map(function(r) { return Math.abs(r.dollar_var_95_daily || 0); }));
-
-    var RISK_SORT_OPTS = [
-        { key: 'dollar_var_95_daily', label: 'VaR $' },
-        { key: 'annual_vol',          label: 'Volatility' },
-        { key: 'market_value',        label: 'Mkt Value' },
-        { key: 'weight',              label: 'Weight' },
-        { key: 'symbol',              label: 'Symbol' },
-    ];
-
-    var riskSorted = risk.slice().sort(function(a, b) {
-        var av = a[riskSortKey], bv = b[riskSortKey];
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1; if (bv == null) return -1;
-        var cmp = (!isNaN(Number(av)) && !isNaN(Number(bv)))
-            ? Number(av) - Number(bv) : String(av).localeCompare(String(bv));
-        return riskSortDir === 'asc' ? cmp : -cmp;
-    });
-
-    var cards = React.createElement('div', { className: 'card' },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
-            React.createElement('div', { className: 'card-title', style: { margin: 0 } }, 'Position Risk Breakdown  ·  ' + risk.length + ' positions'),
-            React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
-                React.createElement('span', { style: { fontSize: 9.5, color: 'rgba(255,255,255,0.28)', fontFamily: 'Figtree', marginRight: 2 } }, 'Sort:'),
-                RISK_SORT_OPTS.map(function(opt) {
-                    var active = riskSortKey === opt.key;
-                    return React.createElement('button', {
-                        key: opt.key,
-                        onClick: function() {
-                            if (riskSortKey === opt.key) setRiskSortDir(function(d) { return d === 'asc' ? 'desc' : 'asc'; });
-                            else { setRiskSortKey(opt.key); setRiskSortDir('desc'); }
-                        },
-                        style: { background: active ? 'rgba(0,212,255,0.13)' : 'rgba(255,255,255,0.04)', color: active ? '#00d4ff' : 'rgba(255,255,255,0.38)', border: '1px solid ' + (active ? 'rgba(0,212,255,0.3)' : 'rgba(255,255,255,0.06)'), borderRadius: 5, padding: '3px 9px', fontSize: 9.5, fontWeight: active ? 700 : 400, cursor: 'pointer', fontFamily: 'Figtree' }
-                    }, opt.label + (active ? (riskSortDir === 'desc' ? ' ↓' : ' ↑') : ''));
-                })
-            )
-        ),
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 } },
-            riskSorted.map(function(r) {
-                return React.createElement(RiskCard, { key: r.symbol, row: r, maxVar: maxVar });
-            })
-        )
-    );
-
-    return React.createElement('div', null,
-        React.createElement('div', { className: 'page-title' }, 'Risk Analysis'),
-        tabBar, riskBar, charts, cards
-    );
-}
-
 // ============================================================
-// COMMAND CENTRE (note: _RiskAnalysisOld above is intentionally dead — kept for reference)
+// COMMAND CENTRE
 // ============================================================
 // ── AccountBalances (live from Alpaca) ────────────────────────────────────────
 function AccountBalances() {
@@ -938,10 +745,14 @@ export function CommandCentre() {
     const [validationLog, setValidationLog] = useState([]);
     const [accountSync, setAccountSync] = useState(null);
     const [alerts, setAlerts] = useState([]);
+    const [feeds, setFeeds] = useState({ states: {}, problems: [] });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         function load() {
+            // No mock fallback: a command centre that did not answer used to
+            // render a sample $119,500 NAV and a 1.35 Sharpe as the book.
+            const FEEDS = ['vw_command_centre', 'vw_portfolio_nav_daily', 'vw_portfolio_home'];
             const freshnessPromise = sb
                 ? sb.rpc('data_freshness').then(function(r) { return r.data || []; })
                 : Promise.resolve([]);
@@ -959,21 +770,21 @@ export function CommandCentre() {
                 ? sb.from('atlas_memory').select('*').eq('category', 'bug').order('created_at', { ascending: false }).limit(10).then(function(r) { return r.data || []; })
                 : Promise.resolve([]);
             Promise.all([
-                loadView('vw_command_centre', [MOCK_COMMAND]),
-                loadView('vw_portfolio_nav_daily', []),
-                loadView('vw_portfolio_home', []),
+                loadFeeds(FEEDS, loadViewState),
                 freshnessPromise,
                 validationPromise,
                 alertsPromise,
                 accountSyncPromise,
             ]).then(function(res) {
-                setCommand((Array.isArray(res[0]) ? res[0][0] : res[0]) || MOCK_COMMAND);
-                setNavData(res[1]);
-                setHomeData(res[2]);
-                setFreshness(res[3]);
-                setValidationLog(res[4] || []);
-                setAlerts(res[5] || []);
-                setAccountSync(res[6]);
+                const f = res[0];
+                setFeeds(f);
+                setCommand(f.rows.vw_command_centre[0] || null);
+                setNavData(f.rows.vw_portfolio_nav_daily);
+                setHomeData(f.rows.vw_portfolio_home);
+                setFreshness(res[1]);
+                setValidationLog(res[2] || []);
+                setAlerts(res[3] || []);
+                setAccountSync(res[4]);
                 setLoading(false);
             });
         }
@@ -983,7 +794,7 @@ export function CommandCentre() {
     }, []);
 
     if (loading) return React.createElement(Loading, null);
-    const c = normalizeCommand(command || MOCK_COMMAND);
+    const c = normalizeCommand(command) || {};
 
     // Compute equity + cash balance from loaded data
     var _cNavSorted = navData ? navData.slice().sort(function(a,b){ return new Date(a.price_date) - new Date(b.price_date); }) : [];
@@ -1005,6 +816,7 @@ export function CommandCentre() {
 
     return React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Command Centre'),
+        React.createElement(FeedNotice, { problems: feeds.problems }),
         // Health Score Hero
         React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
             React.createElement('div', { className: 'health-score ' + healthCls(c.atlas_health_score), style: { width: 120, height: 120, fontSize: 42, margin: '0 auto 12px' } },
@@ -1035,21 +847,21 @@ export function CommandCentre() {
                 icon: '◇', label: 'TOTAL INVESTED', value: fmtCurrency(c.total_invested), accent: 'indigo'
             }),
             React.createElement(HeroCard, {
-                icon: (c.total_return_pct || 0) >= 0 ? '▲' : '▽',
+                icon: c.total_return_pct == null ? '◇' : c.total_return_pct >= 0 ? '▲' : '▽',
                 label: 'TOTAL RETURN',
                 value: fmtPct(c.total_return_pct),
-                color: (c.total_return_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)',
-                accent: (c.total_return_pct || 0) >= 0 ? 'green' : 'red',
+                color: c.total_return_pct == null ? undefined : c.total_return_pct >= 0 ? 'var(--green)' : 'var(--red)',
+                accent: c.total_return_pct == null ? 'indigo' : c.total_return_pct >= 0 ? 'green' : 'red',
                 badge: returnStatus(c.total_return_pct)
             }),
             React.createElement(HeroCard, {
                 icon: '✦', label: 'SHARPE RATIO', value: fmt(c.sharpe_ratio),
-                color: c.sharpe_ratio > 1 ? 'var(--green)' : c.sharpe_ratio > 0 ? 'var(--amber)' : 'var(--red)',
+                color: c.sharpe_ratio == null ? undefined : c.sharpe_ratio > 1 ? 'var(--green)' : c.sharpe_ratio > 0 ? 'var(--amber)' : 'var(--red)',
                 accent: 'cyan', badge: sharpeStatus(c.sharpe_ratio)
             }),
             React.createElement(HeroCard, {
                 icon: '◈', label: 'SORTINO RATIO', value: fmt(c.sortino_ratio),
-                color: c.sortino_ratio > 1 ? 'var(--green)' : c.sortino_ratio > 0 ? 'var(--amber)' : 'var(--red)',
+                color: c.sortino_ratio == null ? undefined : c.sortino_ratio > 1 ? 'var(--green)' : c.sortino_ratio > 0 ? 'var(--amber)' : 'var(--red)',
                 accent: 'violet', badge: sharpeStatus(c.sortino_ratio)
             }),
             React.createElement(HeroCard, {

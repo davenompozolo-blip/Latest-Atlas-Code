@@ -7,10 +7,11 @@ import React from 'react';
 // Sub-panels: Overview · Returns · Risk · Positions
 // ============================================================
 
-import { sb, loadView, MOCK_COMMAND } from './config.js';
+import { sb, loadViewState } from './config.js';
+import { loadFeeds, feedFailed } from '../lib/feedStates.js';
 import { fetchPaged } from '../lib/pagedRead.js';
 import { fmtPct, fmt, fmtCurrency } from './utils.js';
-import { Loading, EmptyState } from './components.js';
+import { Loading, EmptyState, FeedNotice, FeedFailed } from './components.js';
 import { computePortfolioMetrics, computePeriodReturns } from './perf-engine.js';
 import { loadBookBaseline, readBookBaseline } from '../lib/bookBaseline.js';
 import { BookBaselineTile } from '../components/BookBaselineTile.js';
@@ -130,6 +131,8 @@ export function PerformanceSuite() {
     // Once the Charts tab is opened, keep AdvancedChart mounted (hidden) rather
     // than unmounting it on tab switch — otherwise every return re-fetches the
     // asset catalog and resets the benchmark/timeframe/overlay selections.
+    var _fs = useState({ states: {}, problems: [] });
+    var feeds = _fs[0], setFeeds = _fs[1];
     var _cv = useState(false);
     var chartsVisited = _cv[0], setChartsVisited = _cv[1];
     useEffect(function() {
@@ -138,22 +141,26 @@ export function PerformanceSuite() {
 
     useEffect(function() {
         function load() {
+            // No mock fallback for the command centre: a view that did not
+            // answer is named on the page (FeedNotice), never replaced by a
+            // sample NAV and Sharpe.
+            var FEEDS = ['vw_portfolio_nav_daily', 'vw_performance_suite', 'vw_command_centre',
+                         'vw_portfolio_home', 'vw_transactions',
+                         // The cash-flow return engine (step 2). Read from the nightly
+                         // snapshot, never from vw_position_returns: the view recomputes
+                         // an IRR and a self-counterfactual per position and takes
+                         // ~940ms, which has no business in a page load.
+                         'vw_default_only_position_returns'];
             Promise.all([
-                loadView('vw_portfolio_nav_daily', []),
-                loadView('vw_performance_suite', []),
-                loadView('vw_command_centre', [MOCK_COMMAND]),
-                loadView('vw_portfolio_home', []),
-                loadView('vw_transactions', []),
-                // The cash-flow return engine (step 2). Read from the nightly
-                // snapshot, never from vw_position_returns: the view recomputes
-                // an IRR and a self-counterfactual per position and takes
-                // ~940ms, which has no business in a page load.
-                loadView('vw_default_only_position_returns', []),
+                loadFeeds(FEEDS, loadViewState),
                 // The frozen-weight counterfactual, written nightly by
-                // atlas_write_verdicts. Not loadView: this table grows a row
+                // atlas_write_verdicts. Not a view read: this table grows a row
                 // every weekday and must be read newest-first.
                 loadBookBaseline(sb),
-            ]).then(function(res) {
+            ]).then(function(pair) {
+                var f = pair[0];
+                setFeeds(f);
+                var res = FEEDS.map(function(n) { return f.rows[n]; }).concat([pair[1]]);
                 var nav = res[0];
                 if (Array.isArray(nav) && nav.length) {
                     nav = nav.slice().sort(function(a, b) {
@@ -184,7 +191,7 @@ export function PerformanceSuite() {
                     }) : row;
                 }));
                 var cmd = Array.isArray(res[2]) ? res[2][0] : res[2];
-                setCmdData(cmd || MOCK_COMMAND);
+                setCmdData(cmd || null);
                 var home = res[3] || [];
                 setHomeData(home);
                 setTxData(res[4] || []);
@@ -339,9 +346,15 @@ export function PerformanceSuite() {
     var hasNav  = navSeries && navSeries.length > 1;
     var hasPerf = perfData  && perfData.length  > 0;
 
-    if (!hasNav && !hasPerf) return h(EmptyState, null);
+    if (!hasNav && !hasPerf) {
+        // Both primary feeds empty is an answer; either one failing is not.
+        if (feedFailed(feeds.states, 'vw_portfolio_nav_daily') || feedFailed(feeds.states, 'vw_performance_suite'))
+            return h('div', null, h(FeedNotice, { problems: feeds.problems }),
+                     h(FeedFailed, { view: 'The performance feeds' }));
+        return h(EmptyState, null);
+    }
 
-    var cmd = cmdData || MOCK_COMMAND;
+    var cmd = cmdData || {};
     var m   = metrics;
 
     // Every statistic is gated on the history it needs (headlineStats.js): a
@@ -563,5 +576,5 @@ export function PerformanceSuite() {
         }, h(AdvancedChart, { navSeries: navSeries, active: activeTab === 'charts' }))
         : null;
 
-    return h('div', null, kpiBar, tabBar, panel, chartsPanel);
+    return h('div', null, h(FeedNotice, { problems: feeds.problems }), kpiBar, tabBar, panel, chartsPanel);
 }

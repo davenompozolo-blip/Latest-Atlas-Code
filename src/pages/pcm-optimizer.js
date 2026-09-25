@@ -194,7 +194,7 @@ export function benchmarkConstrained(means, cov, concentrationLimit) {
 }
 
 // ── Factor exposure computation ───────────────────────────────────────────────
-// Returns factor score array matching MOCK_PCM_FACTORS shape.
+// Returns a factor score array: [{ factor, score, direction }].
 // positions: [{ symbol, market_value }]
 // histBySymbol: { SYMBOL: [{ close }, ...] } — chronological order
 
