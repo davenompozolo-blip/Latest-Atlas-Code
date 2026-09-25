@@ -423,11 +423,15 @@ export default async function handler(req, res) {
         // one NAV, read off the same view the headroom figures come from
         const navUsd = (headroom || []).length ? num(headroom[0].nav_usd) : null;
 
-        res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
+        // An incomplete tape (a page failed or the cap was hit) is cached
+        // briefly, like nexus-theme's degraded answer: a transient read
+        // failure must not keep series missing for the full TTL.
+        const tapeComplete = prices != null && !prices.truncated;
+        res.setHeader('Cache-Control', tapeComplete ? 's-maxage=900, stale-while-revalidate=3600' : 's-maxage=60');
         // tapeAvailable separates "the price feed did not answer" from "this
         // name has no bars in the window" -- the second is a fact about the
         // name, the first must never be rendered as one.
-        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, tapeAvailable: prices != null, tapeComplete: prices != null && !prices.truncated, funding, diagnostics, cortex, sleeves, navUsd });
+        return res.status(200).json({ ok: true, asOf: new Date().toISOString(), docket, series, tapeAvailable: prices != null, tapeComplete, funding, diagnostics, cortex, sleeves, navUsd });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'bench error', docket: [], series: {}, diagnostics: [] });
     }

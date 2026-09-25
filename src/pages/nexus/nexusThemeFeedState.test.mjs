@@ -32,3 +32,9 @@ test('healthy', () => {
     assert.equal(s.state, MOMENTUM_OK);
     assert.equal(s.text, null);
 });
+
+test('a truncated tape with nothing measured is partial, never empty', () => {
+    const s = momentumFeedState({ loaded: true, degraded: ['prices_partial'] }, [{ momentum5d: null }]);
+    assert.equal(s.state, MOMENTUM_PARTIAL);
+    assert.doesNotMatch(s.text, /no theme has a priced tape/);
+});

@@ -497,8 +497,14 @@ export function momentumFeedState(series, rows) {
         };
     }
     const measured = (rows || []).filter(r => r.momentum5d != null).length;
+    const partial = (series.degraded || []).includes('prices_partial');
+    // A truncated tape cannot establish that nothing is priced: the unread
+    // pages may hold every missing series.
+    if (!measured && partial) {
+        return { state: MOMENTUM_PARTIAL, text: 'No momentum measured on the part of the price tape that arrived — the feed truncated, so this is not a reading about the themes.' };
+    }
     if (!measured) return { state: MOMENTUM_EMPTY, text: 'No momentum measured — no theme has a priced tape in the window.' };
-    if ((series.degraded || []).includes('prices_partial')) {
+    if (partial) {
         return { state: MOMENTUM_PARTIAL, text: 'Momentum computed on a partial price tape — the feed truncated; treat as provisional.' };
     }
     return { state: MOMENTUM_OK, text: null };

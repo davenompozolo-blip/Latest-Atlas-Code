@@ -6589,8 +6589,12 @@ composite, and aged past the 14-day trust gate; 18 names had never been valued.
 The chain row said `success` -- the handler writes no `sync_log` row of its own.
 
 Now a **budgeted rolling refresh**: the union of every account's holdings (75
-names), oldest ATTEMPT first, paced 8s after a live fetch and 0.25s after a
-cache hit, stopping at 240s; daily at 06:05 instead of weekly. Ordered by
+names), oldest ATTEMPT first, paced 13s after a live fetch and 0.25s after a
+cache hit, stopping at 240s; daily at 06:05 instead of weekly. 13s, not the
+8s first shipped: after its seven parallel calls `/api/equity` also fetches
+metrics for up to five peers, so a live symbol is **twelve** calls (caught by
+CodeRabbit on PR #835). A failed attempt is stamped too, or a persistent
+failure heads every run and eats the budget. Ordered by
 attempt (`updated_at`), not success (`last_run_at`): funds never value and are
 stored as `us_equity`, so by last success they would head the queue every run
 and starve it. Answers 503 when it wrote nothing. First run: ARM, a

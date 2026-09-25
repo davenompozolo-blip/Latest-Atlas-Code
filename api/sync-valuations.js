@@ -28,7 +28,7 @@
 //
 // Now: the scope is the UNION of every account's holdings; names are taken
 // oldest attempt first; after a live fundamentals fetch the job waits
-// FINNHUB_PACE_MS (7 calls at <= 60/min), after a cache hit barely at all; and
+// paceFor(tk) (up to 12 calls at <= 60/min), after a cache hit barely at all; and
 // it stops at RUN_BUDGET_MS, inside the 300s maxDuration. A name that fails to
 // hydrate keeps its composite and retries on its next turn. Run daily,
 // the book turns over in a few days -- well inside the 14-day trust window --
@@ -88,7 +88,12 @@ function buildSeries(daily) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-const FINNHUB_PACE_MS = 8000;   // 7 calls per live symbol, kept under 60/min
+// /api/equity makes 7 parallel Finnhub calls per symbol candidate, then one
+// metric call for each of up to 5 peers: 12 for an unsuffixed ticker. A
+// suffixed ticker (a foreign listing) can try several candidates, so it is
+// paced for three. 13s x 12 calls keeps successive symbols under 60/min.
+const FINNHUB_PACE_MS = 13000;
+const paceFor = tk => (String(tk).includes('.') ? 3 : 1) * FINNHUB_PACE_MS;
 const CACHED_PACE_MS = 250;     // a cache hit spends no Finnhub budget
 const RUN_BUDGET_MS = 240000;   // stop starting new names here (maxDuration 300s)
 
@@ -108,6 +113,29 @@ async function bookUniverse() {
         for (const r of await hr.json()) { const tk = (r.tk || '').toUpperCase(); if (tk) all.add(tk); }
     }
     return { tickers: [...all].sort(), portfolios: ids.length };
+}
+
+// Record an attempt without touching valuation fields: PATCH the existing row;
+// only a never-seen ticker gets a new row. A failed stamp is logged, never
+// thrown -- it costs ordering, not correctness.
+async function stampAttempt(tk, ts) {
+    try {
+        const pr = await fetch(SB_URL + '/rest/v1/scrapbook_companies?ticker=eq.' + encodeURIComponent(tk), {
+            method: 'PATCH',
+            headers: { ...sbHeaders(SB_KEY), Prefer: 'return=representation' },
+            body: JSON.stringify({ updated_at: ts }),
+        });
+        if (!pr.ok) throw new Error('PATCH ' + pr.status);
+        if ((await pr.json()).length) return;
+        const ir = await fetch(SB_URL + '/rest/v1/scrapbook_companies', {
+            method: 'POST',
+            headers: { ...sbHeaders(SB_KEY), Prefer: 'return=minimal' },
+            body: JSON.stringify([{ ticker: tk, company_name: tk, updated_at: ts }]),
+        });
+        if (!ir.ok) throw new Error('POST ' + ir.status);
+    } catch (e) {
+        console.error('[sync-valuations] could not stamp attempt for ' + tk + ': ' + e.message);
+    }
 }
 
 // Oldest ATTEMPT first -- updated_at, which the write below stamps even when
@@ -262,8 +290,13 @@ export default async function handler(req, res) {
         } catch (e) {
             summary.errors++;
             summary.results.push({ tk, error: e.message });
+            // The queue orders on the last ATTEMPT. A name that fails before
+            // the company upsert (say /api/equity 5xx) must still be stamped,
+            // or it heads every run and a few persistent failures consume the
+            // whole budget.
+            await stampAttempt(tk, runTs);
         }
-        await sleep(liveFetch ? FINNHUB_PACE_MS : CACHED_PACE_MS);
+        await sleep(liveFetch ? paceFor(tk) : CACHED_PACE_MS);
     }
     summary.remaining = tickers.length - summary.attempted;
     summary.kept_names = summary.results.filter(r => r.kept).map(r => r.tk);

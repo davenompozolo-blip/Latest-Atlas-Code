@@ -405,7 +405,9 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     useOnce(ok => {
         loadViewState('vw_portfolio_home').then(r => {
             if (!ok(true)) return;
-            setHomeFailed(r.state === 'failed');
+            // A capped read is as untrustworthy for a book total as a failed
+            // one: P&L over a partial book understates by the missing rows.
+            setHomeFailed(r.state === 'failed' || r.state === 'partial');
             setHomeRows(r.rows);
         });
         loadView('vw_performance_suite', []).then(r => ok(true) && setPerfRows(r || []));
@@ -663,7 +665,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     }, [candleDisabled, evType]);
 
     const loading = homeRows == null;
-    const BOOK_FAILED = 'The book feed did not answer — no P&L is shown. This is a transport failure, not a reading about the book.';
+    const BOOK_FAILED = 'The book feed did not answer in full — no P&L is shown. This is a transport failure, not a reading about the book.';
     const totalPnl = cut.total;
     const isPctMode = valMode === '%';
 
@@ -677,7 +679,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                 e('div', { className: 'nf-card-h' },
                     e('div', null, e('h3', null, 'Sector P&L bridge'),
                         e('div', { className: 'nf-sub', style: { marginTop: 4 } },
-                            'ordered to match the beat 03 strip · covered ' + Math.round(cut.covered * 100) + '% of book MV')),
+                            'ordered to match the beat 03 strip' + (homeFailed ? '' : ' · covered ' + Math.round(cut.covered * 100) + '% of book MV'))),
                     e('div', { style: { display: 'flex', gap: 8 } },
                         e(Pills, { options: [{ value: '$', label: '$' }, { value: '%', label: '%' }], value: valMode, onChange: setValMode }),
                         e(Pills, {
@@ -702,6 +704,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                 e('div', { className: 'nf-sub', style: { marginBottom: 8 } },
                     'implied = Σ β_f × today\'s factor move × sector MV — the β and moves are beat 03\'s own values'
                     + (betasAsOf ? ' (prices to ' + betasAsOf + ')' : '')),
+                homeFailed ? e('div', { className: 'nb-empty' }, BOOK_FAILED) :
                 e('div', { className: 'nf-table-scroll' },
                     e('table', { className: 'nf-table' },
                         e('thead', null, e('tr', null,
@@ -715,7 +718,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                                 e('td', { className: 'nf-mono-cell ' + (pending ? 't3' : toneOf(r.residual)) },
                                     pending ? '— ' + pendingReason : money(r.residual)));
                         })))),
-                e(ReadLine, { tag: 'Transmission read' }, tRead.text))),
+                homeFailed ? null : e(ReadLine, { tag: 'Transmission read' }, tRead.text))),
 
         // ═══ BEAT 06 — Name impact ═══
         e(BeatHead, { no: '06', title: 'Name impact', why: 'The residual from beat 05 has to belong to somebody. Same period cut by name, with flagged sectors carried through so the funnel does not restart.' }),

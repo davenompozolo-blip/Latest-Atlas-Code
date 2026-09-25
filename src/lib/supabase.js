@@ -31,7 +31,14 @@ export async function loadViewState(viewName) {
     try {
       const { data, error } = await supabase.from(viewName).select('*')
       if (error) throw error
-      return data && data.length ? { state: 'ok', rows: data } : { state: 'empty', rows: [] }
+      if (!data || !data.length) return { state: 'empty', rows: [] }
+      // PostgREST caps a response at 1,000 rows whatever the query asks, so a
+      // full page is a truncation that looks like a success. Report it.
+      if (data.length >= 1000) {
+        console.error(`[ATLAS] ${viewName} returned ${data.length} rows -- at the response cap, treated as partial`)
+        return { state: 'partial', rows: data }
+      }
+      return { state: 'ok', rows: data }
     } catch (e) {
       lastErr = e
     }
