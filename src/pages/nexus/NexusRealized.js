@@ -20,7 +20,7 @@
 
 import React from 'react';
 import Plotly from 'plotly.js-dist-min';
-import { sb, loadView } from '../config.js';
+import { sb, loadView, loadViewState } from '../config.js';
 import { computeBrinsonAttribution, BENCHMARKS, verdictForEffect, RETURN_SINCE_ENTRY } from '../../lib/attributionEngine.js';
 import {
     alignSeries, computeMetrics, rollingBeta, makeRequestGate,
@@ -393,6 +393,9 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     const [period, setPeriod] = useState('1d');
     const [valMode, setValMode] = useState('$');
     const [homeRows, setHomeRows] = useState(null);
+    // 'failed' is a transport fact: the book read was cancelled or refused.
+    // It must never render as "no P&L" -- that is a statement about the book.
+    const [homeFailed, setHomeFailed] = useState(false);
     const [perfRows, setPerfRows] = useState(null);
     const [navRows, setNavRows] = useState(null);
     const [residHist, setResidHist] = useState(null); // null = loading/unavailable
@@ -400,7 +403,11 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     const [streakInfo, setStreakInfo] = useState(null); // { symbol, streak }
 
     useOnce(ok => {
-        loadView('vw_portfolio_home', []).then(r => ok(true) && setHomeRows(r || []));
+        loadViewState('vw_portfolio_home').then(r => {
+            if (!ok(true)) return;
+            setHomeFailed(r.state === 'failed');
+            setHomeRows(r.rows);
+        });
         loadView('vw_performance_suite', []).then(r => ok(true) && setPerfRows(r || []));
         loadView('vw_portfolio_nav_daily', []).then(r => ok(true) && setNavRows(r || []));
         if (sb) {
@@ -656,6 +663,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
     }, [candleDisabled, evType]);
 
     const loading = homeRows == null;
+    const BOOK_FAILED = 'The book feed did not answer — no P&L is shown. This is a transport failure, not a reading about the book.';
     const totalPnl = cut.total;
     const isPctMode = valMode === '%';
 
@@ -680,6 +688,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                             ], value: period, onChange: setPeriod,
                         }))),
                 loading ? e('div', { className: 'nb-empty' }, 'Loading book…')
+                    : homeFailed ? e('div', { className: 'nb-empty' }, BOOK_FAILED)
                     : e(WaterfallSvg, { items: wfItems, total: isPctMode && cut.totalMv ? totalPnl * 100 / cut.totalMv : totalPnl, isPct: isPctMode })),
             e('div', { className: 'nf-card nf-fade' },
                 e('div', { className: 'nf-card-h' },
@@ -726,10 +735,11 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
                     e(Pills, { options: [{ value: 'bars', label: 'Bars' }, { value: 'heat', label: 'Heatmap' }], value: nameView, onChange: setNameView }),
                     nameView === 'heat' ? e(Pills, { options: [{ value: 'daily_change_pct', label: 'Day %' }, { value: 'unrealised_return_pct', label: 'Total' }], value: heatKey, onChange: setHeatKey }) : null)),
             loading ? e('div', { className: 'nb-empty' }, 'Loading book…')
+                : homeFailed ? e('div', { className: 'nb-empty' }, BOOK_FAILED)
                 : nameView === 'bars'
                     ? e(NameBars, { bars, isPct: isPctMode, totalMv: cut.totalMv })
                     : e(Heatmap, { rows: heatRows, colourKey: heatKey }),
-            e(ReadLine, { tag: 'Name read' }, nRead)),
+            homeFailed ? null : e(ReadLine, { tag: 'Name read' }, nRead)),
 
         // ═══ BEAT 07 — Decision scorecard ═══
         e(BeatHead, { no: '07', title: 'Decision scorecard', why: 'Nexus makes exactly two kinds of call: where to sit (beat 02) and what to own (beat 04). Brinson grades those two engines separately.' }),

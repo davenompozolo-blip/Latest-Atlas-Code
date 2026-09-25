@@ -6529,6 +6529,83 @@ the 10-Q form set, a ~90-day window, and a period key carrying a quarter rather
 than a fiscal year, since the three statements must still share a period end.
 **Engineering, and free. Not a reason to buy a plan.**
 
+### "Pending sync" was a timeout, on both accounts (2026-09-25)
+
+Reported from the terminal on both accounts at ~22:58 UTC: the Theme page read
+*"Momentum pending — price history syncing"* on every theme, the Bench *"No
+price series in window"* and *"vol trigger: no readings"*, the realized layer
+*"No sector P&L for this period yet"*. Every one was a query cancelled at the
+3s anon cap (`57014`), reproduced live. None was a sync delay, and none was
+Secondary's short history -- the same panels failed on the default account.
+
+**The book price read walked the whole universe.** Theme and Bench filtered
+`price_history` through `assets!inner(symbol)&assets.symbol=in.(...)`, and with
+a literal id list the planner walks `idx_price_history_price_date` across all
+~1,900 symbols and discards ~96%: **12,260 buffers at page 0, 67,965 at offset
+3000** -- fast warm, over the cap cold. `src/lib/bookPriceRead.js` resolves ids
+first and orders **asset-major**, so `idx_price_history_asset_interval_date`
+serves each page with no sort: **714 and 2,778**. Theme momentum and betas are
+identical to production on all 17 themes. The price of asset-major order is
+that a truncation drops whole trailing NAMES rather than the oldest dates, so
+both handlers REPORT a cap or failed page (`pricesComplete`, `tapeComplete`)
+-- **an ordering that changes what a truncation loses must change what the
+caller reports.** `bookPriceRead.test.mjs` fails any handler that brings the
+embed filter back.
+
+**A degraded 200 was cached for six hours.** `nexus-theme` answered a failed
+price read with `200` and every momentum null, under `s-maxage=21600`; the log
+shows the MISS at 22:57:32 and a cache HIT after it. Failure is now `503
+no-store`, a partial answer caches 60s, and `theme-leadership-snapshot` refuses
+a partial tape (it writes an append-only weekly history). **Cache TTL is part
+of the failure path**: a wrong answer cached is wrong for the whole TTL.
+
+**`vw_holding_vol_latest` was `DISTINCT ON` over 468,607 rows / 1,918
+symbols** and timed out on every call on both accounts -- and even a successful
+read was PostgREST-capped at the first 1,000 of 1,918 symbols, so held names
+past the cut never had a reading. Book-scoped LATERAL top-1, `EXCEPT ALL` both
+ways 0 on the held set, ~0.3s. Secondary got 37 readings at once: a vol
+reading is a fact about the stock.
+
+Clients now keep failed / empty / partial / loading apart:
+`momentumFeedState` (Theme), `tapeAvailable` (Bench), and
+**`loadViewState`** in `src/lib/supabase.js` -- `loadView` returns its fallback
+on ANY error, so a caller cannot tell "no rows" from "cancelled". 31 callers use
+`loadView`; the realized layer is moved, the rest are flagged, not migrated.
+
+**The screenshots were taken inside the nightly chain window (22:00-23:50).**
+Steady state `vw_portfolio_home` answers in 0.7-1.0s; during the chain it was
+1.9-2.5s. Interactive reads compete with the heaviest jobs of the day, so **a
+read that clears the cap by less than ~3x at noon is not safe at 23:00.**
+
+### Valuations were rate-limited to 0% trust, platform-wide (2026-09-25)
+
+The Bench's `fv_trustworthy 0/38` on Secondary looked like a young account. It
+was **0 of 67 on the default account too.** `api/sync-valuations.js` ran weekly
+over the DEFAULT book only, starting a symbol every 1.2s -- and `/api/equity`
+makes **seven Finnhub calls per uncached symbol, in parallel**, ~350 a minute
+against a 60/min free tier. On 2026-09-21, **44 of 66 tickers failed to
+hydrate** (`shares_unhydrated` / `missing_book_value`), kept their old
+composite, and aged past the 14-day trust gate; 18 names had never been valued.
+The chain row said `success` -- the handler writes no `sync_log` row of its own.
+
+Now a **budgeted rolling refresh**: the union of every account's holdings (75
+names), oldest ATTEMPT first, paced 8s after a live fetch and 0.25s after a
+cache hit, stopping at 240s; daily at 06:05 instead of weekly. Ordered by
+attempt (`updated_at`), not success (`last_run_at`): funds never value and are
+stored as `us_equity`, so by last success they would head the queue every run
+and starve it. Answers 503 when it wrote nothing. First run: ARM, a
+Secondary-only name never valued before, got its composite.
+
+**This is the scaling shape for anything behind a vendor quota**: size the run
+to the quota, order by staleness, run often. Adding accounts deepens the queue;
+it does not break the job.
+
+**History-bound on Secondary, verified rather than assumed:** contribution
+(needs two priced sessions; 37 of 38 read `no_priced_position_days`, BCHUSD
+`no_transaction_history` as a crypto transfer), and verdicts / segments / factor
+betas / VaR backtest (MP-4e). Everything else on its screenshots was a timeout
+or the valuation quota.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

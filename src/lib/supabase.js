@@ -18,6 +18,28 @@ export const supabase = supabaseAnonKey
 // Legacy alias used throughout existing pages
 export const sb = supabase
 
+// loadView's contract swallows every failure into `fallback`, so a caller
+// cannot tell "the view answered with nothing" from "the query was cancelled
+// at the 3s anon cap" -- and the Nexus realized layer printed "No sector P&L
+// for this period yet" for the second (2026-09-24, inside the nightly chain
+// window). loadViewState keeps the three apart. One retry on failure: a cold
+// buffer cache can cost the first attempt the cap, and the second is warm.
+export async function loadViewState(viewName) {
+  if (!supabase) return { state: 'failed', rows: [], error: 'no supabase client' }
+  let lastErr = null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { data, error } = await supabase.from(viewName).select('*')
+      if (error) throw error
+      return data && data.length ? { state: 'ok', rows: data } : { state: 'empty', rows: [] }
+    } catch (e) {
+      lastErr = e
+    }
+  }
+  console.error(`[ATLAS] ${viewName} did not answer:`, (lastErr && lastErr.message) || lastErr)
+  return { state: 'failed', rows: [], error: (lastErr && lastErr.message) || String(lastErr) }
+}
+
 export async function loadView(viewName, fallback = []) {
   if (!supabase) return fallback
   try {

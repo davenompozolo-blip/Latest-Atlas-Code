@@ -15,8 +15,24 @@
 //      EVERY attempted method (dropped ones carry implied_price=null +
 //      drop_reason), and the composite onto the company.
 //
-// Trigger: Vercel Cron (GET, weekly) or manual POST with ?token=CRON_SECRET.
-// Throttle keeps us under Finnhub's ~60/min free tier.
+// Trigger: pg_cron via atlas_chain_dispatch (daily), or manual with
+// ?token=CRON_SECRET.
+//
+// BUDGETED, STALEST-FIRST (2026-09-25). This ran weekly over the default
+// account's book with a fixed 1.2s gap per ticker. /api/equity makes SEVEN
+// Finnhub calls per uncached symbol, in parallel, so that paced ~350 calls a
+// minute against the free tier's 60: on 2026-09-21, 44 of 66 tickers failed
+// to hydrate (shares_unhydrated / missing_book_value), kept their old
+// composite, and fv_trustworthy read 0 of 67 on the default account and 0 of
+// 38 on Secondary. Nothing reported it -- the chain row said success.
+//
+// Now: the scope is the UNION of every account's holdings; names are taken
+// oldest attempt first; after a live fundamentals fetch the job waits
+// FINNHUB_PACE_MS (7 calls at <= 60/min), after a cache hit barely at all; and
+// it stops at RUN_BUDGET_MS, inside the 300s maxDuration. A name that fails to
+// hydrate keeps its composite and retries on its next turn. Run daily,
+// the book turns over in a few days -- well inside the 14-day trust window --
+// and more accounts cost queue depth, not correctness.
 
 import { runValuation } from '../src/lib/valuationEngine.js';
 
@@ -72,6 +88,46 @@ function buildSeries(daily) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+const FINNHUB_PACE_MS = 8000;   // 7 calls per live symbol, kept under 60/min
+const CACHED_PACE_MS = 250;     // a cache hit spends no Finnhub budget
+const RUN_BUDGET_MS = 240000;   // stop starting new names here (maxDuration 300s)
+
+// Every registered portfolio's holdings, unioned. nexus_holdings is scoped by
+// x-atlas-portfolio (MP-0); read without it, it is the default account only,
+// which is how a Secondary-only name could never be valued. Any account's read
+// failing fails the run -- a silently smaller scope is the defect.
+async function bookUniverse() {
+    const pr = await fetch(SB_URL + '/rest/v1/vw_portfolios?select=id', { headers: sbHeaders(SB_KEY) });
+    if (!pr.ok) throw new Error('vw_portfolios ' + pr.status);
+    const ids = (await pr.json()).map(r => r.id).filter(Boolean);
+    if (!ids.length) throw new Error('no portfolios visible');
+    const all = new Set();
+    for (const id of ids) {
+        const hr = await fetch(SB_URL + '/rest/v1/nexus_holdings?select=tk', { headers: { ...sbHeaders(SB_KEY), 'x-atlas-portfolio': id } });
+        if (!hr.ok) throw new Error('nexus_holdings ' + hr.status + ' for portfolio ' + id);
+        for (const r of await hr.json()) { const tk = (r.tk || '').toUpperCase(); if (tk) all.add(tk); }
+    }
+    return { tickers: [...all].sort(), portfolios: ids.length };
+}
+
+// Oldest ATTEMPT first -- updated_at, which the write below stamps even when
+// hydration fails -- with never-attempted names leading. Not oldest SUCCESS:
+// a fund has no fundamentals and never values (ACWX, BOND, SHY ... all stored
+// as us_equity, so no field says so), and ordered by last_run_at it would head
+// the queue every run and burn the budget. By attempt, it takes its turn and
+// retries once a rotation, like a transient 429 does.
+async function stalestFirst(tickers) {
+    const quoted = tickers.map(t => /[,.()"\s:]/.test(t) ? '"' + t.replace(/"/g, '\\"') + '"' : t);
+    const r = await fetch(SB_URL + '/rest/v1/scrapbook_companies?select=ticker,updated_at&ticker=in.(' + quoted.join(',') + ')',
+        { headers: sbHeaders(SB_KEY) });
+    if (!r.ok) throw new Error('scrapbook_companies ' + r.status);
+    const last = new Map((await r.json()).map(c => [c.ticker, c.updated_at || null]));
+    return tickers.slice().sort((a, b) => {
+        const la = last.get(a) || '', lb = last.get(b) || '';
+        return la < lb ? -1 : la > lb ? 1 : (a < b ? -1 : 1);
+    });
+}
+
 export default async function handler(req, res) {
     // Auth — Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}`; manual
     // callers can pass ?token=. If no secret is configured, allow (dev only).
@@ -93,18 +149,19 @@ export default async function handler(req, res) {
     const q = req.query || {};
     const limit = Math.min(Number(q.limit) || 0, 200);
     const offset = Math.max(Number(q.offset) || 0, 0);
-    const throttleMs = Number(process.env.SYNC_THROTTLE_MS || q.throttle || 1200);
+    const t0 = Date.now();
 
-    // 1. Live book
-    let tickers;
+    // 1. Every account's book, stalest valuation first.
+    let tickers, portfolios;
     try {
-        const hr = await fetch(SB_URL + '/rest/v1/nexus_holdings?select=tk', { headers: sbHeaders(SB_KEY) });
-        if (!hr.ok) throw new Error('nexus_holdings ' + hr.status);
-        const rows = await hr.json();
-        tickers = [...new Set(rows.map(r => (r.tk || '').toUpperCase()).filter(Boolean))].sort();
+        const u = await bookUniverse();
+        portfolios = u.portfolios;
+        tickers = await stalestFirst(u.tickers);
     } catch (e) {
-        return res.status(502).json({ error: 'Failed to read nexus_holdings: ' + e.message });
+        console.error('[sync-valuations] scope unavailable: ' + e.message);
+        return res.status(502).json({ error: 'Failed to read the book: ' + e.message });
     }
+    const universe = tickers.length;
     if (offset || limit) tickers = tickers.slice(offset, limit ? offset + limit : undefined);
 
     // 2. Live risk-free
@@ -112,15 +169,20 @@ export default async function handler(req, res) {
 
     const runTs = new Date().toISOString();
     const runDate = runTs.slice(0, 10);
-    const summary = { run_at: runTs, risk_free: rf, scope: tickers.length, valued: 0, dropped: 0, kept: 0, errors: 0, results: [] };
+    const summary = { run_at: runTs, risk_free: rf, portfolios, universe, scope: tickers.length, attempted: 0, remaining: 0, valued: 0, dropped: 0, kept: 0, errors: 0, results: [] };
 
-    // 3 + 4. Per-ticker hydrate → engine → headless write
+    // 3 + 4. Per-ticker hydrate → engine → headless write, inside the budget.
     for (const tk of tickers) {
+        if (Date.now() - t0 > RUN_BUDGET_MS) break;
+        summary.attempted++;
+        let liveFetch = true;
         try {
             const eqResp = await fetch(origin + '/api/equity?endpoint=combined&symbol=' + encodeURIComponent(tk),
                 { signal: AbortSignal.timeout(20000) });
             if (!eqResp.ok) throw new Error('equity ' + eqResp.status);
             const payload = await eqResp.json();
+            const ch = payload.cache_hits && payload.cache_hits.overview;
+            liveFetch = !(ch === 'db' || ch === 'mem');
             const series = buildSeries(payload.daily);
 
             const val = runValuation(payload, series, { riskFreeRate: rf != null ? rf : undefined });
@@ -201,8 +263,15 @@ export default async function handler(req, res) {
             summary.errors++;
             summary.results.push({ tk, error: e.message });
         }
-        if (throttleMs) await sleep(throttleMs);
+        await sleep(liveFetch ? FINNHUB_PACE_MS : CACHED_PACE_MS);
     }
-
-    return res.status(200).json(summary);
+    summary.remaining = tickers.length - summary.attempted;
+    summary.kept_names = summary.results.filter(r => r.kept).map(r => r.tk);
+    if (summary.kept || summary.errors) {
+        console.error('[sync-valuations] ' + summary.kept + ' names failed to hydrate, ' + summary.errors + ' errored: '
+            + summary.results.filter(r => r.kept || r.error).map(r => r.tk + (r.error ? '(' + r.error + ')' : '')).join(', ').slice(0, 800));
+    }
+    // Nothing written at all is not a success (the no-op-answers-200 rule).
+    const wrote = summary.results.some(r => !r.error && !r.kept);
+    return res.status(wrote ? 200 : 503).json(summary);
 }
