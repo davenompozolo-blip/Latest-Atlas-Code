@@ -28,13 +28,15 @@
 //
 // Now: the scope is the UNION of every account's holdings; names are taken
 // oldest attempt first; after a live fundamentals fetch the job waits
-// paceFor(tk) (up to 12 calls at <= 60/min), after a cache hit barely at all; and
+// a rolling 60/min Finnhub window reserved per symbol BEFORE its fetch, released
+// on a cache hit (src/lib/rateWindow.js); and
 // it stops at RUN_BUDGET_MS, inside the 300s maxDuration. A name that fails to
 // hydrate keeps its composite and retries on its next turn. Run daily,
 // the book turns over in a few days -- well inside the 14-day trust window --
 // and more accounts cost queue depth, not correctness.
 
 import { runValuation } from '../src/lib/valuationEngine.js';
+import { rateWindow } from '../src/lib/rateWindow.js';
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 
@@ -90,11 +92,12 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // /api/equity makes 7 parallel Finnhub calls per symbol candidate, then one
 // metric call for each of up to 5 peers: 12 for an unsuffixed ticker. A
-// suffixed ticker (a foreign listing) can try several candidates, so it is
-// paced for three. 13s x 12 calls keeps successive symbols under 60/min.
-const FINNHUB_PACE_MS = 13000;
-const paceFor = tk => (String(tk).includes('.') ? 3 : 1) * FINNHUB_PACE_MS;
-const CACHED_PACE_MS = 250;     // a cache hit spends no Finnhub budget
+// suffixed ticker (a foreign listing) can try up to three candidates: 26.
+// Reserved in a rolling window BEFORE the fetch -- a fixed pause after each
+// symbol bounds the average, not the window (CodeRabbit, PR #835).
+const FINNHUB_LIMIT_PER_MIN = 55;   // 60 less a margin for page views sharing the key
+const callsFor = tk => (String(tk).includes('.') ? 3 : 1) * 7 + 5;
+const CACHED_PACE_MS = 250;
 const RUN_BUDGET_MS = 240000;   // stop starting new names here (maxDuration 300s)
 
 // Every registered portfolio's holdings, unioned. nexus_holdings is scoped by
@@ -200,8 +203,12 @@ export default async function handler(req, res) {
     const summary = { run_at: runTs, risk_free: rf, portfolios, universe, scope: tickers.length, attempted: 0, remaining: 0, valued: 0, dropped: 0, kept: 0, errors: 0, results: [] };
 
     // 3 + 4. Per-ticker hydrate → engine → headless write, inside the budget.
+    const finnhub = rateWindow({ limit: FINNHUB_LIMIT_PER_MIN, windowMs: 60000 });
     for (const tk of tickers) {
-        if (Date.now() - t0 > RUN_BUDGET_MS) break;
+        const wait = finnhub.waitFor(callsFor(tk));
+        if (Date.now() + wait - t0 > RUN_BUDGET_MS) break;   // would start past the budget
+        if (wait) await sleep(wait);
+        const slot = finnhub.reserve(callsFor(tk));
         summary.attempted++;
         let liveFetch = true;
         try {
@@ -211,6 +218,7 @@ export default async function handler(req, res) {
             const payload = await eqResp.json();
             const ch = payload.cache_hits && payload.cache_hits.overview;
             liveFetch = !(ch === 'db' || ch === 'mem');
+            if (!liveFetch) finnhub.release(slot);   // served from cache: no Finnhub calls spent
             const series = buildSeries(payload.daily);
 
             const val = runValuation(payload, series, { riskFreeRate: rf != null ? rf : undefined });
@@ -296,7 +304,7 @@ export default async function handler(req, res) {
             // whole budget.
             await stampAttempt(tk, runTs);
         }
-        await sleep(liveFetch ? paceFor(tk) : CACHED_PACE_MS);
+        await sleep(CACHED_PACE_MS);
     }
     summary.remaining = tickers.length - summary.attempted;
     summary.kept_names = summary.results.filter(r => r.kept).map(r => r.tk);
