@@ -6188,7 +6188,7 @@ account" divides by what the data can support, not by table:
 |---|---|---|
 | `book_risk_daily` vol / VaR / Euler shares | **yes** | `vw_book_mctr` + `vw_risk_analysis` are request-scoped and already right |
 | verdicts, segments | **yes since MP-5** (was: not yet) | the return engine's inputs (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) are per-account `__acct` stores recomputed under each account's header; a new account's names read `one_sided` until they have priced history -- recorded nightly, not withheld |
-| factor betas, regime CVaR, VaR backtest | no | regress the account's own daily returns; there are none. `book_factor_betas` has **no writer in the database at all** -- B0/C3 estimated it outside |
+| factor betas, regime CVaR, VaR backtest | **yes since MP-6** | estimated nightly per account from its own settled returns; a new account logs `insufficient_history` until it has 60 sessions |
 
 `book_risk_daily` is keyed `(portfolio_id, as_of, logic_version)`; the column
 defaults to the default account so `atlas_write_verdicts` is unchanged except
@@ -6659,6 +6659,127 @@ to the job it was written about.
 account has one or two. They are recomputable later from
 `portfolio_equity_curve`, which is already recorded per account, so waiting
 loses nothing. `book_factor_betas` also still has no writer in the database.
+
+### The factor layer is estimated per account, and it had no writer (MP-6, 2026-09-25)
+
+`book_factor_betas` had **no writer in the database**: B0 and C3 estimated it
+outside and inserted coefficients, the last set on 2026-09-09 on a window ending
+2026-09-04. So every consumer -- the regime CVaR, the VaR backtest, the drift
+gate, Nexus's axis and book-vs-market panels -- has read betas **three weeks
+stale** on the default account, and none at all on any other.
+
+`atlas_book_factor_betas_estimate()` is the C3 specification for the ACTIVE
+account and `atlas_write_book_factor_betas()` (cron 23:42 Mon-Sat, before the
+regime CVaR that reads it) appends one set per account per new window. **It was
+proven by reproduction before it was trusted:** on the C3 sample (n = 168,
+window ending 2026-09-04) every beta, standard error, t-stat and R² agrees with
+the stored set to 1e-12.
+
+**The standard errors are Newey-West with 4 lags and no small-sample scaling**,
+and nothing recorded that. Classical OLS reproduces the betas exactly and puts
+market's t at 10.14 against the published 6.93 -- same coefficients, different
+evidence, and a significance flag that could flip on it. NW lags 1-10 with and
+without the n/(n-k) scaling were tried against the stored errors; only NW(4)
+unscaled lands on 1.0000 for all five. 4 is floor(4 (n/100)^(2/9)) at both
+n = 168 and n = 174, so the rule is the usual one. **When a published figure
+carries a standard error, identify the estimator by reproduction too, not only
+the coefficients.**
+
+`atlas_ols(y, x, nw_lag)` is the one OLS solver -- the Gauss-Jordan from the
+cluster-identity job, lifted -- and a singular design returns no rows.
+
+**60-session floor, recorded not guessed around.** Atlas Secondary logs
+`skipped / insufficient_history` nightly until it has 60 settled sessions. An
+unchanged window logs `skipped / already estimated for this window` -- the
+equity curve lands at 01:00, so most nights the first run after it is the one
+that writes.
+
+**Joining the two request-scoped views inline took over 60 s.** The planner
+nested `vw_factor_return_panel` (a window over every SPY bar plus a pivot of
+every axis score) inside the book's rows and re-evaluated it per session. Both
+are `MATERIALIZED` CTEs now: 3.5 s for the whole estimate.
+
+`book_factor_betas`, `book_regime_cvar`, `var_backtest_runs` and
+`book_model_diagnostics` carry `portfolio_id` in their keys and read policies;
+the two views MP-2 guarded (`vw_position_risk_thesis`,
+`vw_var_backtest_distribution`) filter by the active account instead. The
+regime CVaR and backtest writers loop the accounts, one `sync_log` row each,
+and skip an account with no betas rather than erroring. Proven before applying:
+under the default account the scoped functions reproduce every stored
+2026-09-24 regime-CVaR row (15/15) and 99% backtest row (8/8).
+
+**The regime-CVaR writer filled per snapshot, so a partial one was permanent.**
+It checked for ANY row at (account, as_of, version, conf) and wrote nothing if
+one existed, so an axis missing from a night's snapshot could never be repaired
+and the re-run logged `skipped`. It fills per AXIS now (`mp6b`); axes still
+absent are named in `details.axes_missing` and graded `partial`. Proven in a
+rolled-back run: a snapshot holding only `dollar` was completed, 10 written
+beside 5 present (CodeRabbit, PR #837).
+
+**An account with no estimate made `atlas_var_backtest` return 8 rows built on
+NULL betas** -- zero exceptions against no prediction, which reads as a pass.
+The writer never persisted them (it gates on a CVaR snapshot), but the function
+now returns no rows. `supabase/tests/mp6_per_account_factor_layer.sql` asserts
+it, the C3 reproduction, a singular design, and per-account isolation under anon.
+
+### PCM reads the axes as exposure and risk, never as a forecast (R-1, 2026-09-25)
+
+PCM's regime conditioning was retired with the Growth x Inflation quadrant on
+2026-09-10 and never replaced, so on both accounts the optimiser ran with a
+zeroed tilt vector and a "regime conditioning off" note. It is back, reading
+the intermarket axes directly.
+
+**The retirement's objection was right, and narrower than it looked.** It
+refused to map the axes onto Growth/Quality/Momentum/Value/LowVol tilts
+because the only bridge ran through `cyclical`, which the BOOK has no
+measurable exposure to. That is about STYLE tilts via the book's exposure.
+`cluster_identity` already fits every cluster on market plus the three axes,
+with t-stats, and 98% of each book's market value maps onto it (94% / 96%
+carrying an axis exposure with |t| > 2). Those are facts about the stocks, so a
+new account has them on day one. `vw_position_axis_exposure` publishes them per
+position for the active account, the exposure ABSENT where |t| <= 2;
+`vw_regime_axis_state` publishes today's z per axis and the active account's
+regime-CVaR bucket and vol ratio for it. Aggregated, the position exposures
+corroborate the independently estimated book betas (dollar -0.0031 vs -0.0048,
+concentration +0.0010 vs +0.0011, cyclical +0.0006 vs +0.0004).
+
+**The first design was a trend-persistence tilt, and it was measured before it
+shipped.** Exposure x recent axis drift gave tailwinds up to +0.9%/day (BE,
+CRWV) while concentration sat at +2.2 sigma. So the persistence was tested: an
+axis's mean daily score over one block against the next, over 13 years --
+**-0.005 / -0.027 / +0.007 at 20 sessions** (206 blocks), and mildly
+REVERTING at 5 (concentration -0.087, t ~ -2.5). Recent drift does not persist,
+so the tilt -- and the favourable/counter weight bounds, which were the same
+tilt by another name -- would have injected a view the axes' own history
+refutes. **Test the premise of a signal before wiring it into an allocation.**
+
+What ships (`src/lib/pcmRegime.js`, 8 tests):
+- **Exposure budget.** The optimal book may not carry more aggregate exposure
+  to an axis than the current book does -- it can reduce a bet, never pile
+  further into one. A soft penalty, zero inside every budget; in the test the
+  unconstrained optimiser took concentration exposure 0.0020 -> 0.0056 and the
+  budgeted one held 0.0022.
+- **Risk scale.** Covariance x (regime-CVaR vol ratio of today's bucket)^2, the
+  largest across the three axes, and which axis set it is reported. An account
+  with no regime CVaR yet runs at 1 and says so.
+
+**Two unit defects in the same card.** FRED publishes `BAMLH0A0HYM2` and the
+2s10s spread in PERCENT. PCM compared HY against 400 and printed "bps", so the
+credit overlay could never fire and the footer read "HY spreads 3 bps" for a
+~300 bp spread; the scan panel printed 2s10s as "+0bp" beside a chip reading
+"+0.26%". Every other page already read them as percent.
+
+**A NULL reading sorted into the TOP bucket.** `(NULL <= z_hi) desc` puts the
+NULL first in a DESC sort and the `else -bucket` branch then picks the highest
+bucket, so an axis with no z on the latest date would have published regime 4
+and fed its vol ratio into the risk scale (CodeRabbit, PR #837; `r1b`). And
+`aggregateExposure` seeded every axis at 0, so an axis no held name measures
+printed `+0.0` exposure with a `cap ±0.0` -- absent now, with no budget.
+
+**A column of zeros was rendered as winners and losers.** With no overlay
+firing every macro alignment is exactly 0, and the card split the list in half
+by position -- 18 green "+0.00" names above 20 red "0.00" names. `splitRanked`
+drops zeros from both ends and the card says there is no ranking to show.
 
 ### Two ledger defects only a notional order could produce (2026-09-25)
 

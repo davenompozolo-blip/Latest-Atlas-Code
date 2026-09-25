@@ -7,13 +7,12 @@
 //
 // The banner is not decoration. On a non-default account the live book --
 // positions, P&L, account, live risk -- follows the switch, but the nightly
-// factor layer (factor betas, regime CVaR, VaR backtest) is computed for the
-// DEFAULT portfolio only -- it regresses an account's own daily returns, which
-// a new account does not have yet -- and the database withholds it rather than
-// attach it to the wrong book. Conviction (MP-4d), contribution (MP-4f) and
-// position / segment verdicts (MP-5) are per account.
-// Without the banner those withheld panels would read as "no data" with
-// nothing to say why. It also names the account an order will execute in:
+// factor layer (factor betas, regime CVaR, VaR backtest) regresses an
+// account's OWN daily returns, and is estimated per account (MP-6) only once
+// it has 60 settled sessions. Conviction (MP-4d), contribution (MP-4f) and
+// position / segment verdicts (MP-5) are per account too.
+// Without the banner a young account's empty factor panels would read as
+// "no data" with nothing to say why. It also names the account an order will execute in:
 // since MP-3, trading follows the switch.
 
 import React from 'react';
@@ -144,7 +143,7 @@ export function PortfolioBanner() {
     return e('div', { role: 'status', style: bar },
         e('strong', null, 'Viewing ' + st.active.name + '. '),
         'Positions, P&L, account, live risk, contribution, the holdings analytics and the nightly position and segment verdicts are this account’s. ',
-        'The factor layer — factor betas, regime CVaR and the VaR backtest — needs weeks of this account’s own daily returns, ',
-        'so it is computed for the default account only and withheld here rather than shown against the wrong book. ',
+        'The factor layer — factor betas, regime CVaR and the VaR backtest — is estimated from this account’s own daily returns ',
+        'once it has 60 settled sessions; until then those panels say it is not yet estimated. ',
         e('strong', null, 'Orders from this screen go to ' + st.active.name + '.'));
 }

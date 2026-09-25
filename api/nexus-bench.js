@@ -396,6 +396,16 @@ export default async function handler(req, res) {
             // partial chart read as the whole book
             navCoveragePct: (contribView || []).length ? num(contribView[0].nav_coverage_pct) : null,
             contribUncovered: (contribView || []).filter(r => !r.covered).length,
+            // WHY each uncovered name is uncovered. The strip used to print
+            // every uncovered name as "no transaction history", so a new
+            // account's 38 names, all held one session, read as missing a
+            // ledger they have.
+            contribUncoveredReasons: (contribView || []).filter(r => !r.covered)
+                .reduce((acc, r) => {
+                    const k = r.coverage_reason || 'unspecified';
+                    acc[k] = (acc[k] || 0) + 1;
+                    return acc;
+                }, {}),
             contribCovered: (contribView || []).filter(r => r.covered).length,
             docketJudged: (docketView || []).length,
             volRows: (volRows || []).length,

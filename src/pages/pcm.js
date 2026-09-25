@@ -15,8 +15,9 @@ import { Loading } from './components.js';
 import {
     computeFactorScores, computePortfolioMetrics, computeRiskRows,
     buildOptimizerInputs, runOptimizer,
-    fetchMacroSignals, runAtlasAdaptive, computeRegimeScores,
+    fetchMacroSignals, runAtlasAdaptive,
 } from './pcm-optimizer.js';
+import { AXES, exposuresBySymbol, aggregateExposure, pctToBps } from '../lib/pcmRegime.js';
 
 const { useState, useEffect, useRef } = React;
 const h = React.createElement;
@@ -290,7 +291,7 @@ function MacroContextCard({ ctx }) {
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 } },
             h('div', { style: { width: 10, height: 10, borderRadius: '50%', background: 'var(--text-3)', flexShrink: 0 } }),
             h('div', { style: { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--text-1)' } },
-                'Macro overlays — regime conditioning off'),
+                ctx.regimeFrame ? 'Macro overlays & regime frame' : 'Macro overlays — regime frame not loaded'),
             ctx.spread2s10s != null && h('span', { className: 'chip ' + (ctx.spread2s10s < 0 ? 'chip-red' : 'chip-teal'),
                 style: { marginLeft: 'auto' } },
                 '2s10s ' + (ctx.spread2s10s >= 0 ? '+' : '') + ctx.spread2s10s.toFixed(2) + '%'
@@ -328,6 +329,12 @@ function MacroContextCard({ ctx }) {
                 h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
                                      letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 } },
                     'Macro Alignment'),
+                !(ctx.topAligned && ctx.topAligned.length) && !(ctx.botAligned && ctx.botAligned.length)
+                    ? h('div', { style: { fontSize: 10.5, color: 'var(--text-3)', lineHeight: 1.45 } },
+                        'No overlay is active, so every position\u2019s alignment is exactly 0'
+                        + (ctx.flatAligned ? ' (' + ctx.flatAligned + ' positions)' : '')
+                        + ' \u2014 there is no ranking to show.')
+                    : null,
                 (ctx.topAligned || []).map(function(item) {
                     return h('div', { key: item.sym, style: { display: 'flex', justifyContent: 'space-between',
                                                                alignItems: 'center', marginBottom: 4 } },
@@ -348,6 +355,7 @@ function MacroContextCard({ ctx }) {
                 )
             )
         ),
+        ctx.regimeFrame && h(RegimeFrameResult, { rf: ctx.regimeFrame }),
         ctx.sectorBreakdown && ctx.sectorBreakdown.length > 0 && h('div', { style: { marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-2)' } },
             h('div', { style: { fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)',
                                  letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 } },
@@ -370,7 +378,7 @@ function MacroContextCard({ ctx }) {
         ),
         h('div', { style: { marginTop: 10, fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' } },
             'Turnover aversion λ=' + (ctx.lambda ? ctx.lambda.toFixed(3) : '—') +
-            (ctx.hySpreads != null ? '  ·  HY spreads ' + ctx.hySpreads.toFixed(0) + ' bps' : '') +
+            (ctx.hySpreads != null ? '  ·  HY spreads ' + pctToBps(ctx.hySpreads).toFixed(0) + ' bps' : '') +
             (ctx.cpiYoY    != null ? '  ·  CPI YoY '   + ctx.cpiYoY.toFixed(1)    + '%'    : '')
         )
     );
@@ -474,102 +482,121 @@ function AtlasSliders({ lambdaEff, lambdaAuto, gammaEff, etaEff, onLambda, onGam
     );
 }
 
-// ─── Regime Intelligence Panel ───────────────────────────────────────────────
-var REGIME_CLASS_COLORS = { favorable: '#10b981', neutral: '#6b7280', counter: '#ef4444' };
-var REGIME_CLASS_LABELS = { favorable: '▲ Favorable', neutral: '— Neutral', counter: '▼ Counter' };
+// ─── Regime frame (R-1) ──────────────────────────────────────────────────────
+// The intermarket-axis framework as PCM reads it: today's reading on each axis
+// and each held position's MEASURED exposure to it. An exposure without
+// |t| > 2 is absent, and a position with no cluster identity is named, never
+// shown as zero. See src/lib/pcmRegime.js for why this is exposure and risk,
+// not a return tilt.
+var STATUS_TEXT = {
+    not_in_partition:    'not in the correlation partition',
+    no_cluster_identity: 'no cluster identity on file',
+    option_contract:     'option contract',
+    unknown:             'status unknown',
+};
 
-function RegimeIntelligencePanel({ macro, scores, scanning, onOverride }) {
-    if (scanning) return h('div', { className: 'atlas-card', style: { marginBottom: 16, textAlign: 'center', padding: 24 } },
-        h(Loading, { text: 'Scanning macro overlays…' })
-    );
-    if (!macro && !scores) return null;
+export async function loadRegimeFrame() {
+    if (!sb) throw new Error('no database client');
+    var r = await Promise.all([
+        sb.from('vw_position_axis_exposure').select('*'),
+        sb.from('vw_regime_axis_state').select('*'),
+    ]);
+    if (r[0].error) throw new Error('axis exposure: ' + r[0].error.message);
+    if (r[1].error) throw new Error('axis state: ' + r[1].error.message);
+    return { exposureRows: r[0].data || [], axisRows: r[1].data || [] };
+}
 
-    // The quadrant label is retired; fetchMacroSignals no longer returns one.
-    var conditioning = (macro && macro.regimeConditioning) || null;
+function fmtExposure(v) {
+    return v == null ? '·' : (v >= 0 ? '+' : '') + (v * 1e4).toFixed(1);
+}
 
-    // Summarise counts
-    var counts = { favorable: 0, neutral: 0, counter: 0 };
-    (scores || []).forEach(function(s) { counts[s.regimeClass] = (counts[s.regimeClass] || 0) + 1; });
-
+function RegimeFramePanel({ frame, loading, error }) {
+    if (loading) return h('div', { className: 'atlas-card', style: { marginBottom: 16, textAlign: 'center', padding: 24 } },
+        h(Loading, { text: 'Loading the regime frame…' }));
+    if (error) return h('div', { className: 'atlas-card', style: { marginBottom: 16 } },
+        h('div', { className: 'card-title', style: { margin: 0, marginBottom: 6 } }, '⬡ Regime frame'),
+        h('div', { style: { fontSize: 11, color: 'var(--amber)' } },
+            'The regime frame did not load (' + error + '). The optimiser will run without the exposure budget or the risk scale, and its result will say so.'));
+    if (!frame) return null;
+    var exp = exposuresBySymbol(frame.exposureRows);
+    var rows = (frame.exposureRows || []).slice().sort(function(a, b) {
+        return Math.abs(Number(b.weight) || 0) - Math.abs(Number(a.weight) || 0);
+    });
+    var agg = aggregateExposure(rows.map(function(r) { return r.symbol; }),
+                                rows.map(function(r) { return Number(r.weight) || 0; }), exp.bySymbol);
+    var mono = { fontFamily: 'var(--font-mono)' };
     return h('div', { className: 'atlas-card', style: { marginBottom: 16 } },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
-            h('div', { className: 'card-title', style: { margin: 0 } }, '⬡ Factor Alignment'),
-            conditioning && !conditioning.active
-                ? h('span', { className: 'chip', style: {
-                        background: 'transparent', color: 'var(--text-3)',
-                        border: '1px dashed var(--border-2)', fontFamily: 'var(--font-mono)' } },
-                    'unconditioned')
-                : null,
-            h('span', { style: { fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)', marginLeft: 'auto' } },
-                counts.favorable + ' Fav · ' + counts.neutral + ' Neu · ' + counts.counter + ' Ctr'
-            )
-        ),
-        conditioning && !conditioning.active
-            ? h(RegimeRetiredNote, { rec: conditioning })
-            : null,
-        // Macro strip
-        macro && h('div', { style: { display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' } },
-            [
-                macro.cpiYoY     != null && { label: 'CPI YoY',  val: macro.cpiYoY.toFixed(1) + '%' },
-                macro.spread2s10s != null && { label: '2s10s',    val: (macro.spread2s10s >= 0 ? '+' : '') + macro.spread2s10s.toFixed(0) + 'bp' },
-                macro.hySpreads  != null && { label: 'HY Spd',   val: macro.hySpreads.toFixed(0) + 'bp' },
-            ].filter(Boolean).map(function(item) {
-                return h('div', { key: item.label, style: { fontFamily: 'var(--font-mono)', fontSize: 11 } },
-                    h('span', { style: { color: 'var(--text-3)' } }, item.label + ' '),
-                    h('span', { style: { color: 'var(--teal)', fontWeight: 700 } }, item.val)
-                );
-            })
-        ),
-        // Per-position classification table
-        scores && scores.length > 0 && h('div', { style: { overflowX: 'auto' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 } },
+            h('div', { className: 'card-title', style: { margin: 0 } }, '⬡ Regime frame'),
+            h('span', { style: Object.assign({ fontSize: 10, color: 'var(--text-3)', marginLeft: 'auto' }, mono) },
+                'exposure budget + regime-CVaR risk scale · no return tilt')),
+        // Axis state
+        h('table', { className: 'atlas-table', style: { fontSize: 11, marginBottom: 12 } },
+            h('thead', null, h('tr', null, ['Axis', 'Today (z, 20d)', 'A positive reading means', 'Regime bucket', 'Risk vs unconditional', 'Book exposure'].map(function(t) {
+                return h('th', { key: t }, t); }))),
+            h('tbody', null, (frame.axisRows || []).map(function(a) {
+                var z = Number(a.z_20d);
+                var ratio = a.regime_vol_ratio == null ? null : Number(a.regime_vol_ratio);
+                return h('tr', { key: a.axis_key },
+                    h('td', { className: 'cell-ticker' }, a.axis_key),
+                    h('td', { style: Object.assign({ textAlign: 'right' }, mono) }, isFinite(z) ? (z >= 0 ? '+' : '') + z.toFixed(2) + 'σ' : '—'),
+                    h('td', { style: { color: 'var(--text-2)', fontSize: 10.5 } }, a.positive_means || ''),
+                    h('td', { style: Object.assign({ color: 'var(--text-2)' }, mono) }, a.regime_bucket_label || 'no regime CVaR yet'),
+                    h('td', { style: Object.assign({ textAlign: 'right' }, mono) }, ratio == null ? '—' : '×' + ratio.toFixed(3)),
+                    h('td', { style: Object.assign({ textAlign: 'right' }, mono) }, fmtExposure(agg[a.axis_key])));
+            }))),
+        h('div', { style: Object.assign({ fontSize: 9.5, color: 'var(--text-3)', marginBottom: 10 }, mono) },
+            'Exposure in bp of daily return per unit of daily axis score · ' + (agg.totalWeight > 0
+                ? (100 * agg.measuredWeight / agg.totalWeight).toFixed(1) + '% of the book by weight carries a measured exposure'
+                : 'no weight measured')),
+        // Per position
+        h('div', { style: { overflowX: 'auto', maxHeight: 320, overflowY: 'auto' } },
             h('table', { className: 'atlas-table', style: { fontSize: 11 } },
-                h('thead', null,
-                    h('tr', null,
-                        ['Symbol', 'Sector', 'Factor Score', 'Sector Score', 'Combined', 'Classification', 'Override'].map(function(th) {
-                            return h('th', { key: th }, th);
-                        })
-                    )
-                ),
-                h('tbody', null,
-                    scores.slice().sort(function(a, b) { return b.regimeScore - a.regimeScore; }).map(function(s) {
-                        var cls = s.regimeClass;
-                        var clr = REGIME_CLASS_COLORS[cls];
-                        return h('tr', { key: s.symbol },
-                            h('td', { className: 'cell-ticker' }, s.symbol),
-                            h('td', { style: { color: 'var(--text-3)' } }, s.sector || '—'),
-                            h('td', { style: { fontFamily: 'var(--font-mono)', textAlign: 'right' } },
-                                s.factorScore != null ? (s.factorScore >= 0 ? '+' : '') + s.factorScore.toFixed(3) : '—'
-                            ),
-                            h('td', { style: { fontFamily: 'var(--font-mono)', textAlign: 'right' } },
-                                s.sectorScore != null ? (s.sectorScore >= 0 ? '+' : '') + s.sectorScore.toFixed(3) : '—'
-                            ),
-                            h('td', { style: { fontFamily: 'var(--font-mono)', fontWeight: 700, textAlign: 'right', color: clr } },
-                                (s.regimeScore >= 0 ? '+' : '') + s.regimeScore.toFixed(3)
-                            ),
-                            h('td', null,
-                                h('span', { className: 'chip', style: { background: clr + '22', color: clr, border: '1px solid ' + clr + '55' } },
-                                    REGIME_CLASS_LABELS[cls] || cls
-                                )
-                            ),
-                            onOverride && h('td', null,
-                                h('div', { style: { display: 'flex', gap: 4 } },
-                                    ['favorable', 'neutral', 'counter'].filter(function(c) { return c !== cls; }).map(function(c) {
-                                        var cc = REGIME_CLASS_COLORS[c];
-                                        return h('button', {
-                                            key: c,
-                                            className: 'btn btn-ghost',
-                                            style: { padding: '2px 6px', fontSize: 9, color: cc, borderColor: cc + '55' },
-                                            onClick: function() { onOverride(s.symbol, c); },
-                                        }, c === 'favorable' ? '▲' : c === 'counter' ? '▼' : '—');
-                                    })
-                                )
-                            )
-                        );
-                    })
-                )
-            )
-        )
-    );
+                h('thead', null, h('tr', null, ['Symbol', 'Weight', 'Cluster'].concat(AXES).map(function(t) {
+                    return h('th', { key: t }, t); }))),
+                h('tbody', null, rows.map(function(r) {
+                    var e = exp.bySymbol[r.symbol] || {};
+                    var st = r.exposure_status;
+                    var withheld = st !== 'measured' && st !== 'no_significant_axis';
+                    return h('tr', { key: r.symbol },
+                        h('td', { className: 'cell-ticker' }, r.symbol),
+                        h('td', { style: Object.assign({ textAlign: 'right' }, mono) }, ((Number(r.weight) || 0) * 100).toFixed(1) + '%'),
+                        h('td', { style: { color: 'var(--text-3)', fontSize: 10.5 } },
+                            withheld ? (STATUS_TEXT[st] || st) : (r.composition_label || ('cluster ' + r.cluster_id))),
+                        AXES.map(function(a) {
+                            var v = e[a];
+                            return h('td', { key: a, style: Object.assign({ textAlign: 'right',
+                                color: v == null ? 'var(--text-3)' : 'var(--text-1)' }, mono),
+                                title: v == null ? 'no measurable exposure (|t| ≤ 2) or no identity' : '' }, fmtExposure(v));
+                        }));
+                })))),
+        exp.withheld.length > 0 && h('div', { style: Object.assign({ fontSize: 9.5, color: 'var(--text-3)', marginTop: 8 }, mono) },
+            exp.withheld.length + ' position' + (exp.withheld.length === 1 ? '' : 's') + ' carry no exposure reading and add nothing to the budget: '
+            + exp.withheld.map(function(w) { return w.symbol; }).join(', ')));
+}
+
+// What the regime frame did to the optimal book.
+function RegimeFrameResult({ rf }) {
+    var mono = { fontFamily: 'var(--font-mono)' };
+    return h('div', { style: { marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-2)' } },
+        h('div', { style: Object.assign({ fontSize: 9, color: 'var(--text-3)', letterSpacing: '0.10em',
+                                           textTransform: 'uppercase', marginBottom: 8 }, mono) },
+            'Regime frame applied'),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 6 } },
+            AXES.map(function(a) {
+                var b = rf.budgets && rf.budgets[a];
+                return h('div', { key: a, style: Object.assign({ fontSize: 10.5 }, mono) },
+                    h('span', { style: { color: 'var(--text-3)' } }, a + ' '),
+                    h('span', { style: { color: 'var(--text-2)' } }, fmtExposure(rf.exposureBefore[a])),
+                    h('span', { style: { color: 'var(--text-3)' } }, ' → '),
+                    h('span', { style: { color: 'var(--teal)', fontWeight: 700 } }, fmtExposure(rf.exposureAfter[a])),
+                    b ? h('span', { style: { color: 'var(--text-3)' } }, '  (cap ±' + (b.budget * 1e4).toFixed(1) + ')') : null);
+            })),
+        h('div', { style: Object.assign({ fontSize: 10, color: 'var(--text-3)' }, mono) },
+            rf.risk.basis === 'regime_cvar'
+                ? 'Covariance scaled ×' + rf.risk.scale.toFixed(3) + ' by the regime-CVaR ratio of ' + rf.risk.axis
+                  + (rf.risk.bucket ? ' (' + rf.risk.bucket + ')' : '') + ' — the largest across the three axes.'
+                : 'No risk scale: ' + rf.risk.reason + '.'));
 }
 
 // ─── Layer 5: Optimizer ──────────────────────────────────────────────────────
@@ -581,9 +608,9 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
     const [lambdaOv, setLambdaOv]       = useState(null);
     const [gammaOv, setGammaOv]         = useState(null);
     const [etaOv, setEtaOv]             = useState(null);
-    const [regimeMacro, setRegimeMacro] = useState(null);
-    const [regimeScores, setRegimeScores] = useState(null);
+    const [regimeFrame, setRegimeFrame] = useState(null);
     const [regimeScan, setRegimeScan]   = useState(false);
+    const [regimeError, setRegimeError] = useState(null);
 
     var rt          = ips ? (ips.risk_tolerance || 5) : 5;
     var lambdaAuto  = 0.025 + 0.075 * (10 - Math.max(1, Math.min(10, rt))) / 9;
@@ -592,26 +619,13 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
     var etaEff      = etaOv     != null ? etaOv     : 0.18;
 
     function scanRegime() {
-        setRegimeScan(true); setError(null);
-        fetchMacroSignals().then(function(macro) {
-            var scores = computeRegimeScores(positions, histBySymbol, macro);
-            setRegimeMacro(macro);
-            setRegimeScores(scores);
-            setRegimeScan(false);
-        }).catch(function() {
-            var scores = computeRegimeScores(positions, histBySymbol, null);
-            setRegimeMacro(null);
-            setRegimeScores(scores);
-            setRegimeScan(false);
-        });
-    }
-
-    function overrideRegimeClass(symbol, newClass) {
-        setRegimeScores(function(prev) {
-            if (!prev) return prev;
-            return prev.map(function(s) {
-                return s.symbol === symbol ? Object.assign({}, s, { regimeClass: newClass }) : s;
-            });
+        setRegimeScan(true); setRegimeError(null);
+        return loadRegimeFrame().then(function(frame) {
+            setRegimeFrame(frame); setRegimeScan(false); return frame;
+        }).catch(function(e) {
+            console.error('[PCM] regime frame failed to load:', e && e.message);
+            setRegimeError(e && e.message || 'unknown error');
+            setRegimeFrame(null); setRegimeScan(false); return null;
         });
     }
 
@@ -639,9 +653,8 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
             var ac = (p.asset_class || '').toLowerCase();
             return !ac.includes('option');
         });
-        var capturedRegimeScores = regimeScores;
 
-        var doRun = function(macroSignals) {
+        var doRun = function(macroSignals, frame) {
             setTimeout(function() {
                 try {
                     const inputs = buildOptimizerInputs(selectedPositions, histBySymbol);
@@ -655,7 +668,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                         eta:    etaOv,
                     } : null;
                     var result = mode === 'atlas'
-                        ? runAtlasAdaptive(inputs, selectedPositions, histBySymbol, ips, macroSignals, overrides, capturedRegimeScores)
+                        ? runAtlasAdaptive(inputs, selectedPositions, histBySymbol, ips, macroSignals, overrides, frame)
                         : runOptimizer(mode, inputs, ips ? ips.concentration_limit : null);
                     onResult(result);
                 } catch (e) {
@@ -666,7 +679,11 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
         };
 
         if (mode === 'atlas') {
-            fetchMacroSignals().then(doRun).catch(function() { doRun(null); });
+            // The regime frame is loaded with the run if it has not been
+            // loaded yet; a failed load runs without it and the result says so.
+            var framePromise = regimeFrame ? Promise.resolve(regimeFrame) : scanRegime();
+            Promise.all([fetchMacroSignals().catch(function() { return null; }), framePromise])
+                .then(function(r) { doRun(r[0], r[1]); });
         } else {
             doRun(null);
         }
@@ -675,8 +692,8 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
     function handleModeChange(newMode) {
         setMode(newMode);
         if (newMode !== 'atlas') {
-            setRegimeMacro(null);
-            setRegimeScores(null);
+            setRegimeFrame(null);
+            setRegimeError(null);
             setRegimeScan(false);
         }
     }
@@ -709,11 +726,10 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
             onGamma:   setGammaOv,
             onEta:     setEtaOv,
         }),
-        mode === 'atlas' && h(RegimeIntelligencePanel, {
-            macro:    regimeMacro,
-            scores:   regimeScores,
-            scanning: regimeScan,
-            onOverride: overrideRegimeClass,
+        mode === 'atlas' && h(RegimeFramePanel, {
+            frame:   regimeFrame,
+            loading: regimeScan,
+            error:   regimeError,
         }),
         error && h('div', { className: 'chip chip-red', style: { marginBottom: 12 } }, error),
         optimizerResult && optimizerResult.macroContext && h(MacroContextCard, { ctx: optimizerResult.macroContext }),
@@ -797,11 +813,10 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
                 style: { padding: '7px 14px', borderColor: 'rgba(0,212,255,0.35)', color: 'var(--teal)' },
                 onClick: scanRegime,
                 disabled: regimeScan || running,
-            }, regimeScan ? 'Scanning…' : (regimeScores ? '↺ Re-scan Regime' : '⬡ Scan Regime')),
-            mode === 'atlas' && regimeScores && h('span', {
+            }, regimeScan ? 'Loading…' : (regimeFrame ? '↺ Reload regime frame' : '⬡ Load regime frame')),
+            mode === 'atlas' && regimeFrame && h('span', {
                 style: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' },
-            }, regimeScores.filter(function(s) { return s.regimeClass === 'favorable'; }).length + ' favorable · '
-             + regimeScores.filter(function(s) { return s.regimeClass === 'counter'; }).length + ' counter — bounds active'),
+            }, 'exposure budget + risk scale active'),
             h('button', { className: 'btn btn-primary', onClick: run, disabled: running || selectedCount < 2 },
                 running ? (mode === 'atlas' ? 'Fetching macro signals…' : 'Running…')
                         : (optimizerResult ? '↺ Re-run ' : '▶ Run ') + (currentMode ? currentMode.label : mode)

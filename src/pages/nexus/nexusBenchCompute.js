@@ -667,7 +667,28 @@ export function buildCirculation({ sells, ledger, sleeves, navUsd }) {
 // ── Diagnostics strip (7) ─────────────────────────────────────
 // The bench audits itself: every input's health is a visible line,
 // "never fired" is a warning on screen, not a hidden state.
-export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, navCoveragePct = null, contribUncovered = 0, volRows = null, volTriggered = 0, volAbstaining = 0, nowIso = null }) {
+// The coverage chip names the REASON a holding is uncovered, per reason, and
+// never assumes one. It printed every uncovered name as "no transaction
+// history", so a new account whose names had one priced session -- a ledger
+// in full, and a contribution that simply needs a second close -- was told its
+// ledger was missing. Without a breakdown it says only that they are not
+// measured, which is true whatever the cause.
+const UNCOVERED_PHRASE = {
+    no_priced_position_days: 'held too briefly to measure',
+    no_transaction_history: 'no transaction history',
+};
+export function uncoveredPhrase(total, reasons) {
+    const entries = reasons && typeof reasons === 'object'
+        ? Object.entries(reasons).filter(([, n]) => Number.isFinite(n) && n > 0) : [];
+    const listed = entries.reduce((a, [, n]) => a + n, 0);
+    if (!entries.length || listed !== total) return total + ' holdings not measured';
+    return entries
+        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+        .map(([k, n]) => n + ' ' + (UNCOVERED_PHRASE[k] || k.replace(/_/g, ' ')))
+        .join(', ');
+}
+
+export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons = null, writerLastRun = null, writerRows = 0, claimsAvailable = false, contributionBasis = 'today-only', sleeveUnresolved = false, navCoveragePct = null, contribUncovered = 0, contribUncoveredReasons = null, volRows = null, volTriggered = 0, volAbstaining = 0, nowIso = null }) {
     const items = [];
     if (fvTotal != null) {
         // A bare "0/54" tells you nothing actionable. nexus_holdings.fv_untrust_reason
@@ -707,7 +728,7 @@ export function benchDiagnostics({ fvTrusted = null, fvTotal = null, fvReasons =
         items.push({
             key: 'coverage',
             label: 'contribution covers ' + (navCoveragePct != null ? navCoveragePct + '% of book' : 'part of book')
-                 + ' — ' + contribUncovered + ' holdings have no transaction history',
+                 + ' — ' + uncoveredPhrase(contribUncovered, contribUncoveredReasons),
             level: navCoveragePct != null && navCoveragePct < 90 ? 'bad' : 'warn',
         });
     }

@@ -108,6 +108,7 @@ function DiagnosticsStrip({ diagnostics, funding }) {
         claimsAvailable: diagnostics.claimsAvailable, contributionBasis: diagnostics.contributionBasis,
         sleeveUnresolved: !!(funding && funding.unresolved),
         navCoveragePct: diagnostics.navCoveragePct, contribUncovered: diagnostics.contribUncovered,
+        contribUncoveredReasons: diagnostics.contribUncoveredReasons,
         volRows: diagnostics.volRows, volTriggered: diagnostics.volTriggered, volAbstaining: diagnostics.volAbstaining,
     });
     if (sleeveDays >= SLEEVE_STALE_SESSIONS) items.push({ key: 'sleeve-stale', label: 'sleeve unchanged ' + sleeveDays + 'd — verify inputs', level: 'warn' });
