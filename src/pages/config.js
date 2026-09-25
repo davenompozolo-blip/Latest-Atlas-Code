@@ -1,6 +1,6 @@
 // Compatibility shim — re-exports everything pages expect from the old config.js
 // All Supabase logic lives in src/lib/supabase.js
-export { supabase as sb, loadView } from '../lib/supabase.js';
+export { supabase as sb, loadView, loadViewState } from '../lib/supabase.js';
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co';
 
 export function triggerRefresh() {

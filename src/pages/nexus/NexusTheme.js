@@ -22,6 +22,7 @@ import React from 'react';
 import {
     buildThemeView, themeDispersion, rotationCall, positionRankPct,
     breadthNote, VERDICT_CHIP, CONVICTION_WEIGHTS,
+    momentumFeedState, MOMENTUM_OK, MOMENTUM_LOADING, MOMENTUM_EMPTY,
 } from './nexusThemeCompute.js';
 import { DispersionRegime, SectorDispersionStrip } from './NexusDispersion.js';
 import { NexusRealizedLayer } from './NexusRealized.js';
@@ -43,19 +44,28 @@ function drillTheme(theme) {
 }
 
 function useThemeSeries() {
-    const [s, setS] = useState({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: false });
+    const [s, setS] = useState({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: false, failed: false, degraded: [] });
     useEffect(function () {
         let alive = true;
-        fetch(withPortfolio('/api/nexus-theme')).then(r => r.json())
+        // A non-OK answer, an `ok: false` body and a thrown fetch are all a
+        // FAILED feed -- never an empty one (momentumFeedState).
+        fetch(withPortfolio('/api/nexus-theme'))
+            .then(r => r.json().catch(() => null).then(j => {
+                if (!r.ok || !j || j.ok === false) throw new Error('nexus-theme HTTP ' + r.status + ((j && j.error) ? ' ' + j.error : ''));
+                return j;
+            }))
             .then(j => {
                 if (!alive) return;
-                const map = new Map(((j && j.themes) || []).map(t => [t.theme, t]));
+                const map = new Map((j.themes || []).map(t => [t.theme, t]));
                 // factorMoves: today's factor moves in the same vol-normalised
-                // units the betas are regressed against — consumed by beat 05
+                // units the betas are regressed against -- consumed by beat 05
                 // so implied-vs-actual can never disagree with the strip.
-                setS({ map, factorMoves: (j && j.factorMoves) || null, priceAsOf: (j && j.priceAsOf) || null, loaded: true });
+                setS({ map, factorMoves: j.factorMoves || null, priceAsOf: j.priceAsOf || null, loaded: true, failed: false, degraded: j.degraded || [] });
             })
-            .catch(() => { if (alive) setS({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: true }); });
+            .catch(err => {
+                console.error('[NexusTheme] theme feed failed:', (err && err.message) || err);
+                if (alive) setS({ map: new Map(), factorMoves: null, priceAsOf: null, loaded: true, failed: true, degraded: [] });
+            });
         return () => { alive = false; };
     }, []);
     return s;
@@ -222,9 +232,9 @@ function ConvictionPanel({ conviction, call }) {
 }
 
 // ── 3a. Signature object: the rotation map ────────────────────
-function RotationMap({ rows, ranks, onPick }) {
+function RotationMap({ rows, ranks, onPick, feed }) {
     const plot = rows.filter(r => r.momentum5d != null && ranks.has(r.theme));
-    if (!plot.length) return e('div', { className: 'nb-empty' }, 'Momentum pending — price history syncing.');
+    if (!plot.length) return e('div', { className: 'nb-empty' }, feed.text || 'No momentum measured.');
     const X0 = 72, X1 = 700, Y0 = 34, Y1 = 398;
     const moms = plot.map(r => r.momentum5d);
     const momMax = Math.max(3, ...moms) + 0.5;
@@ -270,9 +280,9 @@ function RotationMap({ rows, ranks, onPick }) {
 }
 
 // ── 3b. Leadership shift ledger — same field as the map's Y, sorted ──
-function LeadershipLedger({ rows }) {
+function LeadershipLedger({ rows, feed }) {
     const list = rows.filter(r => r.momentum5d != null).slice().sort((a, b) => b.momentum5d - a.momentum5d);
-    if (!list.length) return e('div', { className: 'nb-empty' }, 'Momentum pending — price history syncing.');
+    if (!list.length) return e('div', { className: 'nb-empty' }, feed.text || 'No momentum measured.');
     const maxAbs = Math.max(1, ...list.map(r => Math.abs(r.momentum5d)));
     return e('div', null, list.map(r => {
         const w = (Math.abs(r.momentum5d) / maxAbs) * 49;
@@ -326,6 +336,7 @@ export function NexusThemePanel({ model }) {
         return { ...r, momentum5d: td ? td.momentum5d : null, betas: td ? td.betas : { rate: null, usd: null, oil: null } };
     });
     const disp = themeDispersion(model.holdings);
+    const feed = momentumFeedState(series, rows);
     // Phase D: no playbook. rotationConviction already treats a null playbook
     // as a designed path -- `macroFit` stays null and its weight renormalises
     // over momentum/positioning/breadth, which is the file's own stated rule
@@ -345,6 +356,13 @@ export function NexusThemePanel({ model }) {
         // 1. REGIME BANNER — why rotation is happening
         e(MacroFactsBar, { macro, loading: macroLoading }),
 
+        // The call below is still made when momentum is missing, and its
+        // prose says "momentum pending sync" per theme -- so say once, above
+        // it, when that is a feed failure or a truncated tape rather than
+        // missing history.
+        feed.state !== MOMENTUM_OK && feed.state !== MOMENTUM_LOADING && feed.state !== MOMENTUM_EMPTY
+            ? e('div', { className: 'nf-card nb-empty', style: { marginTop: 10 } }, feed.text) : null,
+
         // 2. THE CALL — recommendation + conviction breakdown
         e('div', { className: 'ntr-top' },
             e(RecoCard, { call }),
@@ -356,11 +374,11 @@ export function NexusThemePanel({ model }) {
                 e('div', { className: 'nf-card-h' },
                     e('div', null, e('h3', null, 'Rotation map'),
                         e('div', { className: 'nf-sub', style: { marginTop: 4 } }, 'weight percentile (x) vs 5-day momentum Δ (y) · bubble = conviction · colour = valuation')),
-                    !series.loaded ? e('span', { className: 'nf-sub' }, 'loading momentum…') : null),
+                    feed.state === MOMENTUM_LOADING ? e('span', { className: 'nf-sub' }, 'loading momentum…') : null),
                 // Regime qualifier: wide dispersion → the rotation call is
                 // trustworthy; compressed → beta dominates, treat as noise.
                 e(DispersionRegime),
-                e(RotationMap, { rows, ranks, onPick: drillTheme }),
+                e(RotationMap, { rows, ranks, onPick: drillTheme, feed }),
                 e(SectorDispersionStrip),
                 e('div', { className: 'nt-leg' },
                     e('span', null, e('i', { className: 'nt-sw', style: { background: 'var(--success)' } }), 'cheap'),
@@ -372,7 +390,7 @@ export function NexusThemePanel({ model }) {
                 e('div', { className: 'nf-card-h' },
                     e('div', null, e('h3', null, 'Leadership shift'),
                         e('div', { className: 'nf-sub', style: { marginTop: 4 } }, 'themes ranked by 5-day momentum Δ — the map’s y-axis, sorted'))),
-                e(LeadershipLedger, { rows }))),
+                e(LeadershipLedger, { rows, feed }))),
 
         // 4. DETAIL GRID — one line per theme, chip = quadrant verdict
         e('div', { className: 'nf-card nf-fade', style: { marginTop: 14 } },

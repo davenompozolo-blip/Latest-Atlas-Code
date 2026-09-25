@@ -69,6 +69,11 @@ export default async function handler(req, res) {
                 reason: 'upstream nexus-theme degraded: ' + ((j && j.error) || 'unknown'),
             });
         }
+        // A truncated tape computes momentum on the wrong window, and this is
+        // an append-only weekly history: refuse rather than write it forever.
+        if (j && j.pricesComplete === false) {
+            return res.status(503).json({ ok: false, written: 0, reason: 'upstream nexus-theme price tape incomplete' });
+        }
         const themes = ((j && j.themes) || []).filter(t => t.momentum5d != null);
         if (!themes.length) {
             return res.status(503).json({
