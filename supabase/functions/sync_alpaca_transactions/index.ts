@@ -28,6 +28,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { normaliseFill } from '../_shared/alpaca_fill.js'
 
 // Alpaca caps activities pages at 100. Guard the loop so a pagination bug
 // cannot spin forever inside a scheduled function.
@@ -128,22 +129,9 @@ function toNumeric(v: unknown): number {
     throw new Error(`Expected string|number numeric, got: ${typeof v}`)
 }
 
-const OCC_RE = /^[A-Z.]{1,6}\d{6}[CP]\d{8}$/
-function classifyAssetClass(symbol: string): string {
-    return OCC_RE.test(symbol) ? 'option' : 'equity'
-}
-
-// The existing 146 rows use 'orderside.buy' / 'orderside.sell', and
-// vw_position_nav_daily selects buys with `lower(transaction_type) like
-// '%buy%'`. Emitting a different vocabulary would leave new rows invisible to
-// every transaction-derived surface — the same silent-omission failure this
-// sync exists to end. Match the established format exactly.
-function transactionType(side: unknown): string {
-    const s = String(side ?? '').toLowerCase()
-    if (s.includes('buy')) return 'orderside.buy'
-    if (s.includes('sell')) return 'orderside.sell'
-    throw new Error(`Unrecognised activity side: ${JSON.stringify(side)}`)
-}
+// Asset class, side vocabulary ('orderside.buy' / 'orderside.sell', which
+// vw_position_nav_daily matches with `like '%buy%'`) and the sign of a fill
+// are decided in _shared/alpaca_fill.js.
 
 interface AlpacaActivity {
     id: string
@@ -268,7 +256,11 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
     let skippedNoSymbol = 0
 
     for (const a of activities) {
-        const symbol = typeof a.symbol === 'string' ? a.symbol.trim() : ''
+        // Symbol, side and quantity come from normaliseFill: a negative qty is
+        // a reversal (it flips the side), and a crypto pair "BCH/USD" is the
+        // asset "BCHUSD" that /v2/positions reports. See _shared/alpaca_fill.js.
+        const fill = a.symbol ? normaliseFill(a) : null
+        const symbol = fill ? fill.symbol : ''
         const when = a.transaction_time || a.date
         // A fill with no symbol or no timestamp cannot be attributed to an
         // asset or placed on the timeline. Count it and move on — never
@@ -277,9 +269,9 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
         parsed.push({
             externalId: String(a.id),
             symbol,
-            assetClass: classifyAssetClass(symbol),
-            transactionType: transactionType(a.side),
-            quantity: Math.abs(toNumeric(a.qty ?? a.cum_qty ?? 0)),
+            assetClass: fill!.assetClass,
+            transactionType: fill!.transactionType,
+            quantity: fill!.quantity,
             price: a.price == null ? null : toNumeric(a.price),
             transactionDate: when,
             raw: a,
@@ -296,7 +288,7 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
                 select count(*)::text as n from public.assets where symbol = any(${symbols})
             `
             for (const symbol of symbols) {
-                const assetClass = classifyAssetClass(symbol)
+                const assetClass = parsed.find(p => p.symbol === symbol)!.assetClass
                 await tx`
                     insert into public.assets (symbol, asset_class)
                     values (${symbol}, ${assetClass})
