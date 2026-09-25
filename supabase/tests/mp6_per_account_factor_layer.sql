@@ -6,7 +6,7 @@ begin;
 do $$
 declare
   v_default uuid := public.atlas_default_portfolio();
-  v_other   uuid := (select id from public.portfolios where id <> public.atlas_default_portfolio() order by name limit 1);
+  v_empty   uuid;
   n int;
   m numeric;
 begin
@@ -44,13 +44,25 @@ begin
 
   -- 4. An account with no estimate set has nothing to backtest and no
   --    regime CVaR -- no rows, never rows built on NULL betas.
-  if v_other is not null and not exists (select 1 from public.book_factor_betas where portfolio_id = v_other) then
-    perform set_config('request.headers', json_build_object('x-atlas-portfolio', v_other::text)::text, true);
-    select count(*) into n from public.atlas_var_backtest(0.95);
-    if n <> 0 then raise exception 'atlas_var_backtest returned % rows for an account with no betas', n; end if;
-    select count(*) into n from public.atlas_regime_cvar('dollar', 4, 0.95);
-    if n <> 0 then raise exception 'atlas_regime_cvar returned % rows for an account with no betas', n; end if;
+  --    The precondition is CREATED, not waited for: a scratch portfolio that
+  --    can have no betas, rolled back with the file. Gating on a real account
+  --    having none would silently stop running the day it reaches 60
+  --    sessions (CodeRabbit, PR #837). Deleting its betas is not an option --
+  --    book_factor_betas is append-only by trigger.
+  insert into public.portfolios (name, broker, metadata)
+       values ('test:mp6-no-betas', 'test', '{"scratch": true}')
+    returning id into v_empty;
+  if exists (select 1 from public.book_factor_betas where portfolio_id = v_empty) then
+    raise exception 'scratch portfolio unexpectedly carries betas';
   end if;
+  perform set_config('request.headers', json_build_object('x-atlas-portfolio', v_empty::text)::text, true);
+  if public.atlas_active_portfolio() <> v_empty then
+    raise exception 'the header did not select the scratch portfolio -- check 4 would test the default account';
+  end if;
+  select count(*) into n from public.atlas_var_backtest(0.95);
+  if n <> 0 then raise exception 'atlas_var_backtest returned % rows for an account with no betas', n; end if;
+  select count(*) into n from public.atlas_regime_cvar('dollar', 4, 0.95);
+  if n <> 0 then raise exception 'atlas_regime_cvar returned % rows for an account with no betas', n; end if;
   perform set_config('request.headers', '', true);
 end $$;
 

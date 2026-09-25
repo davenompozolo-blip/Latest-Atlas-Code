@@ -6761,6 +6761,13 @@ credit overlay could never fire and the footer read "HY spreads 3 bps" for a
 ~300 bp spread; the scan panel printed 2s10s as "+0bp" beside a chip reading
 "+0.26%". Every other page already read them as percent.
 
+**A NULL reading sorted into the TOP bucket.** `(NULL <= z_hi) desc` puts the
+NULL first in a DESC sort and the `else -bucket` branch then picks the highest
+bucket, so an axis with no z on the latest date would have published regime 4
+and fed its vol ratio into the risk scale (CodeRabbit, PR #837; `r1b`). And
+`aggregateExposure` seeded every axis at 0, so an axis no held name measures
+printed `+0.0` exposure with a `cap ±0.0` -- absent now, with no budget.
+
 **A column of zeros was rendered as winners and losers.** With no overlay
 firing every macro alignment is exactly 0, and the card split the list in half
 by position -- 18 green "+0.00" names above 20 red "0.00" names. `splitRanked`

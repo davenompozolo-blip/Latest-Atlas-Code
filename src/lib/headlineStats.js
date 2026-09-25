@@ -37,6 +37,7 @@ export function gateHeadline(metrics, sessions, sharpeOverride) {
         }
         const v = finite(value);
         if (v != null) out[key] = v;
+        else out.withheld[key] = 'not measured';
     };
     put('annReturn', m.annReturn, MIN_ANNUALISED_SESSIONS);
     put('annVol', m.annVol, MIN_ANNUALISED_SESSIONS);

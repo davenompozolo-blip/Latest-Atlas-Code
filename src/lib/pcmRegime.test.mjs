@@ -27,7 +27,8 @@ test('aggregate exposure states the weight it could measure', () => {
     const agg = aggregateExposure(['AMD', 'JPM', 'IXC'], [0.5, 0.3, 0.2], bySymbol);
     assert.ok(Math.abs(agg.concentration - (0.5 * 0.0091 - 0.3 * 0.0031)) < 1e-15);
     assert.ok(Math.abs(agg.dollar - 0.5 * -0.0052) < 1e-15);
-    assert.equal(agg.cyclical, 0);
+    assert.equal('cyclical' in agg, false);   // unmeasured: absent, not 0
+    assert.equal('cyclical' in exposureBudgets(agg, bySymbol), false);   // and carries no cap
     assert.ok(Math.abs(agg.measuredWeight - 0.8) < 1e-12);
     assert.ok(Math.abs(agg.totalWeight - 1.0) < 1e-12);
 });

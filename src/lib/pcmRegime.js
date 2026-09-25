@@ -57,14 +57,16 @@ export function exposuresBySymbol(rows) {
 // carry one. Also returns the weight that could be measured at all, so a
 // surface can state its denominator.
 export function aggregateExposure(symbols, weights, bySymbol) {
-    const out = { cyclical: 0, concentration: 0, dollar: 0, measuredWeight: 0, totalWeight: 0 };
+    // An axis key appears only once a name contributes to it: an axis no held
+    // name measures is ABSENT, never a reported exposure of 0.
+    const out = { measuredWeight: 0, totalWeight: 0 };
     symbols.forEach(function (sym, i) {
         const w = finite(weights[i]) || 0;
         out.totalWeight += Math.abs(w);
         const e = bySymbol[sym];
         if (!e) return;
         if (Object.keys(e).length) out.measuredWeight += Math.abs(w);
-        AXES.forEach(function (a) { if (e[a] != null) out[a] += w * e[a]; });
+        AXES.forEach(function (a) { if (e[a] != null) out[a] = (out[a] || 0) + w * e[a]; });
     });
     return out;
 }
@@ -75,10 +77,13 @@ export function aggregateExposure(symbols, weights, bySymbol) {
 export function exposureBudgets(current, bySymbol) {
     const out = {};
     AXES.forEach(function (a) {
+        // No budget for an axis the book does not measure: a "cap of 0" on an
+        // unmeasured axis would read as a constraint that was never measured.
+        if (current[a] == null) return;
         const mags = Object.keys(bySymbol).map(function (s) { return bySymbol[s][a]; })
             .filter(function (v) { return v != null; }).map(Math.abs);
         const typical = mags.length ? mags.reduce(function (x, y) { return x + y; }, 0) / mags.length : 0;
-        out[a] = { budget: Math.abs(current[a] || 0), scale: Math.max(Math.abs(current[a] || 0), typical, 1e-12) };
+        out[a] = { budget: Math.abs(current[a]), scale: Math.max(Math.abs(current[a]), typical, 1e-12) };
     });
     return out;
 }
@@ -91,7 +96,7 @@ export function exposurePenaltyGrad(symbols, w, bySymbol, budgets, strength) {
     const g = new Array(symbols.length).fill(0);
     AXES.forEach(function (a) {
         const b = budgets[a];
-        if (!b) return;
+        if (!b || agg[a] == null) return;
         const E = agg[a];
         const excess = Math.abs(E) - b.budget;
         if (excess <= 0) return;

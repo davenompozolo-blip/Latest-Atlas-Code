@@ -39,4 +39,7 @@ test('a non-finite figure is absent, not rendered', () => {
     const g = gateHeadline({ annReturn: NaN, annVol: Infinity }, 200, null);
     assert.equal('annReturn' in g, false);
     assert.equal('annVol' in g, false);
+    // above its floor, so the reason is the measurement, not the history
+    assert.equal(g.withheld.annReturn, 'not measured');
+    assert.equal(g.withheld.annVol, 'not measured');
 });
