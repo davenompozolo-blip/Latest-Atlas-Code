@@ -6187,7 +6187,7 @@ account" divides by what the data can support, not by table:
 | analytic | per account now? | why |
 |---|---|---|
 | `book_risk_daily` vol / VaR / Euler shares | **yes** | `vw_book_mctr` + `vw_risk_analysis` are request-scoped and already right |
-| verdicts, segments | not yet | rest on the return engine's matviews (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) -- all default-book by construction -- and would grade every Secondary name not measurable for weeks |
+| verdicts, segments | **yes since MP-5** (was: not yet) | the return engine's inputs (`mv_position_returns`, tier1/2, `mv_book_daily_weights`) are per-account `__acct` stores recomputed under each account's header; a new account's names read `one_sided` until they have priced history -- recorded nightly, not withheld |
 | factor betas, regime CVaR, VaR backtest | no | regress the account's own daily returns; there are none. `book_factor_betas` has **no writer in the database at all** -- B0/C3 estimated it outside |
 
 `book_risk_daily` is keyed `(portfolio_id, as_of, logic_version)`; the column
@@ -6613,6 +6613,76 @@ it does not break the job.
 `no_transaction_history` as a crypto transfer), and verdicts / segments / factor
 betas / VaR backtest (MP-4e). Everything else on its screenshots was a timeout
 or the valuation quota.
+
+### The verdict engine runs per account (MP-5, 2026-09-25)
+
+Position verdicts, segment verdicts and `book_risk_daily`'s return-engine
+columns are now written for **every** account, under that account's header.
+They are append-only histories, so this was the part that could not wait:
+a night not recorded for Atlas Secondary is a night it never gets back.
+
+**Six matviews became per-account storage without any consumer changing.**
+`mv_book_daily_weights`, `mv_book_ex_index`, `mv_position_returns`,
+`mv_position_tier1/2` and `mv_segment_ex_index` were refreshed headerless, so
+they only ever held the default book. Each is now three objects:
+
+| object | what |
+|---|---|
+| `<name>__acct` | table, `(portfolio_id, <the matview's columns>)` |
+| `<name>` | view over it for `atlas_active_portfolio()` -- the name every view, function and page already reads |
+| `<name>__compute` | the matview's own definition, verbatim, as a view |
+
+`atlas_rematerialise(names[])` recomputes named entries for the active account
+in dependency order; because every upstream name is itself per-account, each
+stage reads the same account's upstream. `atlas_rematerialise_all` loops the
+accounts, one subtransaction and one `sync_log` row each. **Never `REFRESH` one
+of these names** -- they are views now; add a new one to the allowed list in
+`atlas_rematerialise` instead.
+
+Proven by `EXCEPT ALL` both ways in a rolled-back transaction: all six stores
+and the seven views that read them are **row-identical** for the default
+account, both as seeded and after a full recompute. The ten MP-2 guards on
+these sources are gone; `vw_default_only_position_returns` keeps its name and is
+now a pass-through. First Secondary run: 37 verdict rows, 25 bets / 12 themes
+with both share sums at 1.000000, book vol 26.76%. Every Secondary verdict
+reads `one_sided` until it has priced history -- recorded, not withheld.
+
+`atlas_write_verdicts()` / `atlas_write_segment_verdicts()` keep their
+signatures and loop the accounts; the old bodies are `*_active`, scoped by
+`portfolio_id` on every read and write (edits generated and count-asserted,
+`gen5c.py`). A preflight refusal now **returns** instead of raising, so its
+`sync_log` row survives -- the "validate, update, return" rule, applied at last
+to the job it was written about.
+
+**Still default-only, on purpose:** `book_factor_betas`, `book_regime_cvar`,
+`var_backtest_runs`. They regress an account's own daily returns and a new
+account has one or two. They are recomputable later from
+`portfolio_equity_curve`, which is already recorded per account, so waiting
+loses nothing. `book_factor_betas` also still has no writer in the database.
+
+### Two ledger defects only a notional order could produce (2026-09-25)
+
+Atlas Secondary's first verdict preflight refused on `ledger_coherence`. Both
+causes were in `sync_alpaca_transactions`, both dormant on the original account
+because it had never placed a notional order or bought crypto:
+
+- **A negative-quantity fill is a reversal.** A notional order fills a
+  whole-share lot, then a correcting fill with `side: 'buy'` and a **negative**
+  qty (META +47 then -0.825261546, net 46.174738454 = the broker's holding).
+  `Math.abs(qty)` booked the correction as a second buy, so four names were
+  overstated by exactly twice the fractional part. The sign now flips the side.
+- **Crypto activities name the pair, positions name the asset**: `BCH/USD`
+  against `BCHUSD`. Two spellings made two assets -- the ledger held one the
+  broker did not and vice versa, which is the phantom signature the preflight
+  refuses on. The slash is dropped and the class is `crypto`, so the fill sync
+  no longer overwrites the positions sync's classification with `equity`.
+
+`supabase/functions/_shared/alpaca_fill.js` is plain JS so the node suite tests
+it directly (`src/lib/alpacaFill.test.mjs`). Deployed as v6 after confirming v5
+matched `main` byte-for-byte; the 7 affected rows were repaired from the raw
+activity stored in `metadata`. BCHUSD still differs by ~0.25% -- Alpaca takes
+the crypto fee in coins -- and is gated per position as `ledger_mismatch`,
+which is a size disagreement the preflight correctly does not refuse on.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

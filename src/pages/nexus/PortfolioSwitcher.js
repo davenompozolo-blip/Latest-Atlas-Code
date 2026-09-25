@@ -7,10 +7,11 @@
 //
 // The banner is not decoration. On a non-default account the live book --
 // positions, P&L, account, live risk -- follows the switch, but the nightly
-// analytics (verdicts, segments, factor betas, VaR backtest) are computed
-// for the DEFAULT portfolio only (conviction since MP-4d and contribution since
-// MP-4f are per account), and
-// the database withholds them rather than attach them to the wrong book.
+// factor layer (factor betas, regime CVaR, VaR backtest) is computed for the
+// DEFAULT portfolio only -- it regresses an account's own daily returns, which
+// a new account does not have yet -- and the database withholds it rather than
+// attach it to the wrong book. Conviction (MP-4d), contribution (MP-4f) and
+// position / segment verdicts (MP-5) are per account.
 // Without the banner those withheld panels would read as "no data" with
 // nothing to say why. It also names the account an order will execute in:
 // since MP-3, trading follows the switch.
@@ -142,8 +143,8 @@ export function PortfolioBanner() {
     if (st.onDefault !== false) return null;   // default account, or unknown: claim nothing
     return e('div', { role: 'status', style: bar },
         e('strong', null, 'Viewing ' + st.active.name + '. '),
-        'Positions, P&L, account, live risk, contribution and the holdings analytics (conviction, signals, valuation) are this account’s. ',
-        'Nightly analytics — verdicts, segments, factor betas and the VaR backtest — ',
-        'are computed for the default account only, and are withheld here rather than shown against the wrong book. ',
+        'Positions, P&L, account, live risk, contribution, the holdings analytics and the nightly position and segment verdicts are this account’s. ',
+        'The factor layer — factor betas, regime CVaR and the VaR backtest — needs weeks of this account’s own daily returns, ',
+        'so it is computed for the default account only and withheld here rather than shown against the wrong book. ',
         e('strong', null, 'Orders from this screen go to ' + st.active.name + '.'));
 }
