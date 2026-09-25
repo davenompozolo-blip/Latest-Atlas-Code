@@ -407,8 +407,11 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
             if (!ok(true)) return;
             // A capped read is as untrustworthy for a book total as a failed
             // one: P&L over a partial book understates by the missing rows.
-            setHomeFailed(r.state === 'failed' || r.state === 'partial');
-            setHomeRows(r.rows);
+            // The rows are withheld too, not just the panels: sector
+            // residuals, the flagged set and the heatmap all read homeRows.
+            const unusable = r.state === 'failed' || r.state === 'partial';
+            setHomeFailed(unusable);
+            setHomeRows(unusable ? [] : r.rows);
         });
         loadView('vw_performance_suite', []).then(r => ok(true) && setPerfRows(r || []));
         loadView('vw_portfolio_nav_daily', []).then(r => ok(true) && setNavRows(r || []));
