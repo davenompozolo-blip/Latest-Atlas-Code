@@ -120,7 +120,8 @@ When operating Atlas via remote control, use these session roles:
   and forward it (see `api/nexus-bench.js`).
 - **Change a calculation**: prefer the view that owns it; prove equivalence with
   `EXCEPT ALL` both ways and time it against the 3s anon cap.
-- **Add a scheduled job**: `cron.job`, logging to `sync_log`.
+- **Add a scheduled job**: a nightly one is a stage in `atlas_chain_stages`;
+  anything else is `cron.job`. Either way it logs to `sync_log`.
 - **Add a broker account**: a `broker_accounts` row (credential_prefix +
   alpaca_account_number) + a `portfolios` row + the `<prefix>_KEY/_SECRET`
   pair in BOTH Supabase function secrets (syncs) and Vercel env (trading).
@@ -390,6 +391,9 @@ rewritten — pg_cron simply calls them over pg_net with the same
 **When adding a scheduled job, add it to `cron.job`. Nowhere else.**
 
 ### The nightly chain
+**Completion-driven since 2026-09-27** -- see "The chain is live" below; the
+UTC column is historical order, not a firing time.
+
 Stages are staggered and **gated**, not simultaneous. A single sync point was
 considered and rejected: these stages have real dependencies, and firing them
 at one instant makes each read a table its upstream has not written yet —
@@ -4282,6 +4286,40 @@ have read 0 / 0.
 
 **A window that crosses midnight cannot be scoped by `current_date`.** Check any
 job whose schedule spans the rollover for the same shape.
+
+### The chain is live, and a hard edge must be a same-day input (2026-09-27)
+
+I-1 went live on 2026-09-27 (`20260927115906_i1c_chain_go_live.sql`). Cron job
+58 `atlas_chain_advance` (every minute, 20:00-01:59 UTC) now fires all 30
+stages on completion. Their clock entries are gone, so **the time table under
+"The nightly chain" gives only order and `not_before` floors, not firing times.**
+Eleven jobs stay on the clock: the intraday writers, the reaper, the 01:00 equity
+curve, the fundamentals syncs, `chain_vol_dispersion`, `chain_sync_valuations`,
+and `sync_alpaca_transactions_intraday` (13:10). That last one is the half of
+old job 15 the chain does not cover. Rollback: unschedule job 58, re-schedule the
+clock entries (their definitions are in git history), re-arm the shadow tick.
+
+**The seed graph would have lost verdict nights, so it was corrected first
+(I-1b, `20260927110512`).** The whole trade-sync sequence was hard, end to end,
+into `write_verdicts`. In the week before go-live, `trade_sync_signals` failed on
+09-22 and 09-24 and the Vercel ledger snapshot timed out (504) on 09-25. The
+clock ran every downstream job on all three nights and each one succeeded,
+because none of them reads what failed. Under the chain as seeded, each of those
+nights would have written no append-only verdict rows.
+
+**An edge is hard only when the successor reads the predecessor's output FOR
+TODAY**, or a documented gate says so. Clusters read only the correlation matrix,
+coherence recomputes families itself, and verdicts carry their own preflight. So
+nine edges are ordering-only and ten stay hard; the migration asserts the exact
+hard set. Check this before adding a stage: a hard edge that is not a real
+input makes one flaky upstream cost everything below it.
+
+**A clock job added after the chain was seeded is a race under it.**
+`atlas_write_account_book_risk` (23:41) writes the non-default accounts'
+`book_risk_daily` row with the return-engine columns NULL. A chain that reaches
+verdicts after 23:41 would then find the row present, and verdicts' `DO NOTHING`
+would keep the NULLs. It is a stage after `write_verdicts` now. **When adding a
+nightly job, add it to `atlas_chain_stages`, not `cron.job`.**
 
 ### The read path served the mark from two places (2026-09-22)
 
