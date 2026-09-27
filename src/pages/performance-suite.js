@@ -145,6 +145,12 @@ export function PerformanceSuite() {
 
     useEffect(function() {
         function load() {
+            // Each load reports its own outcome: a refresh that succeeds must
+            // not stay hidden behind an earlier failure, and one that fails
+            // must not keep showing the previous history as current
+            // (CodeRabbit, PR #840).
+            setHistReady(false);
+            setHistFailed(false);
             // No mock fallback for the command centre: a view that did not
             // answer is named on the page (FeedNotice), never replaced by a
             // sample NAV and Sharpe.
@@ -203,7 +209,12 @@ export function PerformanceSuite() {
                 setLoading(false);
 
                 // ── Price history batch fetch for analytics tabs ─────────────
-                if (!sb || !home.length) { setHistReady(true); return; }
+                // A home feed that did not answer is not an empty book: say
+                // the history feed failed rather than that there is none.
+                if (feedFailed(f.states, 'vw_portfolio_home')) {
+                    setHistBySymbol({}); setHistFailed(true); setHistReady(true); return;
+                }
+                if (!sb || !home.length) { setHistBySymbol({}); setHistReady(true); return; }
                 var portfolioSymbols = home
                     .filter(function(r) { return r.symbol; })
                     .map(function(r) { return r.symbol; });
@@ -235,7 +246,7 @@ export function PerformanceSuite() {
                         for (var bi = 0; bi < equityIds.length; bi += BATCH) {
                             batches.push(equityIds.slice(bi, bi + BATCH));
                         }
-                        if (!batches.length) { setHistReady(true); return; }
+                        if (!batches.length) { setHistBySymbol({}); setHistReady(true); return; }
 
                         // PostgREST caps a response at 1,000 rows whatever
                         // `limit` says. A 15-asset batch over a year wants
@@ -336,11 +347,11 @@ export function PerformanceSuite() {
                             setHistReady(true);
                         }).catch(function(e) {
                             console.error('[performance-suite] price history read failed', e);
-                            setHistFailed(true); setHistReady(true);
+                            setHistBySymbol({}); setHistFailed(true); setHistReady(true);
                         });
                     }).catch(function(e) {
                         console.error('[performance-suite] asset lookup failed', e);
-                        setHistFailed(true); setHistReady(true);
+                        setHistBySymbol({}); setHistFailed(true); setHistReady(true);
                     });
             });
         }

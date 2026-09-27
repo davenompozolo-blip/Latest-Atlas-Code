@@ -407,7 +407,7 @@ const RECONCILE_TOL = 0.005;
  * `derived` is true when the value is a difference of two year-to-date facts
  * rather than a reported three-month (or instant) fact.
  */
-export function quarterlyFacts(conceptBlock, conceptName) {
+export function quarterlyFacts(conceptBlock, conceptName, crossVintage) {
     const out = new Map();
     if (!conceptBlock || typeof conceptBlock !== 'object') return out;
     const units = conceptBlock.units;
@@ -431,8 +431,13 @@ export function quarterlyFacts(conceptBlock, conceptName) {
                 if (d === null || d < MIN_Q_DAYS || d > MAX_FLOW_DAYS) continue;
                 const key = e.start + '|' + end;
                 const prev = flows.get(key);
+                // Every value this period was ever filed at. A period filed at
+                // two values was RESTATED, and a difference taken against it
+                // may pair the restated figure with an unrestated one.
+                const vals = prev ? prev.vals : new Set();
+                vals.add(e.val);
                 if (prev && prev.filed >= filed) continue;   // restatement supersedes
-                flows.set(key, { ...fact, start: e.start, days: d });
+                flows.set(key, { ...fact, start: e.start, days: d, vals });
             } else {
                 const prev = instants.get(end);
                 if (prev && prev.filed >= filed) continue;
@@ -466,6 +471,19 @@ export function quarterlyFacts(conceptBlock, conceptName) {
                 const step = dayspan(a.end, b.end);
                 if (step === null || step < MIN_Q_DAYS || step > MAX_Q_DAYS) continue;
                 if (out.has(b.end)) continue;
+                // CROSS-VINTAGE (CodeRabbit, PR #840). If either end of the
+                // difference was restated, the latest versions of the two may
+                // come from different filings: TGT's Q4 FY2013 would be the
+                // restated annual minus the ORIGINAL nine-month figure and
+                // absorb the whole restatement. The annual reconciliation
+                // cannot see that -- the four quarters then sum to the very
+                // annual Q4 was built from. So the quarter is withheld unless
+                // both ends are unrestated or come from one filing.
+                const restated = a.vals.size > 1 || b.vals.size > 1;
+                if (restated && !(a.accn && a.accn === b.accn)) {
+                    if (Array.isArray(crossVintage)) crossVintage.push({ concept: conceptName, end: b.end });
+                    continue;
+                }
                 out.set(b.end, {
                     val: b.val - a.val, end: b.end,
                     filed: a.filed > b.filed ? a.filed : b.filed,
@@ -478,11 +496,11 @@ export function quarterlyFacts(conceptBlock, conceptName) {
 }
 
 /** One field across its aliases, quarterly. Earlier aliases win a quarter. */
-function resolveQuarterField(facts, aliases) {
+function resolveQuarterField(facts, aliases, crossVintage) {
     const merged = new Map();
     for (const concept of aliases) {
         for (const block of conceptBlocks(facts, concept)) {
-            for (const [end, fact] of quarterlyFacts(block, concept)) {
+            for (const [end, fact] of quarterlyFacts(block, concept, crossVintage)) {
                 if (!merged.has(end)) merged.set(end, fact);
             }
         }
@@ -553,11 +571,21 @@ function snapToQuarters(fieldMap, canonical) {
 export function quarterlyStatementRowsFromFacts(companyfacts, symbol) {
     const facts = (companyfacts && companyfacts.facts) || {};
     const resolved = { income: {}, balance: {}, cashflow: {} };
-    for (const [f, a] of Object.entries(INCOME_FIELDS))   resolved.income[f]   = resolveQuarterField(facts, a);
+    // Quarters withheld as cross-vintage, per field, where no other alias
+    // supplied that quarter. Recorded so an absent quarter says why.
+    const crossVintage = {};
+    const resolveTracked = (field, aliases) => {
+        const sink = [];
+        const m = resolveQuarterField(facts, aliases, sink);
+        const ends = [...new Set(sink.filter(x => !m.has(x.end)).map(x => x.end))].sort();
+        if (ends.length) crossVintage[field] = ends;
+        return m;
+    };
+    for (const [f, a] of Object.entries(INCOME_FIELDS))   resolved.income[f]   = resolveTracked(f, a);
     const canonical = canonicalQuarterEnds(resolved.income);
     for (const f of Object.keys(INCOME_FIELDS)) resolved.income[f] = snapToQuarters(resolved.income[f], canonical);
-    for (const [f, a] of Object.entries(BALANCE_FIELDS))  resolved.balance[f]  = snapToQuarters(resolveQuarterField(facts, a), canonical);
-    for (const [f, a] of Object.entries(CASHFLOW_FIELDS)) resolved.cashflow[f] = snapToQuarters(resolveQuarterField(facts, a), canonical);
+    for (const [f, a] of Object.entries(BALANCE_FIELDS))  resolved.balance[f]  = snapToQuarters(resolveTracked(f, a), canonical);
+    for (const [f, a] of Object.entries(CASHFLOW_FIELDS)) resolved.cashflow[f] = snapToQuarters(resolveTracked(f, a), canonical);
 
     const quarters = [...new Set(canonical.values())].sort();
 
@@ -619,7 +647,7 @@ export function quarterlyStatementRowsFromFacts(companyfacts, symbol) {
         }
     }
 
-    const provenance = { quarters: [], derived_by_field: {}, reported_by_field: {}, unreconciled, restated };
+    const provenance = { quarters: [], derived_by_field: {}, reported_by_field: {}, unreconciled, restated, cross_vintage: crossVintage };
 
     function build(group, fields) {
         const rows = [];

@@ -170,8 +170,9 @@ function AllocationGap({ rows }) {
 }
 
 // ─── Layer 3: Factor Grid ────────────────────────────────────────────────────
-function FactorGrid({ factors, loading, activeShare }) {
+function FactorGrid({ factors, loading, activeShare, histFailed }) {
     if (loading) return h(Loading, { text: 'Computing factor exposures…' });
+    if (histFailed) return h('div', { className: 'empty-state' }, 'Price history did not answer — reload to retry. This is a failed read, not missing history.');
     // No history to score on is not a neutral book: say so, never a sample grid.
     if (!factors || !factors.length) return h('div', { className: 'empty-state' },
         'Factor exposures not measured — no held position has the 30 priced sessions a score needs.');
@@ -388,7 +389,7 @@ function MacroContextCard({ ctx }) {
 }
 
 // ─── Position Selector (L5) ───────────────────────────────────────────────────
-function PositionSelector({ positions, histBySymbol, excluded, onToggle, onToggleAll }) {
+function PositionSelector({ positions, histBySymbol, histFailed, excluded, onToggle, onToggleAll }) {
     const totalMv = positions.reduce(function(s, p) { return s + (p.market_value || 0); }, 0);
     const selectedCount = positions.filter(function(p) { return !excluded[p.symbol]; }).length;
     const [open, setOpen] = useState(true);
@@ -444,7 +445,7 @@ function PositionSelector({ positions, histBySymbol, excluded, onToggle, onToggl
                                 days > 0
                                     ? h('span', { className: 'chip ' + (hasHistory ? 'chip-green' : 'chip-gold'), style: { fontSize: 9 } },
                                         days + 'd')
-                                    : h('span', { className: 'chip chip-muted', style: { fontSize: 9 } }, 'NO DATA')
+                                    : h('span', { className: 'chip chip-muted', style: { fontSize: 9 } }, histFailed ? 'READ FAILED' : 'NO DATA')
                             )
                         );
                     })
@@ -603,7 +604,7 @@ function RegimeFrameResult({ rf }) {
 }
 
 // ─── Layer 5: Optimizer ──────────────────────────────────────────────────────
-function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResult, dataReady }) {
+function OptimizerPanel({ positions, histBySymbol, histFailed, ips, onResult, optimizerResult, dataReady }) {
     const [mode, setMode]               = useState('atlas');
     const [running, setRunning]         = useState(false);
     const [error, setError]             = useState(null);
@@ -720,7 +721,7 @@ function OptimizerPanel({ positions, histBySymbol, ips, onResult, optimizerResul
         ),
         currentMode && h('div', { style: { fontSize: 10, color: 'var(--text-3)', fontFamily: 'var(--font-mono)',
                                             marginBottom: 14, paddingLeft: 2 } }, currentMode.description),
-        h(PositionSelector, { positions: positions, histBySymbol: histBySymbol,
+        h(PositionSelector, { positions: positions, histBySymbol: histBySymbol, histFailed: histFailed,
                                excluded: excluded, onToggle: toggleSymbol, onToggleAll: toggleAll }),
         mode === 'atlas' && h(AtlasSliders, {
             lambdaEff: lambdaEff, lambdaAuto: lambdaAuto,
@@ -1136,6 +1137,8 @@ export function PortfolioConstruction() {
     const histRef   = useRef({});   // { SYMBOL: [{ close }] }
     const posRef    = useRef([]);   // current positions snapshot
     const [histReady, setHistReady] = useState(false);
+    // A failed read is not missing history (CodeRabbit, PR #840).
+    const [histFailed, setHistFailed] = useState(false);
 
     // ── Load IPS from DB on mount ─────────────────────────────────────────────
     useEffect(function() {
@@ -1197,6 +1200,7 @@ export function PortfolioConstruction() {
                 : Promise.resolve({ data: [] });
 
             return assetsQuery.then(function(assetResult) {
+                if (assetResult.error) throw assetResult.error;
                 const assetRows = assetResult.data || [];
 
             // symbol → asset metadata (id, name, sector, asset_class)
@@ -1367,8 +1371,8 @@ export function PortfolioConstruction() {
             });
             }); // end assetsQuery.then
         }).catch(function(err) {
-            console.warn('[PCM] position + history load failed:', err);
-            setHistReady(true); setFactorLoading(false);
+            console.error('[PCM] position + history load failed:', err);
+            setHistFailed(true); setHistReady(true); setFactorLoading(false);
         });
     }, []);
 
@@ -1443,7 +1447,7 @@ export function PortfolioConstruction() {
         );
 
         if (activeLayer === 'L3') return h('div', null,
-            h(FactorGrid, { factors: factors, loading: factorLoading, activeShare: activeShare }),
+            h(FactorGrid, { factors: factors, loading: factorLoading, activeShare: activeShare, histFailed: histFailed }),
             nextBtn('L3')
         );
 
@@ -1498,6 +1502,7 @@ export function PortfolioConstruction() {
             h(OptimizerPanel, {
                 positions:      posRef.current,
                 histBySymbol:   histRef.current,
+                histFailed:     histFailed,
                 ips:            ips,
                 onResult:       function(r) { setOptimizerResult(r); },
                 optimizerResult: optimizerResult,
