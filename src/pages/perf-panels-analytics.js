@@ -877,7 +877,7 @@ export function RollingAttributionPanel(props) {
                 )
                 : h('div', {
                     style: { height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text2, fontSize: 13 }
-                }, 'No price history available for attribution chart.')
+                }, props.histFailed ? 'The price-history feed did not answer — reload to retry. This is a failed read, not missing history.' : 'No price history available for attribution chart.')
     );
 
     // ── Contribution table ────────────────────────────────────────────────────
@@ -1250,7 +1250,7 @@ export function FactorEnginePanel(props) {
             )
             : h('div', {
                 style: { height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text2, fontSize: 13 }
-            }, 'Insufficient data — need 30+ days of price history per position.')
+            }, props.histFailed ? 'The price-history feed did not answer — reload to retry. This is a failed read, not missing history.' : 'Insufficient data — need 30+ days of price history per position.')
     );
 
     if (!histReady) {
@@ -1343,6 +1343,11 @@ export function RegimeSlicerPanel(props) {
 
     if (!histReady) {
         return h('div', { style: cardStyle }, h(Loading, { text: 'Loading regime data…' }));
+    }
+    if (props.histFailed) {
+        return h('div', { style: cardStyle }, h('div', {
+            style: { height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text2, fontSize: 13 }
+        }, 'The price-history feed did not answer — reload to retry. This is a failed read, not missing history.'));
     }
 
     // ── PCM Match icon ────────────────────────────────────────────────────────

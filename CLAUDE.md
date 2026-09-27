@@ -6963,6 +6963,25 @@ now read **Rate×trend**, which is what they measure.
 `supabase/tests/c1_conviction_contract.sql` 18/18; `convictionBasis.test.mjs`
 2 of 6 fail against the old `targetWeights` membership.
 
+### "No price history" on Contribution and Factor Engine was a timeout (2026-09-27)
+
+Reported on both accounts: Contribution read *"No price history available for
+attribution chart"*, and Factor Engine and Regime Slicer read *"need 30+ days of
+price history"*. The accounts' histories were NOT merged, and neither was short.
+`performance-suite.js` read `price_history` in 15-id batches with
+`.in('asset_id', ids)` ordered `price_date` first. That makes the planner walk
+the date index across the whole universe to find page 0, which was **cancelled
+at the 3s anon cap on every batch**. The `.catch` then set the history ready
+and empty, and every panel reported a data gap. This is the same shape
+`bookPriceRead.js` fixed in `api/` and the trade sync, surviving in the browser.
+`pcm.js` carried the identical read.
+
+Both reads are now asset-major (0.2-0.6 s as anon on both accounts). A failed
+read sets `histFailed`, and the panels say the feed did not answer.
+`src/lib/priceHistoryAssetMajor.test.mjs` fails any multi-asset `price_history`
+read in `src/` that orders on `price_date` first, and it finds both pre-fix
+sites when they are restored.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
