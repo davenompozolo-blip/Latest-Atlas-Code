@@ -120,7 +120,8 @@ When operating Atlas via remote control, use these session roles:
   and forward it (see `api/nexus-bench.js`).
 - **Change a calculation**: prefer the view that owns it; prove equivalence with
   `EXCEPT ALL` both ways and time it against the 3s anon cap.
-- **Add a scheduled job**: `cron.job`, logging to `sync_log`.
+- **Add a scheduled job**: a nightly one is a stage in `atlas_chain_stages`;
+  anything else is `cron.job`. Either way it logs to `sync_log`.
 - **Add a broker account**: a `broker_accounts` row (credential_prefix +
   alpaca_account_number) + a `portfolios` row + the `<prefix>_KEY/_SECRET`
   pair in BOTH Supabase function secrets (syncs) and Vercel env (trading).
@@ -390,6 +391,9 @@ rewritten — pg_cron simply calls them over pg_net with the same
 **When adding a scheduled job, add it to `cron.job`. Nowhere else.**
 
 ### The nightly chain
+**Completion-driven since 2026-09-27** -- see "The chain is live" below; the
+UTC column is historical order, not a firing time.
+
 Stages are staggered and **gated**, not simultaneous. A single sync point was
 considered and rejected: these stages have real dependencies, and firing them
 at one instant makes each read a table its upstream has not written yet —
@@ -538,6 +542,14 @@ DESC)` pattern this file already says to replace with a LATERAL top-N. It reads
 60,850 rows for 63 answers, and it grows every night now that the universe
 syncs. Not yet fixed.
 
+**Closed -- corrected 2026-09-27.** The LATERAL top-1 landed on 2026-08-24
+(`20260824160000_return_engine.sql`), the day after this was written, and the
+"not yet fixed" line was never updated. Measured as anon: **5-16 ms warm on both
+accounts**, and still 12-23 ms while `refresh_nexus_holdings()` runs beside it.
+`pg_stat_statements` shows a tail (min 18 ms, max 1,995 ms over 26 calls) that
+does not reproduce under that load and reads zero blocks from disk. Nothing in
+the view structure left to fix.
+
 ### PostgREST caps at 1,000 rows whatever `limit` says (2026-08-23)
 `api/nexus-theme.js` asked for `order=price_date.asc&limit=20000`. PostgREST
 returned **1,000 rows, all stamped the same single date** — the oldest 1,000 in
@@ -637,6 +649,10 @@ its pipeline is actually capable of succeeding.
   about what happened then; only its current state changed.
 - `signal_scores` — frozen at 2026-08-11. **This starves the Trade ticket's
   coherence pane**; Pane C renders "NO FAMILY VECTOR ON FILE" once it ages out.
+  **Corrected 2026-09-27: not frozen** -- ~2,240 rows a night since. What was
+  wrong was the job's DURATION: `trade_sync_signals` ran 234-262 s against a
+  300 s budget and was killed mid-write on 09-22 (1,000 rows) and 09-24 (none).
+  See "The trade-sync price read" below.
 - `sync_funddata_prices` — the job *works* (`fund_prices_raw` is current), but
   its terminal `sync_log` PATCH goes through PostgREST and the failure is
   swallowed at `supabase/functions/sync_funddata_prices/index.ts:44`
@@ -699,8 +715,10 @@ never be zero — treat it as a permanent gate, not a bug to close.
   put it mid-schedule and returned −79.27% on flows summing to +$956.
 - **`asset_class` is `'us_option'`, not `'option'`.** Equality misses every
   contract. Test the class prefix *and* the OCC symbol shape — either alone has
-  been wrong here. `vw_performance_suite` still carries the equality test and is
-  only saved by starting from `positions`.
+  been wrong here. `vw_performance_suite` carried the equality test until
+  PERF-1 (2026-09-27) and was only saved by starting from `positions`; forced
+  with an expired `us_option` in the current snapshot it published the contract
+  (`supabase/tests/perf1_expired_option_filter.sql`).
 - **Own return is priced at fills; a counterfactual has no fills.**
   Differencing them folds execution into stock selection — SNDK 18.71pp, AMD
   11.93pp. Publish the position on a close basis too and difference *that*;
@@ -4283,6 +4301,67 @@ have read 0 / 0.
 **A window that crosses midnight cannot be scoped by `current_date`.** Check any
 job whose schedule spans the rollover for the same shape.
 
+### The chain is live, and a hard edge must be a same-day input (2026-09-27)
+
+I-1 went live on 2026-09-27 (`20260927115906_i1c_chain_go_live.sql`). Cron job
+58 `atlas_chain_advance` (every minute, 20:00-01:59 UTC) now fires all 30
+stages on completion. Their clock entries are gone, so **the time table under
+"The nightly chain" gives only order and `not_before` floors, not firing times.**
+Eleven jobs stay on the clock: the intraday writers, the reaper, the 01:00 equity
+curve, the fundamentals syncs, `chain_vol_dispersion`, `chain_sync_valuations`,
+and `sync_alpaca_transactions_intraday` (13:10). That last one is the half of
+old job 15 the chain does not cover. Rollback: unschedule job 58, re-schedule the
+clock entries (their definitions are in git history), re-arm the shadow tick.
+
+**The seed graph would have lost verdict nights, so it was corrected first
+(I-1b, `20260927110512`).** The whole trade-sync sequence was hard, end to end,
+into `write_verdicts`. In the week before go-live, `trade_sync_signals` failed on
+09-22 and 09-24 and the Vercel ledger snapshot timed out (504) on 09-25. The
+clock ran every downstream job on all three nights and each one succeeded,
+because none of them reads what failed. Under the chain as seeded, each of those
+nights would have written no append-only verdict rows.
+
+**An edge is hard only when the successor reads the predecessor's output FOR
+TODAY**, or a documented gate says so. Clusters read only the correlation matrix,
+coherence recomputes families itself, and verdicts carry their own preflight. So
+nine edges are ordering-only and ten stay hard; the migration asserts the exact
+hard set. Check this before adding a stage: a hard edge that is not a real
+input makes one flaky upstream cost everything below it.
+
+**A clock job added after the chain was seeded is a race under it.**
+`atlas_write_account_book_risk` (23:41) writes the non-default accounts'
+`book_risk_daily` row with the return-engine columns NULL. A chain that reaches
+verdicts after 23:41 would then find the row present, and verdicts' `DO NOTHING`
+would keep the NULLs. It is a stage after `write_verdicts` now. **When adding a
+nightly job, add it to `atlas_chain_stages`, not `cron.job`.**
+
+### The trade-sync price read walked the whole table, four times a night (2026-09-27)
+
+`api/trade-sync.js`'s `loadCloses` read 417 symbols' closes 40 ids at a time,
+ordered `price_date ASC`. That is the shape `bookPriceRead.js` already records for
+Theme and Bench: the planner walks `idx_price_history_price_date` across all
+~1,900 names and discards what it does not want. Measured: **4.2 s for one
+chunk's first page**, and 14.6 s end to end for one of eleven chunks. The four
+scoring jobs (signals, coherence, universe, triggers) each load the tape
+independently, so each spent most of its ~240 s here. That put signals at
+234-262 s against a 300 s `maxDuration`. It was killed mid-write on 2026-09-22
+(1,000 of ~2,240 rows) and 2026-09-24 (none).
+
+It also filtered no interval. SPY is always in the relative-strength support
+set, so the scorers got **124 sessions with two SPY closes**: its `1Day` bars
+beside its `1d` bars (the 2026-09-21 entry). They index each series positionally,
+so each of those sessions counted as two.
+
+Now through `bookPricesPath(ids, since, { select, ascending: true })`, 3 ids per
+request so every read fits in one page with no OFFSET, 6 in flight. Same 118,882
+rows as the SQL count with `interval = '1d'`, strictly ascending per asset:
+**3.9-5.0 s for all 417 symbols**. The only rows dropped are SPY's `1Day` bars.
+`bookPriceRead.test.mjs` now fails any hand-built `price_history?` read path in
+`api/`.
+
+**Signal values move** on the relative-strength legs, because SPY no longer
+carries duplicate sessions. That is a correction, not drift.
+
 ### The read path served the mark from two places (2026-09-22)
 
 H-4, and it closes the skew the I-1 scoping note flagged. Full report in
@@ -6832,6 +6911,57 @@ missing return green.
 
 `vw_transactions` now reports `partial` on Performance when it hits the
 1,000-row cap; `loadView` used to hand back the truncated rows as complete.
+
+### Conviction was half price trend, and "quality" was your own P&L (C-1, 2026-09-25)
+
+The Nexus conviction score -- which drives recommended_action, the Drift tab's
+target weights and the bench docket -- was 35% DCF upside, 25% "macro", 25%
+technical trend and 15% "quality". Two of the four legs did not measure what
+they were named for:
+
+- **macro** was a sector label (rate sensitivity) crossed with the stock's OWN
+  price regime. No rate, spread or regime input anywhere; it correlated 0.78
+  with the technical leg, so the score counted trend twice.
+- **quality** was `vw_portfolio_home.quality_score`: the stock's Sharpe, its
+  vol, YOUR gain on cost, and 20 points for being <= 10% of the book. So the
+  same stock graded differently per account -- 18 of 38 shared names graded
+  lower on Atlas Secondary (NVDA, AAPL, MSFT B/B+ -> C) only because they were
+  bought yesterday -- and the size term fed back into the Drift target it was
+  computed against.
+
+Now valuation 0.35, trend 0.25, quality 0.15, where quality is the **Piotroski
+F-Score** from the statement layer (`vw_company_piotroski`), the same nine
+tests and completeness rule as Equity Research. A partial F-Score is not a
+lower score: the leg is absent and renormalised out, as valuation already was.
+**A name with neither a DCF nor a complete F-Score gets NO conviction**
+(`conviction_basis = 'no_fundamental_leg'`, mostly ETFs: 20 of 62 on Primary,
+10 of 38 on Secondary). Trend alone would be a verdict with nothing behind it.
+The formula is one function, `atlas_conviction()`: `vw_nexus_holdings`
+recomputes the score off the live mark and carried a second copy.
+
+**Withheld is not pending.** `holdingsAnalytics.js` tells them apart
+(`convictionWithheld`, `unscoredLabel`); "Analytics pending" on an ETF would
+promise a score that never comes. And **`targetWeights` keys on a score being
+on file**, not on `!analyticsPending` -- a withheld row is not pending, and
+counting it gave a 0% target, which `sizeTrade` reads as an exit.
+`api/nexus-bench.js` defaulted conviction to 0 (`?? 0`); the H-4 scanner only
+walked `src/` and now walks `api/` too.
+
+**Gross profit was missing for 158 operating rows** (PG, AMZN, ABBV, BMY,
+GILD: revenue and cost of revenue tagged, no GrossProfit line), which blanked
+gross margin in Equity Research and killed the ninth F-Score test.
+`vw_company_fundamentals` derives it (reported always wins, financials never
+derived, `gross_profit_reported` says which): revenue - cost matches the
+reported line on 1,072 of 1,076 rows within 0.5%.
+
+Also fixed on the way: `recommended_action` fell through to Exit for a 75+ name
+at exactly 10.0% weight; `nexus_insight` concatenated with `||` so a missing
+grade blanked the sentence; `qualDist` counted an ungraded name as C;
+`mv_nexus_holdings` still computed the old score every 10 minutes for no
+reader and is dropped. The "Macro"/"Regime" labels on the Nexus card and table
+now read **Rate×trend**, which is what they measure.
+`supabase/tests/c1_conviction_contract.sql` 18/18; `convictionBasis.test.mjs`
+2 of 6 fail against the old `targetWeights` membership.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

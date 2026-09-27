@@ -42,6 +42,17 @@
 
 export const ANALYTICS_PENDING_LABEL = 'Analytics pending';
 
+// ## WITHHELD IS NOT PENDING (C-1, 2026-09-25)
+//
+// Since C-1 conviction needs at least one FUNDAMENTAL leg -- a DCF valuation
+// or a complete Piotroski F-Score. A name with neither (most ETFs, a filer
+// with no statements) arrives with its analytics computed and conviction NULL,
+// `conviction_basis = 'no_fundamental_leg'`. That is an ANSWER, not a wait:
+// labelling it "pending" promises a score that will never come. Trend alone
+// would have been a verdict with nothing behind it (Bull -> Add, Wary -> Exit).
+export const BASIS_NO_FUNDAMENTAL = 'no_fundamental_leg';
+export const CONVICTION_WITHHELD_LABEL = 'No valuation or quality on file';
+
 const toNum = v => {
     if (v == null || v === '') return null;
     const n = Number(v);
@@ -58,7 +69,18 @@ const toNum = v => {
  */
 export function analyticsPending(row) {
     if (!row) return true;
-    return toNum(row.conviction_score) == null;
+    return toNum(row.conviction_score) == null && !convictionWithheld(row);
+}
+
+/** Conviction computed and deliberately absent: no fundamental leg. */
+export function convictionWithheld(row) {
+    return !!row && toNum(row.conviction_score) == null
+        && row.conviction_basis === BASIS_NO_FUNDAMENTAL;
+}
+
+/** The sentence for a row with no score -- withheld and pending read apart. */
+export function unscoredLabel(row) {
+    return convictionWithheld(row) ? CONVICTION_WITHHELD_LABEL : ANALYTICS_PENDING_LABEL;
 }
 
 /** Conviction score, or null. NEVER 50. */
@@ -84,11 +106,16 @@ export function actionOf(row) {
 export function partitionByAnalytics(rows, value) {
     const val = typeof value === 'function' ? value : (r => r && r.market_value);
     const measured = [], pending = [], pendingSymbols = [];
-    let measuredValue = 0, pendingValue = 0;
+    const withheld = [], withheldSymbols = [];
+    let measuredValue = 0, pendingValue = 0, withheldValue = 0;
 
     for (const row of rows || []) {
         const v = Math.abs(toNum(val(row)) ?? 0);
-        if (analyticsPending(row)) {
+        if (convictionWithheld(row)) {
+            withheld.push(row);
+            withheldValue += v;
+            if (row && row.symbol) withheldSymbols.push(row.symbol);
+        } else if (analyticsPending(row)) {
             pending.push(row);
             pendingValue += v;
             if (row && row.symbol) pendingSymbols.push(row.symbol);
@@ -97,14 +124,17 @@ export function partitionByAnalytics(rows, value) {
             measuredValue += v;
         }
     }
-    const total = measuredValue + pendingValue;
+    const total = measuredValue + pendingValue + withheldValue;
     return {
-        measured, pending, pendingSymbols,
+        measured, pending, pendingSymbols, withheld, withheldSymbols,
         measuredCount: measured.length,
         pendingCount: pending.length,
-        measuredValue, pendingValue,
+        withheldCount: withheld.length,
+        measuredValue, pendingValue, withheldValue,
         // Share of book value with no analytics yet, as a percentage.
         pendingSharePct: total ? (pendingValue / total) * 100 : 0,
+        // Share of book value with no fundamental leg to score.
+        withheldSharePct: total ? (withheldValue / total) * 100 : 0,
     };
 }
 

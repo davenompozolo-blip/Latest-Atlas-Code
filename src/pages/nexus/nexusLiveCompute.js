@@ -12,7 +12,7 @@
 
 import { computeRead, READ_CONFIG, ConcentrationPenalty } from './readEngine.js';
 import { weightedMove } from '../../lib/weightedMove.js';
-import { analyticsPending, convictionOf } from '../../lib/holdingsAnalytics.js';
+import { convictionOf } from '../../lib/holdingsAnalytics.js';
 import {
     BASIS_SINCE_ENTRY, BASIS_ON_COST, BASIS_LABEL,
     readReturn, partitionByBasis,
@@ -434,7 +434,10 @@ export function targetWeights(rows) {
     // handing it a target of 0% makes `sizeTrade` read a full exit as the
     // book's own instruction. The caller must distinguish "target 0%" from
     // "no target", so this returns no entry rather than a zero one.
-    const scored = (rows || []).filter(r => !analyticsPending(r));
+    // Scored means a score is ON FILE. `!analyticsPending` is not enough since
+    // C-1: a withheld row (no fundamental leg) is not pending and has no score,
+    // and counting it here would give it a 0% target -- a sell ticket.
+    const scored = (rows || []).filter(r => convictionOf(r) != null);
     const invested = scored.reduce((a, r) => a + (num(r.weight_pct) || 0), 0);
     const convSum = scored.reduce((a, r) => a + Math.max(0, convictionOf(r) || 0), 0) || 1;
     const m = new Map();

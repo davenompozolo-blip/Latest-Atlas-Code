@@ -283,7 +283,9 @@ export default async function handler(req, res) {
                 // taxonomy from the one it displayed (CLAUDE.md, 2026-08-11).
                 theme: h.theme || 'Unclassified',
                 weightPct: num(h.weight_pct),
-                conviction: num(h.conviction_score) ?? 0,
+                // Null stays null: since C-1 a name with no fundamental leg
+                // carries no conviction, and 0 would read as the worst score.
+                conviction: num(h.conviction_score),
                 todayPct: num(h.daily_return_pct),
                 // ON COST, with no fallback. This read was
                 // `unrealised ?? total`, silently substituting the

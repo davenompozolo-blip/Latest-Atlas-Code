@@ -22,7 +22,7 @@ export const COLUMNS = [
     { k: 'theme',         label: 'Theme',       group: 'Identity',  l: true, sort: 'theme' },
 
     { k: 'weight',        label: 'Weight',      group: 'Position',  sort: 'currentWeightPct' },
-    { k: 'conviction',    label: 'Conv (PCM)',  group: 'Position',  sort: 'conviction' },
+    { k: 'conviction',    label: 'Conviction',  group: 'Position',  sort: 'conviction' },
 
     { k: 'todayPct',      label: 'Today',       group: 'Performance', sort: 'todayPct' },
     // "Since entry", not "Total ret". This column is return since the first
