@@ -542,6 +542,14 @@ DESC)` pattern this file already says to replace with a LATERAL top-N. It reads
 60,850 rows for 63 answers, and it grows every night now that the universe
 syncs. Not yet fixed.
 
+**Closed -- corrected 2026-09-27.** The LATERAL top-1 landed on 2026-08-24
+(`20260824160000_return_engine.sql`), the day after this was written, and the
+"not yet fixed" line was never updated. Measured as anon: **5-16 ms warm on both
+accounts**, and still 12-23 ms while `refresh_nexus_holdings()` runs beside it.
+`pg_stat_statements` shows a tail (min 18 ms, max 1,995 ms over 26 calls) that
+does not reproduce under that load and reads zero blocks from disk. Nothing in
+the view structure left to fix.
+
 ### PostgREST caps at 1,000 rows whatever `limit` says (2026-08-23)
 `api/nexus-theme.js` asked for `order=price_date.asc&limit=20000`. PostgREST
 returned **1,000 rows, all stamped the same single date** — the oldest 1,000 in
@@ -703,8 +711,10 @@ never be zero — treat it as a permanent gate, not a bug to close.
   put it mid-schedule and returned −79.27% on flows summing to +$956.
 - **`asset_class` is `'us_option'`, not `'option'`.** Equality misses every
   contract. Test the class prefix *and* the OCC symbol shape — either alone has
-  been wrong here. `vw_performance_suite` still carries the equality test and is
-  only saved by starting from `positions`.
+  been wrong here. `vw_performance_suite` carried the equality test until
+  PERF-1 (2026-09-27) and was only saved by starting from `positions`; forced
+  with an expired `us_option` in the current snapshot it published the contract
+  (`supabase/tests/perf1_expired_option_filter.sql`).
 - **Own return is priced at fills; a counterfactual has no fills.**
   Differencing them folds execution into stock selection — SNDK 18.71pp, AMD
   11.93pp. Publish the position on a close basis too and difference *that*;
