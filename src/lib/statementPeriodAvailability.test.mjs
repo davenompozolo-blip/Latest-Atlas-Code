@@ -46,7 +46,8 @@ test('the reason names the loader, and never an Alpha Vantage quota', () => {
     const body = periodAbsentReason(statementPeriodAvailability(AAPL, 'quarterly'));
     assert.match(body, /19 annual periods/);
     assert.match(body, /EDGAR/);
-    assert.match(body, /annual filings only/);
+    assert.match(body, /10-Q/);
+    assert.match(body, /20-F/);
     // AAPL was loaded from EDGAR, which has no key and no daily cap. The old
     // copy blamed the AV free tier for it.
     assert.doesNotMatch(body, /Alpha Vantage/);

@@ -6982,6 +6982,33 @@ read sets `histFailed`, and the panels say the feed did not answer.
 read in `src/` that orders on `price_date` first, and it finds both pre-fix
 sites when they are restored.
 
+### EDGAR quarterly: a Q4 is a difference, and a difference can span two vintages (2026-09-27)
+
+EQ-10. `quarterlyStatementRowsFromFacts` in `src/lib/edgarFacts.js` reads 10-Q
+and 10-K facts from the same `companyfacts` payload the annual loader already
+fetches. There are no extra calls, and the loader writes both bases in one
+atomic RPC. Cash flow is often filed year-to-date only, and Q4 exists only
+inside the 10-K annual figure. So quarters are differenced along YTD chains,
+within ONE concept and one fiscal-year start, using 60-120 day steps.
+
+**A derived quarter is withheld when either end of the difference was
+restated**, unless both ends came from one filing. Take Target FY2013: the 10-K
+restated the year for discontinued operations, and the nine-month figure exists
+only in the original 10-Q. Latest-wins then publishes Q4 = restated annual minus
+original nine months, and that Q4 absorbs the whole restatement. **Reconciling
+against the annual cannot see it**, because the four quarters then sum to the
+very annual Q4 was built from (CodeRabbit, PR #840). Withheld quarters are
+listed in `provenance.cross_vintage`.
+
+Dry run on AAPL, rolled back: 73 quarters through `vw_company_fundamentals`,
+and FY25 Q4 revenue of $102.5bn matches the reported figure. **Quarterly
+ratios are not annualised**: quarterly ROE is one quarter's income over average
+equity. That is how the view already treats Alpha Vantage quarters, and it is
+flagged here, not changed.
+
+The upsert deletes by primary key, so a quarter that becomes cross-vintage on
+a later reload keeps its earlier row. Same property as the annual path.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

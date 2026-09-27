@@ -23,7 +23,7 @@
 // is not this. This reads `data.sec.gov`, the structured-data side.
 // ============================================================
 
-import { statementRowsFromFacts, SOURCE_EDGAR } from '../src/lib/edgarFacts.js';
+import { statementRowsFromFacts, quarterlyStatementRowsFromFacts, SOURCE_EDGAR } from '../src/lib/edgarFacts.js';
 
 const SEC_WWW  = 'https://www.sec.gov';
 const SEC_DATA = 'https://data.sec.gov';
@@ -308,9 +308,18 @@ export default async function handler(req, res) {
             // ALL THREE STATEMENTS, THEN WRITE. EQ-2 found SNDK with an income
             // statement and no balance sheet because the old loader wrote as it
             // fetched and was interrupted between calls. A symbol is atomic.
-            await writeStatements(income, balance, cashflow);
+            // Quarters come from the SAME payload -- no extra call. A quarter
+            // derived across two filing vintages is withheld by the extractor,
+            // never written. Written in the same transaction as the annual
+            // rows, so a symbol is still atomic across both bases.
+            const q = quarterlyStatementRowsFromFacts(facts, symbol);
+            await writeStatements(income.concat(q.income), balance.concat(q.balance),
+                cashflow.concat(q.cashflow));
 
-            const rows = income.length + balance.length + cashflow.length;
+            const rows = income.length + balance.length + cashflow.length
+                + q.income.length + q.balance.length + q.cashflow.length;
+            const cvCount = Object.values(q.provenance.cross_vintage || {})
+                .reduce((t, a) => t + a.length, 0);
             summary.symbols_written++;
             summary.rows_written += rows;
             summary.symbols.push({
@@ -319,6 +328,9 @@ export default async function handler(req, res) {
                 periods: provenance.fiscal_years.length,
                 year_min: provenance.fiscal_years[0],
                 year_max: provenance.fiscal_years[provenance.fiscal_years.length - 1],
+                quarters: q.income.length,
+                quarter_max: q.income.length ? q.income[q.income.length - 1].fiscal_date_ending : null,
+                cross_vintage_withheld: cvCount,
                 rows,
                 override: override ? override[1] : undefined,
             });

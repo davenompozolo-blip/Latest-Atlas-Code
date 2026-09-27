@@ -143,11 +143,12 @@ export function statementPeriodAvailability(coverage, period) {
 /**
  * Why the requested basis is empty, in the loader's own terms.
  *
- * EDGAR `companyfacts` DOES carry quarterly facts -- `edgarFacts.js` filters to
- * ANNUAL_FORMS and requires a 330-400 day duration, so quarterly is not fetched
- * rather than not available. Saying "the loader reads annual filings" is the
- * true reason; saying "not loaded yet" invites waiting for something that will
- * never arrive on its own.
+ * The EDGAR loader writes quarters from 10-Q/10-K facts in the same payload
+ * (EQ-10), so an EDGAR symbol with no quarters is one of two things, and the
+ * copy names both rather than guessing: a foreign private issuer, which files
+ * annually (20-F / 40-F) and has no 10-Q to read, or a symbol whose last load
+ * predates quarterly loading. Saying "not loaded yet" would invite waiting for
+ * the first case, which never arrives.
  */
 export function periodAbsentReason(view) {
     if (!view || view.state !== PERIOD_ABSENT) return null;
@@ -158,9 +159,10 @@ export function periodAbsentReason(view) {
     const have = n + ' ' + view.available + ' period' + (n === 1 ? '' : 's');
 
     if (view.requested === 'quarterly' && view.source === 'edgar') {
-        return 'This symbol carries ' + have + ', loaded from EDGAR, whose reader takes annual '
-             + 'filings only. The quarterly facts exist in the same feed and are not fetched yet, '
-             + 'so this is a gap in the loader rather than a gap at the source.';
+        return 'This symbol carries ' + have + ', loaded from EDGAR, and no quarterly periods. '
+             + 'Quarters come from 10-Q filings: a foreign issuer filing annually (20-F or 40-F) '
+             + 'has none to read, and a symbol last loaded before quarterly loading began has not '
+             + 'been re-read yet.';
     }
     return 'This symbol carries ' + have + (src ? ', loaded from ' + src : '')
          + ', and nothing on the ' + view.requested + ' basis.';
