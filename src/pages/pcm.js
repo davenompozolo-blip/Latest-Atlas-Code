@@ -1288,8 +1288,11 @@ export function PortfolioConstruction() {
                             .in('asset_id', batchIds)
                             .eq('interval', '1d')
                             .gte('price_date', cutoff)
-                            .order('price_date', { ascending: false })
+                            // Asset-major: date-major walks the whole universe's
+                            // price_date index and times out at the anon cap
+                            // (see performance-suite.js, 2026-09-27).
                             .order('asset_id', { ascending: true })
+                            .order('price_date', { ascending: false })
                             .range(from, to);
                     }, 'price_history');
                 })).then(function(batches) {

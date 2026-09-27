@@ -106,6 +106,10 @@ export function PerformanceSuite() {
     var histBySymbol = _hist[0], setHistBySymbol = _hist[1];
     var _hr = useState(false);
     var histReady = _hr[0], setHistReady = _hr[1];
+    // A failed read is not an empty one: the panels must say the feed did not
+    // answer rather than that no history exists.
+    var _hf = useState(false);
+    var histFailed = _hf[0], setHistFailed = _hf[1];
     // The do-nothing baseline (close-out §5.1). One row, read newest-first.
     var _bb = useState(null);
     var baselineRow = _bb[0], setBaselineRow = _bb[1];
@@ -213,6 +217,7 @@ export function PerformanceSuite() {
                 sb.from('assets').select('id, symbol, asset_class')
                     .in('symbol', portfolioSymbols.length ? portfolioSymbols : ['__none__'])
                     .then(function(assetResult) {
+                        if (assetResult.error) throw assetResult.error;
                         var assetRows = assetResult.data || [];
                         var assetBySymbol = {};
                         assetRows.forEach(function(a) { assetBySymbol[a.symbol] = a; });
@@ -286,8 +291,19 @@ export function PerformanceSuite() {
                                     .in('asset_id', batchIds)
                                     .eq('interval', '1d')
                                     .gte('price_date', cutoff)
-                                    .order('price_date', { ascending: false })
+                                    // ASSET-MAJOR (2026-09-27). Date-major over a
+                                    // literal id list walks the price_date index
+                                    // across the whole ~1,900-name universe to find
+                                    // the newest 1,000 rows: page 0 was cancelled at
+                                    // the 3s anon cap on BOTH accounts, the catch
+                                    // below marked the history ready and empty, and
+                                    // Contribution / Factor Engine / Regime Slicer
+                                    // all read "no price history". Asset-major is
+                                    // served per asset off the unique index: 0.2-0.6s.
+                                    // (asset_id, price_date) is still total with the
+                                    // interval pinned. Same fix as bookPriceRead.js.
                                     .order('asset_id', { ascending: true })
+                                    .order('price_date', { ascending: false })
                                     .range(from, to);
                             }, 'price_history');
                         }
@@ -318,8 +334,14 @@ export function PerformanceSuite() {
                             });
                             setHistBySymbol(bySymbol);
                             setHistReady(true);
-                        }).catch(function() { setHistReady(true); });
-                    }).catch(function() { setHistReady(true); });
+                        }).catch(function(e) {
+                            console.error('[performance-suite] price history read failed', e);
+                            setHistFailed(true); setHistReady(true);
+                        });
+                    }).catch(function(e) {
+                        console.error('[performance-suite] asset lookup failed', e);
+                        setHistFailed(true); setHistReady(true);
+                    });
             });
         }
         load();
@@ -553,13 +575,13 @@ export function PerformanceSuite() {
             panel = h(TradingEffectPanel, null);
             break;
         case 'rolling':
-            panel = h(RollingAttributionPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
+            panel = h(RollingAttributionPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, histFailed: histFailed, perfData: perfData || [] });
             break;
         case 'factors':
-            panel = h(FactorEnginePanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
+            panel = h(FactorEnginePanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, histFailed: histFailed, perfData: perfData || [] });
             break;
         case 'regime':
-            panel = h(RegimeSlicerPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, perfData: perfData || [] });
+            panel = h(RegimeSlicerPanel, { positions: homeData || [], histBySymbol: histBySymbol, histReady: histReady, histFailed: histFailed, perfData: perfData || [] });
             break;
         case 'charts':
             // Rendered as a persistent sibling below (keep-alive), not here.
