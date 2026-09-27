@@ -26,6 +26,7 @@ import {
 import { assessCoherence } from '../src/lib/trade/coherence.js';
 import { buildUniverse } from '../src/lib/trade/universe.js';
 import { clusterByCorrelation, percentileRank } from '../src/lib/trade/stats.js';
+import { bookPricesPath } from '../src/lib/bookPriceRead.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const SB_URL = (process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
@@ -187,17 +188,49 @@ async function loadContext() {
     };
 }
 
-/** Daily closes per symbol, newest last, for the symbols we can actually score. */
+/**
+ * Daily closes per symbol, newest last, for the symbols we can actually score.
+ *
+ * Read through bookPricesPath: asset ids filtered on the table's own index,
+ * `interval=eq.1d` pinned, asset-major order. Until 2026-09-27 this ordered
+ * price_date ASC over 40 ids at a time, which walks idx_price_history_price_date
+ * across the whole ~1,900-name table and discards what it does not want --
+ * 4.2 s for one chunk's first page, repeated for 11 chunks and every page
+ * offset, in each of the four scoring jobs. signals ran 234-262 s against a
+ * 300 s budget and was killed mid-write on 2026-09-22 and 09-24.
+ *
+ * It also filtered no interval, so SPY -- always in the support set for the
+ * relative-strength legs -- arrived with its `1Day` bars beside its `1d` bars:
+ * two closes for one session, read positionally as two sessions.
+ *
+ * CLOSES_CHUNK ids per request keeps every read inside ONE page (420 calendar
+ * days is <= ~290 bars an asset), so no request pays an OFFSET; sbGet still
+ * pages if a chunk ever exceeds it. Asset-major ascending means each asset's
+ * rows arrive oldest first, which is the order the scorers index positionally.
+ */
+const CLOSES_CHUNK = 3;
+const CLOSES_CONCURRENCY = 6;
+
 async function loadCloses(symbols, assetBySymbol, lookbackDays = 420) {
-    const ids = symbols.map((s) => assetBySymbol.get(s)).filter(Boolean).map((a) => a.id);
+    const ids = [...new Set(symbols.map((s) => assetBySymbol.get(s)).filter(Boolean).map((a) => a.id))];
     const since = new Date(Date.now() - lookbackDays * 86400000).toISOString().slice(0, 10);
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += CLOSES_CHUNK) chunks.push(ids.slice(i, i + CLOSES_CHUNK));
+
+    const results = new Array(chunks.length);
+    let next = 0;
+    async function worker() {
+        while (next < chunks.length) {
+            const k = next++;
+            results[k] = await sbGet(bookPricesPath(chunks[k], since, {
+                select: 'asset_id,price_date,close,volume', ascending: true,
+            }));
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(CLOSES_CONCURRENCY, chunks.length) }, worker));
+
     const byId = new Map();
-    for (let i = 0; i < ids.length; i += 40) {
-        const chunk = ids.slice(i, i + 40);
-        const rows = await sbGet(
-            `price_history?select=asset_id,price_date,close,volume&price_date=gte.${since}`
-            + `&asset_id=in.(${chunk.join(',')})&order=price_date.asc&limit=100000`,
-        );
+    for (const rows of results) {
         for (const r of rows) {
             if (!byId.has(r.asset_id)) byId.set(r.asset_id, []);
             byId.get(r.asset_id).push({ d: r.price_date, c: n(r.close), v: n(r.volume) });

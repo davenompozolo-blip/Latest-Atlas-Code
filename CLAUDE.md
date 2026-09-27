@@ -649,6 +649,10 @@ its pipeline is actually capable of succeeding.
   about what happened then; only its current state changed.
 - `signal_scores` — frozen at 2026-08-11. **This starves the Trade ticket's
   coherence pane**; Pane C renders "NO FAMILY VECTOR ON FILE" once it ages out.
+  **Corrected 2026-09-27: not frozen** -- ~2,240 rows a night since. What was
+  wrong was the job's DURATION: `trade_sync_signals` ran 234-262 s against a
+  300 s budget and was killed mid-write on 09-22 (1,000 rows) and 09-24 (none).
+  See "The trade-sync price read" below.
 - `sync_funddata_prices` — the job *works* (`fund_prices_raw` is current), but
   its terminal `sync_log` PATCH goes through PostgREST and the failure is
   swallowed at `supabase/functions/sync_funddata_prices/index.ts:44`
@@ -4330,6 +4334,33 @@ input makes one flaky upstream cost everything below it.
 verdicts after 23:41 would then find the row present, and verdicts' `DO NOTHING`
 would keep the NULLs. It is a stage after `write_verdicts` now. **When adding a
 nightly job, add it to `atlas_chain_stages`, not `cron.job`.**
+
+### The trade-sync price read walked the whole table, four times a night (2026-09-27)
+
+`api/trade-sync.js`'s `loadCloses` read 417 symbols' closes 40 ids at a time,
+ordered `price_date ASC`. That is the shape `bookPriceRead.js` already records for
+Theme and Bench: the planner walks `idx_price_history_price_date` across all
+~1,900 names and discards what it does not want. Measured: **4.2 s for one
+chunk's first page**, and 14.6 s end to end for one of eleven chunks. The four
+scoring jobs (signals, coherence, universe, triggers) each load the tape
+independently, so each spent most of its ~240 s here. That put signals at
+234-262 s against a 300 s `maxDuration`. It was killed mid-write on 2026-09-22
+(1,000 of ~2,240 rows) and 2026-09-24 (none).
+
+It also filtered no interval. SPY is always in the relative-strength support
+set, so the scorers got **124 sessions with two SPY closes**: its `1Day` bars
+beside its `1d` bars (the 2026-09-21 entry). They index each series positionally,
+so each of those sessions counted as two.
+
+Now through `bookPricesPath(ids, since, { select, ascending: true })`, 3 ids per
+request so every read fits in one page with no OFFSET, 6 in flight. Same 118,882
+rows as the SQL count with `interval = '1d'`, strictly ascending per asset:
+**3.9-5.0 s for all 417 symbols**. The only rows dropped are SPY's `1Day` bars.
+`bookPriceRead.test.mjs` now fails any hand-built `price_history?` read path in
+`api/`.
+
+**Signal values move** on the relative-strength legs, because SPY no longer
+carries duplicate sessions. That is a correction, not drift.
 
 ### The read path served the mark from two places (2026-09-22)
 

@@ -1,7 +1,7 @@
 // src/lib/bookPriceRead.js
 //
-// The one PostgREST path for "daily closes for the names in the book", used by
-// api/nexus-theme.js and api/nexus-bench.js.
+// The one PostgREST path for "daily closes for a set of names", used by
+// api/nexus-theme.js, api/nexus-bench.js and api/trade-sync.js.
 //
 // Both used to filter through the embed:
 //
@@ -44,16 +44,20 @@ export function assetIdsPath(symbols) {
 }
 
 // price_history rows for those ids since `since` (YYYY-MM-DD), asset-major,
-// newest first within each asset. Callers re-sort per symbol.
-export function bookPricesPath(assetIds, since) {
+// newest first within each asset by default. Callers re-sort per symbol, or
+// pass { ascending: true } to receive each asset's rows oldest first.
+// `select` names extra columns (api/trade-sync.js needs volume).
+export function bookPricesPath(assetIds, since, opts = {}) {
     const ids = [...new Set((assetIds || []).filter(Boolean))];
     if (!ids.length) return null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(since || ''))) throw new Error('bookPricesPath: since must be YYYY-MM-DD');
-    return 'price_history?select=price_date,close,asset_id'
+    const select = opts.select || 'price_date,close,asset_id';
+    if (!/^[a-z_]+(,[a-z_]+)*$/.test(select)) throw new Error('bookPricesPath: select must be a plain column list');
+    return 'price_history?select=' + select
         + '&asset_id=in.(' + ids.join(',') + ')'
         + '&interval=eq.1d'
         + '&price_date=gte.' + since
-        + '&order=asset_id.asc,price_date.desc';
+        + '&order=asset_id.asc,price_date.' + (opts.ascending ? 'asc' : 'desc');
 }
 
 // Map rows of assets?select=id,symbol to id -> symbol.
