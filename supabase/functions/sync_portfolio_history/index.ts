@@ -225,28 +225,37 @@ async function syncOne(t: BrokerTarget, requestedPeriod: string, timeframe: stri
                        requestedMode: string): Promise<Record<string, unknown>> {
   const resolvedPortfolioId = t.portfolio_id
 
-  // An account with no curve yet gets its WHOLE history, whatever the cron
-  // asked for. The nightly job sends period='6M' to keep the re-fetch small,
-  // which is right once a curve exists and wrong on the first run: an account
-  // that traded for years before joining Atlas would start with six months
-  // and never recover the rest, because later runs only re-fetch six months.
-  const [have] = await sql<{ n: number }[]>`
-    select count(*)::int as n from public.portfolio_equity_curve
-    where portfolio_id = ${t.portfolio_id} and timeframe = ${timeframe}
-  `
-  const firstRun = (have?.n ?? 0) === 0
-  const period = firstRun ? 'all' : requestedPeriod
-  const mode   = firstRun ? 'backfill' : requestedMode
   const [logRow] = await sql<{ id: number }[]>`
     insert into public.sync_log (function_name, status, source, details, portfolio_id)
     values (${FUNCTION_NAME}, 'running', 'edge_function',
-            ${sql.json({ period, requested_period: requestedPeriod, first_run: firstRun, timeframe, mode, portfolio_id: t.portfolio_id, account_number: t.account_number })},
+            ${sql.json({ requested_period: requestedPeriod, timeframe, mode: requestedMode, portfolio_id: t.portfolio_id, account_number: t.account_number })},
             ${t.portfolio_id})
     returning id
   `
   const logId = logRow.id
 
   try {
+    // Until a full-history backfill has completed for this account, every run
+    // is one, whatever the cron asked for. The nightly job sends period='6M'
+    // to keep the re-fetch small, which is right once the history is in and
+    // wrong before it: an account that traded for years before joining Atlas
+    // would start with six months and never recover the rest. Completion is
+    // read from sync_log, not from the curve holding rows -- a backfill that
+    // wrote some chunks and then failed leaves rows behind and is not done.
+    const [done] = await sql<{ ok: boolean }[]>`
+      select exists (
+        select 1 from public.sync_log
+        where function_name = ${FUNCTION_NAME}
+          and portfolio_id  = ${t.portfolio_id}
+          and status in ('success', 'partial')
+          and details->>'mode'      = 'backfill'
+          and details->>'timeframe' = ${timeframe}
+      ) as ok
+    `
+    const firstRun = !done?.ok
+    const period = firstRun ? 'all' : requestedPeriod
+    const mode   = firstRun ? 'backfill' : requestedMode
+
     // Identity gate before anything is fetched or written.
     await verifiedAccount<{ account_number?: string }>(t)
 
@@ -356,6 +365,8 @@ async function syncOne(t: BrokerTarget, requestedPeriod: string, timeframe: stri
     const status = staleDates.length > 0 ? 'partial' : 'success'
     const details = {
       period, timeframe, mode,
+      requested_period:        requestedPeriod,
+      first_run:               firstRun,
       portfolio_id:            resolvedPortfolioId,
       account_number:          t.account_number,
       rows_from_alpaca:        timestamp.length,

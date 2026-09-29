@@ -39,8 +39,11 @@ const MAX_PAGES = 100
 // first sync starts at the ACCOUNT's own opening date from /v2/account. A fixed
 // date here was the platform's first fill date, which silently dropped the
 // earlier history of any account that already traded before joining Atlas.
-// The fallback applies only if the broker omits `created_at`.
-const COLD_START_FALLBACK = '2025-12-01T00:00:00Z'
+// The fallback applies only if the broker omits `created_at`, and it predates
+// Alpaca itself, so it cannot exclude any fill the broker could return. A
+// recent date here would be permanent: once newer fills land, the watermark
+// never looks behind them again.
+const COLD_START_FALLBACK = '2015-01-01T00:00:00Z'
 
 function coldStartAfter(createdAt: unknown): string {
     if (typeof createdAt !== 'string') return COLD_START_FALLBACK
