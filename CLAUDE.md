@@ -4335,6 +4335,14 @@ verdicts after 23:41 would then find the row present, and verdicts' `DO NOTHING`
 would keep the NULLs. It is a stage after `write_verdicts` now. **When adding a
 nightly job, add it to `atlas_chain_stages`, not `cron.job`.**
 
+**Validation carries a 23:15 floor (I-1d, 2026-09-29).** On the first live
+night the verdict chain finished at 22:21, and `run_validation`, whose only
+dependency is `write_segment_verdicts`, fired then -- before market series
+(22:50), options (23:00) and macro (23:05). It graded the previous night's
+feeds: the 22:40 defect again. A stage has one dependency, so ordering behind
+the late external-floor feeds is a `not_before`. Anything that grades the
+night belongs after the last feed, not after whichever stage it follows.
+
 ### The trade-sync price read walked the whole table, four times a night (2026-09-27)
 
 `api/trade-sync.js`'s `loadCloses` read 417 symbols' closes 40 ids at a time,
