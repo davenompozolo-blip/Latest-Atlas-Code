@@ -35,10 +35,24 @@ import { normaliseFill } from '../_shared/alpaca_fill.js'
 const PAGE_SIZE = 100
 const MAX_PAGES = 100
 
-// When the table is empty there is no watermark to resume from. Start at the
-// first known transaction date rather than pulling the account's entire
-// lifetime on every cold start.
-const COLD_START_AFTER = '2025-12-01T00:00:00Z'
+// When a portfolio holds no fills there is no watermark to resume from, so the
+// first sync starts at the ACCOUNT's own opening date from /v2/account. A fixed
+// date here was the platform's first fill date, which silently dropped the
+// earlier history of any account that already traded before joining Atlas.
+// The fallback applies only if the broker omits `created_at`, and it predates
+// Alpaca itself, so it cannot exclude any fill the broker could return. A
+// recent date here would be permanent: once newer fills land, the watermark
+// never looks behind them again.
+const COLD_START_FALLBACK = '2015-01-01T00:00:00Z'
+
+function coldStartAfter(createdAt: unknown): string {
+    if (typeof createdAt !== 'string') return COLD_START_FALLBACK
+    const d = new Date(createdAt)
+    if (Number.isNaN(d.getTime())) return COLD_START_FALLBACK
+    // One day earlier: `after` is exclusive, and a fill on the opening day
+    // must not fall on the wrong side of it.
+    return new Date(d.getTime() - 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
 
 const sql = postgres(Deno.env.get('SUPABASE_DB_URL')!)
 
@@ -210,6 +224,7 @@ async function closeSyncLogError(id: number | null, err: unknown): Promise<void>
 
 interface SyncResult {
     watermark: string
+    cold_start: boolean
     fetched: number
     upserted: number
     skipped_no_symbol: number
@@ -224,7 +239,7 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
     const portfolios = [{ portfolio_id: t.portfolio_id }]
 
     // Identity gate before anything is fetched or written.
-    await verifiedAccount<{ account_number?: string }>(t)
+    const acct = await verifiedAccount<{ account_number?: string; created_at?: string }>(t)
 
     // Resume from the newest row we already hold. Alpaca's `after` is
     // exclusive on time, and the (portfolio_id, external_id) unique key makes
@@ -236,7 +251,8 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
         from public.transactions
         where portfolio_id = ${t.portfolio_id}
     `
-    const after = wm?.watermark ?? COLD_START_AFTER
+    const coldStart = wm?.watermark == null
+    const after = wm?.watermark ?? coldStartAfter(acct.created_at)
 
     // The watermark is THIS portfolio's newest fill. A global max would let a
     // quieter account resume from a busier one's newest fill and skip its own.
@@ -335,6 +351,7 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
 
     return {
         watermark: after,
+        cold_start: coldStart,
         fetched: activities.length,
         upserted,
         skipped_no_symbol: skippedNoSymbol,
