@@ -46,7 +46,7 @@ export const RAMP = {
     '--purple':       '#8b5cf6',
     '--text-1':       '#e3e9f2',
     '--text-2':       '#8aa0bb',
-    '--text-3':       '#51647b',
+    '--text-3':       '#6b829e',
     '--border':       'rgba(255, 255, 255, 0.11)',
     '--border-2':     'rgba(255, 255, 255, 0.07)',
     '--font-mono':    "'JetBrains Mono', monospace",

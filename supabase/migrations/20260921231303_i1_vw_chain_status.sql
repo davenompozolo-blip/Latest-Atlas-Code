@@ -1,11 +1,3 @@
--- I-1: today's chain, one row per stage, live and shadow side by side.
---
--- Exists so "did the pipeline run in order tonight" is a query rather than a
--- join across sync_log sources written from memory. It reports the stage's
--- graded status via atlas_chain_stage_status(), NOT the raw dispatch row --
--- which is the whole point of this unit: the dispatch row for a trade-sync leg
--- says success up to four minutes before the work ends.
-
 create or replace view public.vw_chain_status as
 select
     s.seq,
@@ -23,8 +15,6 @@ select
     p.started_at  as worker_started_at,
     p.finished_at as worker_finished_at,
     p.status      as worker_status,
-    -- How long the real work ran on past the dispatch "success". Non-zero here
-    -- is exactly the signal that a stage must not be chained off its dispatch.
     round(extract(epoch from (p.finished_at - l.finished_at))) as worker_overshoot_s
 from public.atlas_chain_stages s
 left join lateral (
@@ -44,7 +34,4 @@ left join lateral (
 ) p on true;
 
 comment on view public.vw_chain_status is
-  'Tonight''s ingestion chain, graded. live_status/shadow_status come from '
-  'atlas_chain_stage_status() so they reflect the WORKER finishing, not the '
-  'dispatch being acknowledged. worker_overshoot_s is how long the handler kept '
-  'running after its dispatch row closed success.';
+  'Tonight''s ingestion chain, graded. live_status/shadow_status come from atlas_chain_stage_status() so they reflect the WORKER finishing, not the dispatch being acknowledged. worker_overshoot_s is how long the handler kept running after its dispatch row closed success.';

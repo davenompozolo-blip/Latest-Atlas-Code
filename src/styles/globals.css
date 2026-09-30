@@ -33,7 +33,10 @@
   /* Text scale */
   --text-1:     #e3e9f2;
   --text-2:     #8aa0bb;
-  --text-3:     #51647b;
+  /* 4.51:1 on --navy-2, the card surface most labels sit on (WCAG AA for
+     small text); #51647b read 2.94:1. Any lighter and it stops being a
+     step below --text-2. src/lib/textContrast.test.mjs holds both. */
+  --text-3:     #6b829e;
   /* Borders — NEUTRAL, not teal-tinted. A border carrying the accent hue
      made every edge in the shell faintly glow a different colour from the
      panel edges beside it. */
