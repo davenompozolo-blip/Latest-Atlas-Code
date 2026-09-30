@@ -10,6 +10,9 @@
     "api/claude-sector.js": {
       "maxDuration": 300
     },
+    "api/broker-accounts.js": {
+      "maxDuration": 60
+    },
     "api/ledger-snapshot.js": {
       "maxDuration": 60
     },

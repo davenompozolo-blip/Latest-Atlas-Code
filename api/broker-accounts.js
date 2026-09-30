@@ -29,6 +29,10 @@ const SB_URL = (process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SB_KEY = process.env.ATLAS_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 const TRADING_BASE = (paper) => paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets';
+const TIMEOUT_MS = 8000;   // every outbound call is bounded: a hung upstream must not hold the function
+// The first syncs are an accelerant -- the cron picks every account up anyway --
+// so they are waited on only this long, well inside the route's maxDuration.
+const FIRST_SYNC_WAIT_MS = 25000;
 const FIRST_SYNCS = ['sync_alpaca_positions', 'sync_alpaca_transactions', 'sync_portfolio_history'];
 
 function sbHeaders(extra) {
@@ -39,10 +43,18 @@ function sbHeaders(extra) {
     }, extra || {});
 }
 
+// Never throws: a timeout or transport failure comes back as ok:false, status
+// null, so every caller's existing not-ok branch handles it.
 async function rpc(fn, args) {
-    const r = await fetch(SB_URL + '/rest/v1/rpc/' + fn, {
-        method: 'POST', headers: sbHeaders(), body: JSON.stringify(args),
-    });
+    let r;
+    try {
+        r = await fetch(SB_URL + '/rest/v1/rpc/' + fn, {
+            method: 'POST', headers: sbHeaders(), body: JSON.stringify(args),
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+    } catch (e) {
+        return { ok: false, status: null, body: { message: fn + ' did not answer: ' + String(e && e.message || e) } };
+    }
     const text = await r.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = text; }
@@ -54,6 +66,7 @@ async function brokerAccount(keyId, secretKey, paper) {
     try {
         const r = await fetch(TRADING_BASE(paper) + '/v2/account', {
             headers: { 'APCA-API-KEY-ID': keyId, 'APCA-API-SECRET-KEY': secretKey, accept: 'application/json' },
+            signal: AbortSignal.timeout(TIMEOUT_MS),
         });
         if (!r.ok) return { ok: false, status: r.status };
         const a = await r.json();
@@ -73,11 +86,16 @@ async function startFirstSyncs(portfolioId) {
         try {
             const r = await fetch(SB_URL + '/functions/v1/' + fn, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                signal: AbortSignal.timeout(FIRST_SYNC_WAIT_MS),
             });
             out[fn] = r.status;
         } catch (e) {
-            console.error('broker-accounts: first sync ' + fn + ' failed to start:', e);
-            out[fn] = 'not started';
+            if (e && e.name === 'TimeoutError') {
+                out[fn] = 'still running when the route stopped waiting';
+            } else {
+                console.error('broker-accounts: first sync ' + fn + ' failed to start:', e);
+                out[fn] = 'not started';
+            }
         }
     }));
     return out;
@@ -123,9 +141,16 @@ async function register(req, res) {
 }
 
 async function adoptEnv(req, res) {
-    const r = await fetch(SB_URL
+    let r;
+    try {
+        r = await fetch(SB_URL
         + '/rest/v1/broker_accounts?select=id,credential_prefix,alpaca_account_number,is_paper'
-        + '&broker=eq.alpaca&credential_prefix=not.is.null&order=created_at', { headers: sbHeaders() });
+        + '&broker=eq.alpaca&credential_prefix=not.is.null&order=created_at',
+        { headers: sbHeaders(), signal: AbortSignal.timeout(TIMEOUT_MS) });
+    } catch (e) {
+        console.error('broker-accounts: broker_accounts read did not answer:', e);
+        return res.status(504).json({ error: 'broker_accounts read did not answer' });
+    }
     if (!r.ok) {
         console.error('broker-accounts: broker_accounts read failed:', r.status, await r.text());
         return res.status(500).json({ error: 'broker_accounts read failed' });

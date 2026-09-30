@@ -155,3 +155,26 @@ test('an account with no Vault pair and no prefix is refused with no broker call
     assert.match(r.body.detail, /none in Vault/);
     assert.equal(brokerCalls().length, 0);
 });
+
+test('a pair rotated in Vault inside the cache TTL is re-verified, not carried by the old pair\'s check', async () => {
+    reset({ 'GOOD-VAULT-KEY': 'PA3NQO9O03E8', 'ROTATED-VAULT-KEY': 'PA39BDB08Y3X' },
+          { 'ba-tertiary': { key_id: 'GOOD-VAULT-KEY', secret_key: 'S1' } });
+    const first = await call('GET', { action: 'account', portfolio: TERTIARY });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    // Same account id, same registered number -- only the pair behind it changed.
+    VAULT = { 'ba-tertiary': { key_id: 'ROTATED-VAULT-KEY', secret_key: 'S2' } };
+    calls = [];
+    const r = await call('GET', { action: 'account', portfolio: TERTIARY });
+    assert.equal(r.status, 409, JSON.stringify(r.body));
+    assert.match(r.body.detail, /IDENTITY MISMATCH/);
+});
+
+test('an unchanged pair inside the TTL is not re-verified on a read', async () => {
+    reset({ 'STEADY-VAULT-KEY': 'PA3NQO9O03E8' },
+          { 'ba-tertiary': { key_id: 'STEADY-VAULT-KEY', secret_key: 'S' } });
+    await call('GET', { action: 'account', portfolio: TERTIARY });
+    calls = [];
+    const r = await call('GET', { action: 'account', portfolio: TERTIARY });
+    assert.equal(r.status, 200);
+    assert.equal(brokerCalls().filter(c => /\/v2\/account$/.test(c.url)).length, 1, 'one call: the read itself, no identity round trip');
+});

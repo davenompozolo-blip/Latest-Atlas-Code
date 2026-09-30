@@ -1,4 +1,5 @@
 import { createClient as _sbCreateClient } from '@supabase/supabase-js';
+import { createHash } from 'node:crypto';
 // Vercel Serverless Function: trading data + order execution for ATLAS Terminal.
 //
 // Actions:
@@ -73,10 +74,12 @@ function routeError(msg) {
     return e;
 }
 
-// broker account id -> { acct, at }: the account its key pair was VERIFIED to
-// belong to. Keyed by the broker account, not the env prefix, because a
-// Vault-held account (VC-1) has no prefix. A static mapping, so sharing it
-// across concurrent requests leaks nothing; order submission re-verifies.
+// broker account id -> { acct, fp, at }: the account its key pair was VERIFIED
+// to belong to. Keyed by the broker account, not the env prefix, because a
+// Vault-held account (VC-1) has no prefix. `fp` fingerprints the exact pair and
+// base that were verified: a verification is about CREDENTIALS, so a pair
+// rotated in Vault (or a base flipped paper/live) inside the TTL must be
+// re-checked, not ride on the old pair's result. Order submission re-verifies.
 var _verified = {};
 var VERIFY_TTL_MS = 5 * 60 * 1000;
 
@@ -125,9 +128,10 @@ async function accountContext(req, opts) {
     // place an order: the credentials must report the account the portfolio is
     // registered to, or nothing is sent. A mis-set prefix would otherwise
     // execute one account's order in another, looking healthy.
+    var fp = createHash('sha256').update(key + '\n' + secret + '\n' + ctx.base).digest('hex');
     var v = _verified[b.id];
     var fresh = opts && opts.fresh;
-    if (fresh || !v || v.acct !== b.alpaca_account_number || Date.now() - v.at > VERIFY_TTL_MS) {
+    if (fresh || !v || v.fp !== fp || v.acct !== b.alpaca_account_number || Date.now() - v.at > VERIFY_TTL_MS) {
         var r = await fetchT(ctx.base + '/account', { headers: ctx.hdrs }, 8000);
         if (!r.ok) throw routeError('broker account check failed: HTTP ' + r.status);
         var a = await r.json();
@@ -137,7 +141,7 @@ async function accountContext(req, opts) {
                 + String(a && a.account_number) + ', portfolio is registered to '
                 + b.alpaca_account_number + '. Nothing was sent to the broker.');
         }
-        _verified[b.id] = { acct: a.account_number, at: Date.now() };
+        _verified[b.id] = { acct: a.account_number, fp: fp, at: Date.now() };
     }
     return ctx;
 }
