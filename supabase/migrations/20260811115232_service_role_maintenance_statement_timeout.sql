@@ -1,0 +1,13 @@
+-- The nightly correlation refresh is quadratic by nature and legitimately runs
+-- longer than a request-shaped timeout allows: at 400 symbols it is ~10.8m
+-- joined rows aggregated into ~85k pairs. It was being cancelled with 57014
+-- part-way through, which left the matrix at the 51-symbol snapshot the book
+-- alone produced.
+--
+-- service_role is never reachable from a browser — it is the key held only by
+-- the Vercel serverless functions and pg_cron — so lifting its ceiling to the
+-- 300s those functions already budget for does not widen anything a user can
+-- trigger. anon (3s) and authenticated (8s) are deliberately left alone: those
+-- are the paths the terminal itself talks on, and a slow query there should
+-- still fail fast rather than hang the UI.
+alter role service_role set statement_timeout = '300s';

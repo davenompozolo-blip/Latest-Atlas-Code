@@ -1,19 +1,3 @@
--- I-1: re-apply atlas_chain_advance() VERBATIM from its migration file.
---
--- The first application of 20260921230243 was pasted with the inline comments
--- stripped for brevity. Behaviour was identical and every result produced by it
--- was produced by the right arithmetic -- and md5(prosrc) read 776983ff/5737
--- bytes in the database against 5eb6bfca/6733 in the file, a 996-byte
--- divergence of exactly the kind this codebase has recorded twice before,
--- created on the same day.
---
--- Comments are part of the object. Caught by hashing rather than by assuming:
---
---   select md5(prosrc) from pg_proc where proname = 'atlas_chain_advance';
---
--- On a clean replay this is a no-op, because the file it restores is correct.
--- It exists so the ledger and the repo agree about what ran.
-
 create or replace function public.atlas_chain_advance(
     p_shadow    boolean default true,
     p_budget_ms integer default 45000
@@ -179,12 +163,3 @@ begin
         'elapsed_ms',  round(extract(epoch from clock_timestamp() - v_start) * 1000));
 end;
 $fn$;
-
-comment on function public.atlas_chain_advance(boolean, integer) is
-  'One tick of the completion-chained nightly pipeline. Reaps, then dispatches '
-  'every stage whose dependency is terminal and whose not_before has passed. '
-  'Shadow by default: records the plan under source pg_cron_chain_shadow and '
-  'fires nothing.';
-
-revoke execute on function public.atlas_chain_advance(boolean, integer)
-    from public, anon, authenticated;

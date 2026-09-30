@@ -99,6 +99,8 @@ Edge functions typecheck without Deno:
   `src/lib/bookTableReads.test.mjs` enforces it.
 - Schema changes are migrations in `supabase/migrations/`, and the ledger row
   must match the file (see "A dumped function definition goes stale").
+  `migrations/` mirrors the ledger exactly; `node scripts/check-migration-ledger.mjs`
+  proves it. Name the file with the version the ledger assigned, never your own.
 - Scheduled work goes in `cron.job`. Nowhere else.
 
 ## Remote Control Sessions
@@ -5742,6 +5744,7 @@ Backfilled.
 Measured while checking my own two. Pre-existing, unfixed, and its own unit —
 recorded here so the next session does not mistake the scale of it for
 something a single change caused.
+**Closed 2026-09-30 -- see "`migrations/` mirrors the ledger" below.**
 
 **What the audit cleared, stated so it is not re-derived:** non-finite input
 (NaN, ±Infinity) is refused at every entry point of `equityVerdicts.js`,
@@ -7067,6 +7070,41 @@ unknown id returns no rows -- 0 rows and 0 secrets left afterwards.
 no users yet. The self-serve "log in with your Alpaca keys" screen is this
 route behind a real user session, plus RLS so one user's book is not another's
 -- deferred to the fourth account, and VC-1 is what it will sit on.
+
+### `migrations/` mirrors the ledger (2026-09-30)
+
+Measured before changing anything: 318 files against 378 ledger rows, 187
+files at a version the ledger does not have and 247 rows with no file. The
+cost was not replay -- nothing replays them, the Supabase Preview check is
+`skipped` on every PR -- it was that **`supabase db push` would have applied
+all 187 over production**, `initial_portfolio_schema` first, and that no file
+could be read as what ran.
+
+Three causes, each on record above: the MCP assigns its own version, so a file
+named with a hand-picked timestamp never matches its row; comment-stripped or
+draft pastes; and SQL applied through `execute_sql`, which writes no row at all.
+
+Now **one file per ledger row, holding the SQL that row ran**, 378/378. Files
+whose content matched kept it (comments included) and took the ledger's
+version (73 renamed). Where a file's code differed from what ran, the ledger's
+SQL is the file and the original moved to `supabase/migrations_unrecorded/`
+(10). Ledger rows with no file were rebuilt from `statements` (174). The 114
+files the ledger never recorded moved there too; its README classes each one
+and maps every old filename, since docs cite them. 40 of the 45 that create
+objects are fully present in production (applied outside the ledger); five
+are not (`org_model`, `rls_policies`, `sync_jobs`, `realized_layer_tables`,
+part of `alpaca_full_sync`).
+
+**A ledger row can hold no SQL.** Eight rows backfilled by hand store empty
+`statements`; for those the file is the only record and the check accepts it.
+**Comparing needs normalising**: most "mismatches" at first sight were a
+trailing newline, so compare with comments and whitespace collapsed, then
+look at what is left.
+
+**This is the record of what ran, not the schema.** Objects patched by
+`execute_sql` after their migration differ from every file; read the live
+object before trusting a file. A clean replay still would not rebuild the
+database -- that would need a baseline dumped from production, not done.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
