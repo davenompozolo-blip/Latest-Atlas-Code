@@ -34,7 +34,11 @@ globalThis.fetch = async (url, init = {}) => {
         const n = accountFor[h['apca-api-key-id']];
         return n ? json({ account_number: n, status: 'ACTIVE' }) : json({ message: 'forbidden' }, 401);
     }
-    if (u.startsWith(SB + '/rest/v1/rpc/atlas_register_broker_account')) return json(registerResult.body, registerResult.status);
+    if (u.startsWith(SB + '/rest/v1/rpc/atlas_register_broker_account')) {
+        // A body that stalls: headers arrive, then the read is aborted by the timeout.
+        if (registerResult.stallBody) return { ok: true, status: 200, text: () => Promise.reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })) };
+        return json(registerResult.body, registerResult.status);
+    }
     if (u.startsWith(SB + '/rest/v1/rpc/atlas_broker_credentials')) return json(vault[body.p_broker_account_id] ? [vault[body.p_broker_account_id]] : []);
     if (u.startsWith(SB + '/rest/v1/rpc/atlas_store_broker_credentials')) { vault[body.p_broker_account_id] = { key_id: body.p_key_id }; return json(null); }
     if (u.startsWith(SB + '/rest/v1/broker_accounts')) return json(brokerRows);
@@ -128,4 +132,14 @@ test('adopt_env stores a verified env pair, skips one already in Vault, and refu
     const stored = rpcCalls('atlas_store_broker_credentials').map(c => c.body.p_broker_account_id);
     assert.deepEqual(stored, ['ba-primary'], 'only the verified pair reached Vault');
     assert.ok(!JSON.stringify(r.body).includes('PRIMARY-SECRET'));
+});
+
+test('a response body that stalls past the timeout is an error response, never a thrown handler', async () => {
+    reset();
+    accountFor = { 'NEW-KEY': 'PA4NEWACCT01' };
+    registerResult = { stallBody: true };
+    const r = await call('register', { name: 'Atlas Four', key_id: 'NEW-KEY', secret_key: 'NEW-SECRET' });
+    assert.equal(r.status, 500);
+    assert.equal(r.body.error, 'register_failed');
+    assert.match(r.body.detail, /did not answer/);
 });

@@ -46,16 +46,16 @@ function sbHeaders(extra) {
 // Never throws: a timeout or transport failure comes back as ok:false, status
 // null, so every caller's existing not-ok branch handles it.
 async function rpc(fn, args) {
-    let r;
+    let r, text;
     try {
         r = await fetch(SB_URL + '/rest/v1/rpc/' + fn, {
             method: 'POST', headers: sbHeaders(), body: JSON.stringify(args),
             signal: AbortSignal.timeout(TIMEOUT_MS),
         });
+        text = await r.text();   // the timeout covers the body too, so it is read inside the try
     } catch (e) {
         return { ok: false, status: null, body: { message: fn + ' did not answer: ' + String(e && e.message || e) } };
     }
-    const text = await r.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = text; }
     return { ok: r.ok, status: r.status, body };
@@ -141,21 +141,21 @@ async function register(req, res) {
 }
 
 async function adoptEnv(req, res) {
-    let r;
+    let r, accounts;
     try {
         r = await fetch(SB_URL
         + '/rest/v1/broker_accounts?select=id,credential_prefix,alpaca_account_number,is_paper'
         + '&broker=eq.alpaca&credential_prefix=not.is.null&order=created_at',
         { headers: sbHeaders(), signal: AbortSignal.timeout(TIMEOUT_MS) });
+        if (!r.ok) {
+            console.error('broker-accounts: broker_accounts read failed:', r.status, await r.text());
+            return res.status(500).json({ error: 'broker_accounts read failed' });
+        }
+        accounts = await r.json();   // inside the try: the timeout covers the body read
     } catch (e) {
         console.error('broker-accounts: broker_accounts read did not answer:', e);
         return res.status(504).json({ error: 'broker_accounts read did not answer' });
     }
-    if (!r.ok) {
-        console.error('broker-accounts: broker_accounts read failed:', r.status, await r.text());
-        return res.status(500).json({ error: 'broker_accounts read failed' });
-    }
-    const accounts = await r.json();
     const results = [];
     for (const a of accounts) {
         const row = { account_number: a.alpaca_account_number, credential_prefix: a.credential_prefix };
