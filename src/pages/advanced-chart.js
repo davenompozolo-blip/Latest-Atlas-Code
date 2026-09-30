@@ -542,6 +542,7 @@ export function AdvancedChart(props) {
             sb.from('price_history')
               .select('price_date, open, high, low, close, adjusted_close, volume')
               .eq('asset_id', item.assetId)
+              .eq('interval', '1d')
               .gte('price_date', cutoffDate)
               .order('price_date', { ascending: false })
               .limit(1600)

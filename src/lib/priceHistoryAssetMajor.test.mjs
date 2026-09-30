@@ -31,6 +31,22 @@ export function dateMajorMultiAssetReads(src) {
     return hits;
 }
 
+// Every price_history read must pin the interval. The table is unique on
+// (asset_id, price_date, interval) and SPY carries 124 '1Day' bars beside its
+// '1d' ones, each with a different close, so an unpinned read hands a
+// positional walk two sessions for one date (2026-09-21, 2026-09-27).
+export function unpinnedIntervalReads(src) {
+    const code = stripComments(src);
+    const hits = [];
+    const re = /from\(\s*['"]price_history['"]\s*\)/g;
+    let m;
+    while ((m = re.exec(code))) {
+        const chunk = code.slice(m.index, m.index + 1200).split(/\.then\(|\.range\(|;\s*\n/)[0];
+        if (!/\.eq\(\s*['"]interval['"]/.test(chunk)) hits.push(code.slice(0, m.index).split('\n').length);
+    }
+    return hits;
+}
+
 function walk(dir, out = []) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
@@ -67,6 +83,25 @@ test('no multi-asset price_history read in src/ orders date-major', () => {
     const bad = [];
     for (const f of files) {
         for (const line of dateMajorMultiAssetReads(fs.readFileSync(f, 'utf8'))) {
+            bad.push(path.relative(ROOT, f) + ':' + line);
+        }
+    }
+    assert.deepEqual(bad, []);
+});
+
+test('the interval detector finds an unpinned read and accepts a pinned one', () => {
+    const bad = `sb.from('price_history').select('price_date, close').eq('asset_id', id)
+        .order('price_date', { ascending: false }).limit(12);`;
+    const ok = `sb.from('price_history').select('price_date, close').eq('asset_id', id).eq('interval', '1d')
+        .order('price_date', { ascending: false }).limit(12);`;
+    assert.equal(unpinnedIntervalReads(bad).length, 1);
+    assert.deepEqual(unpinnedIntervalReads(ok), []);
+});
+
+test('every price_history read in src/ pins the interval', () => {
+    const bad = [];
+    for (const f of walk(ROOT)) {
+        for (const line of unpinnedIntervalReads(fs.readFileSync(f, 'utf8'))) {
             bad.push(path.relative(ROOT, f) + ':' + line);
         }
     }
