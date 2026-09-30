@@ -44,7 +44,7 @@
      read muddier than the panel labels beside them. */
   --nx-text:  #e3e9f2;
   --nx-text2: #8aa0bb;
-  --nx-text3: #51647b;
+  --nx-text3: #6b829e;
   /* ── Chrome accent ──
      Its own semantic role, NOT a module colour. The chrome was using two
      different accents at once: --nx-blue #3b82f6 for the wordmark and the

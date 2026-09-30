@@ -24,7 +24,7 @@ const { useEffect } = React;
 
 export const CHART_COL = {
     cyan: '#22d3ee', purple: '#8b5cf6', amber: '#f5a623',
-    green: '#22c55e', red: '#ef4444', dim: '#51647b',
+    green: '#22c55e', red: '#ef4444', dim: '#6b829e',
 };
 
 // The element's real box. A zero is not a size -- a detached or `display:none`
