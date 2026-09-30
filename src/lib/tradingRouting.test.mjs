@@ -20,11 +20,17 @@ process.env.ATLAS_ALPACA_API_SECRET = 'SECONDARY-SECRET';
 
 const SECONDARY = '6844aec5-43c5-4d9b-96ed-d3cd1372cd37';
 const UNKEYED = '11111111-1111-1111-1111-111111111111';
+const TERTIARY = '04d55592-90a4-46e6-b363-879ab2af6e79';   // VC-1: Vault only, no env prefix
 
 const PORTFOLIOS = {
-    [SECONDARY]: { id: SECONDARY, broker_accounts: { credential_prefix: 'ATLAS_ALPACA_API', alpaca_account_number: 'PA345SGOX9LY', is_paper: true } },
-    [UNKEYED]:   { id: UNKEYED,   broker_accounts: { credential_prefix: 'NOT_CONFIGURED',  alpaca_account_number: 'PA000000000', is_paper: true } },
+    [SECONDARY]: { id: SECONDARY, broker_accounts: { id: 'ba-secondary', credential_prefix: 'ATLAS_ALPACA_API', alpaca_account_number: 'PA345SGOX9LY', is_paper: true } },
+    [UNKEYED]:   { id: UNKEYED,   broker_accounts: { id: 'ba-unkeyed',   credential_prefix: 'NOT_CONFIGURED',  alpaca_account_number: 'PA000000000', is_paper: true } },
+    [TERTIARY]:  { id: TERTIARY,  broker_accounts: { id: 'ba-tertiary',  credential_prefix: null,              alpaca_account_number: 'PA3NQO9O03E8', is_paper: true } },
 };
+
+// VC-1: what atlas_broker_credentials returns per broker account id. Each test
+// sets it; an account absent from the map has nothing in Vault.
+let VAULT = {};
 
 let calls = [];
 let accountNumberFor = {};   // key id -> what /v2/account reports
@@ -43,6 +49,10 @@ globalThis.fetch = async (url, init = {}) => {
         const wantsObject = /vnd\.pgrst\.object/.test(h.accept || '');
         return wantsObject ? (row ? json(row) : json({ message: 'no rows' }, 406)) : json(row ? [row] : []);
     }
+    if (u.startsWith(SB + '/rest/v1/rpc/atlas_broker_credentials')) {
+        const id = JSON.parse(init.body || '{}').p_broker_account_id;
+        return json(VAULT[id] ? [VAULT[id]] : []);
+    }
     if (u.startsWith(SB + '/rest/v1/orders')) return json({ id: 42 });
     if (u.startsWith(SB + '/rest/v1/decisions')) return json([]);
     if (/alpaca\.markets\/v2\/account$/.test(u)) return json({ account_number: accountNumberFor[h['apca-api-key-id']], equity: '1000', last_equity: '1000' });
@@ -59,7 +69,7 @@ async function call(method, query, body) {
     return { status, body: out };
 }
 const brokerCalls = () => calls.filter(c => /alpaca\.markets/.test(c.url));
-const reset = (map) => { calls = []; accountNumberFor = map; };
+const reset = (map, vault = {}) => { calls = []; accountNumberFor = map; VAULT = vault; };
 
 test('an order for Secondary executes with SECONDARY keys, after a fresh identity check, and is recorded against it', async () => {
     reset({ 'SECONDARY-KEY': 'PA345SGOX9LY', 'PRIMARY-KEY': 'PA39BDB08Y3X' });
@@ -107,4 +117,41 @@ test('no ?portfolio= is the default account, unchanged: default keys, no lookup,
     const b = brokerCalls();
     assert.equal(b.length, 1);
     assert.equal(b[0].key, 'PRIMARY-KEY');
+});
+
+// ── VC-1: credentials from Vault ─────────────────────────────────────────────
+
+test('a Vault-only account (no env prefix) trades with its Vault pair after an identity check', async () => {
+    reset({ 'TERTIARY-VAULT-KEY': 'PA3NQO9O03E8' },
+          { 'ba-tertiary': { key_id: 'TERTIARY-VAULT-KEY', secret_key: 'TERTIARY-VAULT-SECRET' } });
+    const r = await call('POST', { action: 'order', portfolio: TERTIARY }, { symbol: 'AAPL', qty: 1, side: 'buy' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const b = brokerCalls();
+    assert.ok(b.length >= 2 && b.every(c => c.key === 'TERTIARY-VAULT-KEY'));
+    assert.ok(/\/v2\/account$/.test(b[0].url), 'identity checked BEFORE the order');
+});
+
+test('Vault wins over the env pair when both exist', async () => {
+    reset({ 'SECONDARY-VAULT-KEY': 'PA345SGOX9LY', 'SECONDARY-KEY': 'PA345SGOX9LY' },
+          { 'ba-secondary': { key_id: 'SECONDARY-VAULT-KEY', secret_key: 'S' } });
+    const r = await call('POST', { action: 'order', portfolio: SECONDARY }, { symbol: 'AAPL', qty: 1, side: 'buy' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.ok(brokerCalls().every(c => c.key === 'SECONDARY-VAULT-KEY'), 'the env pair was not used');
+});
+
+test('a Vault pair that reports another account sends NOTHING to /orders', async () => {
+    reset({ 'WRONG-VAULT-KEY': 'PA39BDB08Y3X' },
+          { 'ba-tertiary': { key_id: 'WRONG-VAULT-KEY', secret_key: 'S' } });
+    const r = await call('POST', { action: 'order', portfolio: TERTIARY }, { symbol: 'AAPL', qty: 1, side: 'buy' });
+    assert.equal(r.status, 409);
+    assert.match(r.body.detail, /IDENTITY MISMATCH/);
+    assert.equal(brokerCalls().filter(c => /\/orders/.test(c.url)).length, 0);
+});
+
+test('an account with no Vault pair and no prefix is refused with no broker call', async () => {
+    reset({});
+    const r = await call('GET', { action: 'account', portfolio: TERTIARY });
+    assert.equal(r.status, 409);
+    assert.match(r.body.detail, /none in Vault/);
+    assert.equal(brokerCalls().length, 0);
 });

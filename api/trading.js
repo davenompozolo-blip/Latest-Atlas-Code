@@ -73,9 +73,10 @@ function routeError(msg) {
     return e;
 }
 
-// credential_prefix -> { acct, at }: the account a key pair was VERIFIED to
-// belong to. A static mapping (a key pair does not change account), so sharing
-// it across concurrent requests leaks nothing; order submission re-verifies.
+// broker account id -> { acct, at }: the account its key pair was VERIFIED to
+// belong to. Keyed by the broker account, not the env prefix, because a
+// Vault-held account (VC-1) has no prefix. A static mapping, so sharing it
+// across concurrent requests leaks nothing; order submission re-verifies.
 var _verified = {};
 var VERIFY_TTL_MS = 5 * 60 * 1000;
 
@@ -87,19 +88,30 @@ async function accountContext(req, opts) {
     var sb = sbService();
     if (!sb) throw routeError('account routing needs the Supabase service key, which is not configured on this deployment');
     var q = await sb.from('portfolios')
-        .select('id, broker_accounts(credential_prefix, alpaca_account_number, is_paper)')
+        .select('id, broker_accounts(id, credential_prefix, alpaca_account_number, is_paper)')
         .eq('id', p.toLowerCase())
         .maybeSingle();
     if (q.error) throw routeError('portfolio lookup failed: ' + q.error.message);
     if (!q.data) throw routeError('no portfolio ' + p);
     var b = q.data.broker_accounts;
-    if (!b || !b.credential_prefix || !b.alpaca_account_number) {
+    if (!b || !b.id || !b.alpaca_account_number) {
         throw routeError('portfolio is not registered to a broker account');
     }
-    var key = process.env[b.credential_prefix + '_KEY'];
-    var secret = process.env[b.credential_prefix + '_SECRET'];
+    // VC-1: the Vault pair first; the env pair named by credential_prefix is
+    // the pre-Vault arrangement and stays as a fallback until adopted.
+    var key = null, secret = null;
+    var cr = await sb.rpc('atlas_broker_credentials', { p_broker_account_id: b.id });
+    if (cr.error) throw routeError('credential lookup failed: ' + cr.error.message);
+    var vc = Array.isArray(cr.data) ? cr.data[0] : cr.data;
+    if (vc && vc.key_id && vc.secret_key) {
+        key = vc.key_id; secret = vc.secret_key;
+    } else if (b.credential_prefix) {
+        key = process.env[b.credential_prefix + '_KEY'];
+        secret = process.env[b.credential_prefix + '_SECRET'];
+    }
     if (!key || !secret) {
-        throw routeError(b.credential_prefix + '_KEY / _SECRET are not configured on this deployment');
+        throw routeError('no credentials for this portfolio: none in Vault'
+            + (b.credential_prefix ? ' and ' + b.credential_prefix + '_KEY / _SECRET are not configured on this deployment' : ''));
     }
     var ctx = {
         hdrs: { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret, accept: 'application/json' },
@@ -113,19 +125,19 @@ async function accountContext(req, opts) {
     // place an order: the credentials must report the account the portfolio is
     // registered to, or nothing is sent. A mis-set prefix would otherwise
     // execute one account's order in another, looking healthy.
-    var v = _verified[b.credential_prefix];
+    var v = _verified[b.id];
     var fresh = opts && opts.fresh;
     if (fresh || !v || v.acct !== b.alpaca_account_number || Date.now() - v.at > VERIFY_TTL_MS) {
         var r = await fetchT(ctx.base + '/account', { headers: ctx.hdrs }, 8000);
         if (!r.ok) throw routeError('broker account check failed: HTTP ' + r.status);
         var a = await r.json();
         if (!a || a.account_number !== b.alpaca_account_number) {
-            delete _verified[b.credential_prefix];
-            throw routeError('IDENTITY MISMATCH: ' + b.credential_prefix + '_* report account '
+            delete _verified[b.id];
+            throw routeError('IDENTITY MISMATCH: the credentials for this portfolio report account '
                 + String(a && a.account_number) + ', portfolio is registered to '
                 + b.alpaca_account_number + '. Nothing was sent to the broker.');
         }
-        _verified[b.credential_prefix] = { acct: a.account_number, at: Date.now() };
+        _verified[b.id] = { acct: a.account_number, at: Date.now() };
     }
     return ctx;
 }

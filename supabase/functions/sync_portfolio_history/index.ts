@@ -76,6 +76,8 @@ const ET_DATE = new Intl.DateTimeFormat('en-CA', {
 interface BrokerTarget {
   portfolio_id: string
   credential_prefix: string | null
+  vault_key_id: string | null      // VC-1: the Vault-held pair, when there is one
+  vault_secret_key: string | null
   account_number: string | null
   is_paper: boolean
 }
@@ -83,9 +85,11 @@ interface BrokerTarget {
 async function loadTargets(portfolioId: string | null): Promise<BrokerTarget[]> {
   return await sql<BrokerTarget[]>`
     select p.id as portfolio_id, b.credential_prefix,
-           b.alpaca_account_number as account_number, b.is_paper
+           b.alpaca_account_number as account_number, b.is_paper,
+           c.key_id as vault_key_id, c.secret_key as vault_secret_key
       from public.portfolios p
       join public.broker_accounts b on b.id = p.broker_account_id
+      left join lateral public.atlas_broker_credentials(b.id) c on true
      where b.broker = 'alpaca'
      ${portfolioId ? sql`and p.id = ${portfolioId}` : sql``}
      order by p.created_at, p.id
@@ -97,13 +101,22 @@ function tradingBase(t: BrokerTarget): string {
 }
 
 function alpacaHeaders(t: BrokerTarget): Record<string, string> {
-  if (!t.credential_prefix) {
-    throw new Error(`portfolio ${t.portfolio_id}: its broker account names no credential_prefix`)
+  // VC-1: the Vault pair first. The env pair named by credential_prefix is the
+  // pre-Vault arrangement and stays as a fallback until every account's keys
+  // have been adopted into Vault.
+  let key: string | undefined
+  let secret: string | undefined
+  if (t.vault_key_id && t.vault_secret_key) {
+    key = t.vault_key_id
+    secret = t.vault_secret_key
+  } else if (t.credential_prefix) {
+    key = Deno.env.get(`${t.credential_prefix}_KEY`)
+    secret = Deno.env.get(`${t.credential_prefix}_SECRET`)
   }
-  const key    = Deno.env.get(`${t.credential_prefix}_KEY`)
-  const secret = Deno.env.get(`${t.credential_prefix}_SECRET`)
   if (!key || !secret) {
-    throw new Error(`Missing ${t.credential_prefix}_KEY and/or ${t.credential_prefix}_SECRET`)
+    throw new Error(t.credential_prefix
+      ? `No Vault credentials and no ${t.credential_prefix}_KEY / _SECRET for portfolio ${t.portfolio_id}`
+      : `No Vault credentials for portfolio ${t.portfolio_id}`)
   }
   return {
     'APCA-API-KEY-ID': key,
@@ -136,7 +149,7 @@ async function verifiedAccount<T extends { account_number?: unknown }>(t: Broker
   const acct = await alpacaGet<T>(t, '/v2/account')
   if (acct.account_number !== t.account_number) {
     throw new Error(
-      `IDENTITY MISMATCH: ${t.credential_prefix}_* report account ${String(acct.account_number)}, ` +
+      `IDENTITY MISMATCH: the credentials for portfolio ${t.portfolio_id} report account ${String(acct.account_number)}, ` +
       `portfolio ${t.portfolio_id} is registered to ${t.account_number}. Nothing written.`
     )
   }
