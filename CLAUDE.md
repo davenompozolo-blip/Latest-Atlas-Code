@@ -122,9 +122,12 @@ When operating Atlas via remote control, use these session roles:
   `EXCEPT ALL` both ways and time it against the 3s anon cap.
 - **Add a scheduled job**: a nightly one is a stage in `atlas_chain_stages`;
   anything else is `cron.job`. Either way it logs to `sync_log`.
-- **Add a broker account**: a `broker_accounts` row (credential_prefix +
-  alpaca_account_number) + a `portfolios` row + the `<prefix>_KEY/_SECRET`
-  pair in BOTH Supabase function secrets (syncs) and Vercel env (trading).
+- **Add a broker account**: `POST /api/broker-accounts?action=register` with
+  `{name, key_id, secret_key, paper}` and `Authorization: Bearer <CRON_SECRET>`.
+  One call: keys verified against the broker, account number taken from
+  `/v2/account`, rows + Vault secret written atomically, first syncs started.
+  No env vars and no redeploy (VC-1). The old env-pair route still works as a
+  fallback for accounts carrying a `credential_prefix`.
 
 ## Data Trust Layer
 
@@ -7016,6 +7019,54 @@ flagged here, not changed.
 
 The upsert deletes by primary key, so a quarter that becomes cross-vintage on
 a later reload keeps its earlier row. Same property as the annual path.
+
+### Broker credentials live in Vault, not in the environment (VC-1, 2026-09-30)
+
+Adding Atlas Tertiary took two database rows, a key pair pasted into BOTH
+Supabase function secrets and Vercel, and a Vercel redeploy. Fine at three
+accounts; not how a new user can join, and every account's keys sat in every
+deployment's environment.
+
+Each Alpaca key pair is now ONE Vault secret, `broker_credentials:<broker_account_id>`,
+holding `{key_id, secret_key}` -- one secret so a pair can never be half-written.
+`atlas_broker_credentials(id)` reads it, `atlas_store_broker_credentials(...)`
+writes it, `atlas_register_broker_account(...)` writes the rows and the secret
+in one transaction. All three are `service_role` only, revoked from PUBLIC as
+well as anon/authenticated (the default PUBLIC grant is how anon keeps EXECUTE),
+and asserted with `has_function_privilege` inside the migration.
+
+**Every reader tries Vault first, then the env pair named by
+`credential_prefix`.** The three syncs join `atlas_broker_credentials` into
+`loadTargets`; `api/trading.js` calls it over PostgREST. So the existing
+accounts kept syncing on deploy with nothing in Vault, and adoption is a
+separate, reversible step. `trading.js`'s identity cache is keyed by broker
+account id now, because a Vault-only account has no prefix.
+
+**The account number comes from the broker, never from the request.**
+`/api/broker-accounts?action=register` calls `/v2/account` with the submitted
+keys and registers whatever account that reports; a typed account number is
+ignored. The identity gate every sync and order runs is only as good as the
+number it compares against, and this is where that number is born.
+
+**The route fails CLOSED.** The other admin routes skip auth when `CRON_SECRET`
+is unset; a route that stores credentials answers 503 instead, and takes the
+secret only as a header -- a `?token=` lands in logs. No response carries a key.
+`action=adopt_env` copies each account's env pair from the Vercel deployment's
+own environment into Vault after the same identity check, so the existing keys
+move server to server and never pass through a person or a chat.
+
+`broker_accounts_alpaca_identified_ck` required a `credential_prefix` for every
+Alpaca row; a Vault-held account has none, so it now requires only the account
+number. Proven in production inside a block that always raises: register, read
+back, overwrite (one secret, not two), duplicate refused, blank key refused,
+unknown id returns no rows -- 0 rows and 0 secrets left afterwards.
+`tradingRouting.test.mjs` 9/9 (4 new, all failing against the pre-VC-1 file);
+`brokerAccounts.test.mjs` 7/7.
+
+**This is not auth.** The route is admin-only (CRON_SECRET) because there are
+no users yet. The self-serve "log in with your Alpaca keys" screen is this
+route behind a real user session, plus RLS so one user's book is not another's
+-- deferred to the fourth account, and VC-1 is what it will sit on.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
