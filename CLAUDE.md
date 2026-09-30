@@ -6444,6 +6444,15 @@ appears **84 times across five equity files**, and raising `--text-3` in
 a blast radius, not a bug fix -- the count is recorded so it can be taken as its
 own unit.
 
+**Decided 2026-09-30: `--text-3` is `#6b829e`** in all five copies
+(`globals.css`, `nexus-theme.css`, `nexus-flagship.css`, `equityTheme.js`,
+`nexusChart.js`). 4.51:1 on `--navy-2`, 4.8-5.0 on the page backgrounds, a
+1.47x step below `--text-2`. Clearing 4.5 on `--navy-4` too needs `#7b8fa8`,
+which sits 1.24x from `--text-2` -- three text levels collapse to two. The
+gradient midpoint at `nexus-flagship.css:469` keeps `#51647b`: it is a scale
+stop, not text. `src/lib/textContrast.test.mjs` holds the floor, the step and
+the copies' agreement.
+
 **3. A header figure built from three constants.** The strip read
 **`PROB-WEIGHTED EV $1,036` beside `COMPOSITE FV $376`** -- two valuations 2.8x
 apart, side by side, with the REDUCE call driven off the smaller and nothing
