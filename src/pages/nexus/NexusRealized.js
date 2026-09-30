@@ -487,7 +487,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
             .then(a => {
                 const id = a.data && a.data[0] && a.data[0].id;
                 if (!id) return null;
-                return sb.from('price_history').select('price_date, close').eq('asset_id', id)
+                return sb.from('price_history').select('price_date, close').eq('asset_id', id).eq('interval', '1d')
                     .order('price_date', { ascending: false }).limit(12);
             })
             .then(ph => {
@@ -598,6 +598,7 @@ export function NexusRealizedLayer({ themeRows, factorMoves, betasAsOf, model, m
         sb.from('price_history')
             .select('price_date, open, high, low, close, adjusted_close, volume')
             .eq('asset_id', item.assetId)
+            .eq('interval', '1d')
             .gte('price_date', cutoff.toISOString().slice(0, 10))
             .order('price_date', { ascending: false })
             .limit(1600)

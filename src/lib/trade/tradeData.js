@@ -469,6 +469,7 @@ export async function loadInstrumentSnapshot(symbol) {
         const px = await sb.from('price_history')
             .select('price_date, close')
             .eq('asset_id', asset.id)
+            .eq('interval', '1d')
             .gte('price_date', since)
             .order('price_date', { ascending: true });
         fail('price series', px.error);

@@ -1812,6 +1812,15 @@ are current, so nothing is broken today. `atlas_run_factor_scores()` is the
 wrapper pattern to copy. Job 25 `atlas_chain_reap` logs nothing **by design** --
 it closes other jobs' rows.
 
+**Closed 2026-09-30 (LG-1, `20260930204430`).** Jobs 14 and 37 are chain stages
+now and get a `pg_cron_chain` row each; position returns also logs per account.
+Job 11 was the one left: its screener and candidate-map refreshes wrote nothing,
+and the job is ONE transaction, so an exception in either would have rolled back
+the rows the other steps had written. `atlas_run_logged_step(name, sql)` runs a
+step in its own subtransaction, logs it, and never raises. The screener refresh
+takes ~16 s. `refresh_cortex_screener()` had also been executable by anon
+through the PUBLIC grant; revoked.
+
 **Nothing was stale relative to its schedule.** Check the low-frequency jobs
 individually rather than eyeballing "last run was days ago": 22
 `chain_theme_leadership` is Friday-only and 24 `chain_sync_valuations` Monday-only,
@@ -2776,6 +2785,10 @@ not held. All 1,914 assets have `1d` rows and exactly one has any non-`1d`,
 so `interval = '1d'` drops no series. **No other `price_history` reader
 filters it either** — `tradeData.js:441`, `pcm.js:1238`,
 `advanced-chart.js:542`, `NexusRealized.js:475` and `:583`. Flagged.
+
+**Closed 2026-09-30.** All three pin `interval = '1d'`, and
+`priceHistoryAssetMajor.test.mjs` fails any `price_history` read in `src/` that
+does not.
 
 ### A scanner that reads its own documentation as code (2026-09-21)
 
