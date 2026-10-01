@@ -5,18 +5,26 @@
 // an administrator (public sign-up is disabled in the Supabase Auth config), so
 // the landing page offers sign-in and password reset, never sign-up.
 //
-// The backdrop is decorative: seeded traces from src/lib/authBackdrop.js that
-// carry no figures. Colours are the --nx-* tokens so it matches the shell.
+// Layout: scene (auth/AuthBackdrop), brand panel, the glass card, capability
+// rail -- the pieces live in ./auth/. The scene is seeded geometry from
+// src/lib/authBackdrop.js and carries no figures. Colours are the --nx-*
+// tokens so it matches the shell. Two things in the design reference are left
+// out on purpose: "Remember me" (supabase-js already keeps the session until
+// sign-out, so the box would change nothing) and SSO (none is configured).
 
 import React from 'react';
 import { supabase } from '../lib/supabase.js';
 import {
     gateState, validateCredentials, validateNewPassword, authErrorMessage,
     signOutStorageKeys, sessionStorageKeys, recoveryPending, authChangeNeedsReload,
-    RECOVERY_MARKER_KEY,
+    RECOVERY_MARKER_KEY, PASSWORD_MIN_LENGTH,
     GATE_UNCONFIGURED, GATE_LOADING, GATE_RECOVERY, GATE_SIGNED_IN,
 } from '../lib/authGate.js';
-import { backdropTraces, BACKDROP_VIEW } from '../lib/authBackdrop.js';
+import { AuthBackdrop } from './auth/AuthBackdrop.js';
+import { AuthBrandPanel } from './auth/AuthBrandPanel.js';
+import { CapabilityRail } from './auth/CapabilityRail.js';
+import { AtlasWordmark } from './auth/AtlasWordmark.js';
+import { AuthIcon } from './auth/AuthIcons.js';
 import '../styles/auth-gate.css';
 
 const e = React.createElement;
@@ -119,32 +127,12 @@ function useAuthSession() {
     return [st, setSt];
 }
 
-const S = {
-    mark: { fontFamily: 'var(--nx-fd)', fontWeight: 800, fontSize: 22, letterSpacing: 4, color: 'var(--nx-accent)' },
-    sub: { fontSize: 13, color: 'var(--nx-text2)', margin: '6px 0 22px' },
-    label: { display: 'block', fontSize: 12, color: 'var(--nx-text2)', margin: '14px 0 6px' },
-    input: {
-        width: '100%', boxSizing: 'border-box', padding: '11px 12px', fontSize: 16, // 16px: no iOS zoom on focus
-        background: 'var(--nx-bg)', color: 'var(--nx-text)', border: '1px solid var(--nx-border-md)',
-        borderRadius: 'var(--nx-r-sm)', fontFamily: 'var(--nx-fb)', outline: 'none',
-    },
-    button: {
-        width: '100%', marginTop: 20, padding: '12px 14px', minHeight: 44, fontSize: 15, fontWeight: 600,
-        border: 'none', borderRadius: 'var(--nx-r-sm)', cursor: 'pointer',
-        background: 'var(--nx-accent)', color: 'var(--nx-bg)', fontFamily: 'var(--nx-fb)',
-    },
-    link: {
-        background: 'none', border: 'none', padding: '10px 0', minHeight: 44, marginTop: 6, cursor: 'pointer',
-        color: 'var(--nx-text2)', fontSize: 13, fontFamily: 'var(--nx-fb)', textDecoration: 'underline',
-    },
-    error: { marginTop: 14, fontSize: 13, color: 'var(--nx-red)' },
-    note: { marginTop: 14, fontSize: 13, color: 'var(--nx-text2)' },
-};
-
-function Field({ id, label, ...rest }) {
-    return e(React.Fragment, null,
-        e('label', { htmlFor: id, style: S.label }, label),
-        e('input', { id, style: S.input, ...rest }));
+function Field({ id, label, icon, ...rest }) {
+    return e('div', { className: 'ag-field' },
+        e('label', { htmlFor: id, className: 'ag-label' }, label),
+        e('div', { className: 'ag-input-wrap' },
+            icon && e(AuthIcon, { name: icon, size: 19, className: 'ag-input-icon' }),
+            e('input', { id, className: 'ag-input' + (icon ? ' ag-input--icon' : ''), ...rest })));
 }
 
 const EYE = 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z';
@@ -164,10 +152,14 @@ function EyeIcon({ open }) {
  *  through its autocomplete hint either way. */
 function PasswordField({ id, label, ...rest }) {
     const [shown, setShown] = React.useState(false);
-    return e(React.Fragment, null,
-        e('label', { htmlFor: id, style: S.label }, label),
-        e('div', { className: 'ag-pw' },
-            e('input', { id, style: S.input, ...rest, type: shown ? 'text' : 'password', autoCapitalize: 'none', spellCheck: false }),
+    return e('div', { className: 'ag-field' },
+        e('label', { htmlFor: id, className: 'ag-label' }, label),
+        e('div', { className: 'ag-input-wrap ag-pw' },
+            e(AuthIcon, { name: 'lock', size: 19, className: 'ag-input-icon' }),
+            e('input', {
+                id, className: 'ag-input ag-input--icon', ...rest,
+                type: shown ? 'text' : 'password', autoCapitalize: 'none', spellCheck: false,
+            }),
             e('button', {
                 type: 'button', className: 'ag-eye',
                 'aria-label': shown ? 'Hide password' : 'Show password',
@@ -176,36 +168,31 @@ function PasswordField({ id, label, ...rest }) {
             }, e(EyeIcon, { open: !shown }))));
 }
 
-const TRACES = backdropTraces();
-
-function Backdrop() {
-    const { width, height } = BACKDROP_VIEW;
-    const lead = TRACES[0];
-    return e(React.Fragment, null,
-        e('div', { className: 'ag-grid', 'aria-hidden': 'true' }),
-        e('svg', {
-            className: 'ag-traces', viewBox: '0 0 ' + width + ' ' + height,
-            preserveAspectRatio: 'xMidYMid slice', 'aria-hidden': 'true', focusable: 'false',
-        },
-            e('defs', null,
-                e('linearGradient', { id: 'ag-area-fill', x1: 0, y1: 0, x2: 0, y2: 1 },
-                    e('stop', { offset: '0%', stopColor: 'var(--nx-accent)', stopOpacity: 0.16 }),
-                    e('stop', { offset: '100%', stopColor: 'var(--nx-accent)', stopOpacity: 0 }))),
-            e('g', { className: 'ag-traces-drift' },
-                e('path', { className: 'ag-area', d: lead.d + ' L' + width + ' ' + height + ' L0 ' + height + ' Z', fill: 'url(#ag-area-fill)' }),
-                TRACES.map((t) => e('path', { key: t.key, className: 'ag-line ag-line--' + t.tone, d: t.d, pathLength: 1 })),
-                e('circle', { className: 'ag-dot-ring', cx: lead.end.x - 2, cy: lead.end.y, r: 4 }),
-                e('circle', { className: 'ag-dot', cx: lead.end.x - 2, cy: lead.end.y, r: 3.5 }))));
+function SubmitButton({ busy, busyLabel, label, arrow }) {
+    return e('button', { type: 'submit', className: 'ag-submit', disabled: busy, 'aria-busy': busy || undefined },
+        e('span', null, busy ? busyLabel : label),
+        arrow && !busy && e(AuthIcon, { name: 'arrow', size: 18, strokeWidth: 2 }));
 }
 
-function Shell({ subtitle, children }) {
+/** The glass card: wordmark, a title, a line under it, then the form. */
+function AuthCard({ title, subtitle, children }) {
+    return e('div', { className: 'ag-card' },
+        e(AtlasWordmark, { className: 'ag-card-mark' }),
+        title && e('h1', { className: 'ag-title' }, title),
+        subtitle && e('p', { className: 'ag-sub' }, subtitle),
+        children,
+        e('div', { className: 'ag-foot' },
+            'PORTFOLIO', e('span', { 'aria-hidden': 'true' }, ' \u2022 '),
+            'RISK', e('span', { 'aria-hidden': 'true' }, ' \u2022 '), 'RESEARCH'));
+}
+
+/** The landing page: scene, brand panel, card, capability rail. */
+function Shell(props) {
     return e('main', { className: 'ag-page' },
-        e(Backdrop, null),
-        e('div', { className: 'ag-card' },
-            e('div', { style: S.mark }, 'ATLAS'),
-            e('div', { style: S.sub }, subtitle),
-            children,
-            e('div', { className: 'ag-foot' }, 'PORTFOLIO · RISK · RESEARCH')));
+        e(AuthBackdrop, null),
+        e(AuthBrandPanel, null),
+        e(AuthCard, props),
+        e(CapabilityRail, null));
 }
 
 function SignInForm() {
@@ -243,26 +230,34 @@ function SignInForm() {
     }
 
     const signIn = mode === 'sign_in';
-    return e(Shell, { subtitle: signIn ? 'Sign in to your terminal' : 'Reset your password' },
-        e('form', { onSubmit, noValidate: true },
+    const toggle = e('button', {
+        type: 'button', className: 'ag-link',
+        onClick: () => { setMode(signIn ? 'reset' : 'sign_in'); setError(null); setNote(null); },
+    }, signIn ? 'Forgot your password?' : 'Back to sign in');
+    return e(Shell, signIn
+        ? { title: 'Welcome back', subtitle: 'Sign in to your terminal' }
+        : { title: 'Reset your password', subtitle: 'We\u2019ll email you a link to choose a new one.' },
+        e('form', { onSubmit, noValidate: true, className: 'ag-form' },
             e(Field, {
-                id: 'atlas-email', label: 'Email', type: 'email', value: email,
+                id: 'atlas-email', label: 'Email address', icon: 'mail', type: 'email', value: email,
+                placeholder: 'you@domain.com',
                 autoComplete: 'username', inputMode: 'email', enterKeyHint: signIn ? 'next' : 'send',
                 autoCapitalize: 'none', spellCheck: false, onChange: (ev) => setEmail(ev.target.value),
             }),
             signIn && e(PasswordField, {
-                id: 'atlas-password', label: 'Password', value: password,
+                id: 'atlas-password', label: 'Password', value: password, placeholder: 'Enter your password',
                 autoComplete: 'current-password', enterKeyHint: 'go',
                 onChange: (ev) => setPassword(ev.target.value),
             }),
-            e('button', { type: 'submit', style: { ...S.button, opacity: busy ? 0.6 : 1 }, disabled: busy },
-                busy ? 'Please wait…' : (signIn ? 'Sign in' : 'Send reset link')),
-            error && e('div', { role: 'alert', style: S.error }, error),
-            note && e('div', { role: 'status', style: S.note }, note),
-            e('button', {
-                type: 'button', style: S.link,
-                onClick: () => { setMode(signIn ? 'reset' : 'sign_in'); setError(null); setNote(null); },
-            }, signIn ? 'Forgot your password?' : 'Back to sign in')));
+            signIn && e('div', { className: 'ag-row-end' }, toggle),
+            e(SubmitButton, {
+                busy, arrow: true,
+                busyLabel: signIn ? 'Signing in\u2026' : 'Sending\u2026',
+                label: signIn ? 'Sign in' : 'Send reset link',
+            }),
+            error && e('div', { role: 'alert', className: 'ag-error' }, error),
+            note && e('div', { role: 'status', className: 'ag-note' }, note),
+            !signIn && e('div', { className: 'ag-row-center' }, toggle)));
 }
 
 function NewPasswordForm({ onDone }) {
@@ -288,8 +283,8 @@ function NewPasswordForm({ onDone }) {
         }
     }
 
-    return e(Shell, { subtitle: 'Choose a new password' },
-        e('form', { onSubmit, noValidate: true },
+    return e(Shell, { title: 'Choose a new password', subtitle: 'At least ' + PASSWORD_MIN_LENGTH + ' characters.' },
+        e('form', { onSubmit, noValidate: true, className: 'ag-form' },
             e(PasswordField, {
                 id: 'atlas-new-password', label: 'New password', value: password,
                 autoComplete: 'new-password', enterKeyHint: 'next', onChange: (ev) => setPassword(ev.target.value),
@@ -298,9 +293,8 @@ function NewPasswordForm({ onDone }) {
                 id: 'atlas-confirm-password', label: 'Confirm new password', value: confirm,
                 autoComplete: 'new-password', enterKeyHint: 'go', onChange: (ev) => setConfirm(ev.target.value),
             }),
-            e('button', { type: 'submit', style: { ...S.button, opacity: busy ? 0.6 : 1 }, disabled: busy },
-                busy ? 'Please wait…' : 'Save password'),
-            error && e('div', { role: 'alert', style: S.error }, error)));
+            e(SubmitButton, { busy, busyLabel: 'Saving\u2026', label: 'Save password', arrow: true }),
+            error && e('div', { role: 'alert', className: 'ag-error' }, error)));
 }
 
 export function AuthGate({ children }) {
@@ -308,11 +302,12 @@ export function AuthGate({ children }) {
     const gate = gateState({ configured: !!supabase, loading: st.loading, session: st.session, recovery: st.recovery });
 
     if (gate === GATE_UNCONFIGURED) {
-        return e(Shell, { subtitle: 'This build has no Supabase key, so sign-in is unavailable.' },
-            e('div', { style: S.note }, 'Set VITE_SUPABASE_ANON_KEY and rebuild.'));
+        return e(Shell, { title: 'Sign-in unavailable', subtitle: 'This build has no Supabase key.' },
+            e('div', { className: 'ag-note' }, 'Set VITE_SUPABASE_ANON_KEY and rebuild.'));
     }
     if (gate === GATE_LOADING) {
-        return e('main', { className: 'ag-page', 'aria-busy': 'true' }, e(Backdrop, null), e('div', { style: S.mark }, 'ATLAS'));
+        return e('main', { className: 'ag-page ag-page--loading', 'aria-busy': 'true' },
+            e(AuthBackdrop, null), e(AtlasWordmark, { className: 'ag-loading-mark' }));
     }
     if (gate === GATE_RECOVERY) {
         return e(NewPasswordForm, { onDone: () => setSt((s) => ({ ...s, recovery: false })) });
