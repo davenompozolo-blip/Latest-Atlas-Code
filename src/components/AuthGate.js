@@ -5,8 +5,8 @@
 // an administrator (public sign-up is disabled in the Supabase Auth config), so
 // the landing page offers sign-in and password reset, never sign-up.
 //
-// The visual design is a placeholder on purpose -- the brief is to get the
-// mechanics right first. It reads the --nx-* tokens so it matches the shell.
+// The backdrop is decorative: seeded traces from src/lib/authBackdrop.js that
+// carry no figures. Colours are the --nx-* tokens so it matches the shell.
 
 import React from 'react';
 import { supabase } from '../lib/supabase.js';
@@ -16,6 +16,8 @@ import {
     RECOVERY_MARKER_KEY,
     GATE_UNCONFIGURED, GATE_LOADING, GATE_RECOVERY, GATE_SIGNED_IN,
 } from '../lib/authGate.js';
+import { backdropTraces, BACKDROP_VIEW } from '../lib/authBackdrop.js';
+import '../styles/auth-gate.css';
 
 const e = React.createElement;
 
@@ -118,16 +120,6 @@ function useAuthSession() {
 }
 
 const S = {
-    page: {
-        minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--nx-bg)', color: 'var(--nx-text)', fontFamily: 'var(--nx-fb)',
-        padding: 'max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))',
-        boxSizing: 'border-box',
-    },
-    card: {
-        width: '100%', maxWidth: 380, background: 'var(--nx-bg2)', border: '1px solid var(--nx-border)',
-        borderRadius: 'var(--nx-r-lg)', padding: '28px 24px', boxSizing: 'border-box',
-    },
     mark: { fontFamily: 'var(--nx-fd)', fontWeight: 800, fontSize: 22, letterSpacing: 4, color: 'var(--nx-accent)' },
     sub: { fontSize: 13, color: 'var(--nx-text2)', margin: '6px 0 22px' },
     label: { display: 'block', fontSize: 12, color: 'var(--nx-text2)', margin: '14px 0 6px' },
@@ -155,12 +147,65 @@ function Field({ id, label, ...rest }) {
         e('input', { id, style: S.input, ...rest }));
 }
 
+const EYE = 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z';
+const EYE_OFF = 'M3 3l18 18M10.6 5.1A9.7 9.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2';
+
+function EyeIcon({ open }) {
+    return e('svg', {
+        width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+        strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
+    },
+        e('path', { d: open ? EYE : EYE_OFF }),
+        open && e('circle', { cx: 12, cy: 12, r: 3 }));
+}
+
+/** A password input with a show/hide control. Showing is per field and resets
+ *  when the form unmounts; the browser's password manager still sees the field
+ *  through its autocomplete hint either way. */
+function PasswordField({ id, label, ...rest }) {
+    const [shown, setShown] = React.useState(false);
+    return e(React.Fragment, null,
+        e('label', { htmlFor: id, style: S.label }, label),
+        e('div', { className: 'ag-pw' },
+            e('input', { id, style: S.input, ...rest, type: shown ? 'text' : 'password', autoCapitalize: 'none', spellCheck: false }),
+            e('button', {
+                type: 'button', className: 'ag-eye',
+                'aria-label': shown ? 'Hide password' : 'Show password',
+                'aria-pressed': shown, 'aria-controls': id,
+                onClick: () => setShown((v) => !v),
+            }, e(EyeIcon, { open: !shown }))));
+}
+
+const TRACES = backdropTraces();
+
+function Backdrop() {
+    const { width, height } = BACKDROP_VIEW;
+    const lead = TRACES[0];
+    return e(React.Fragment, null,
+        e('div', { className: 'ag-grid', 'aria-hidden': 'true' }),
+        e('svg', {
+            className: 'ag-traces', viewBox: '0 0 ' + width + ' ' + height,
+            preserveAspectRatio: 'xMidYMid slice', 'aria-hidden': 'true', focusable: 'false',
+        },
+            e('defs', null,
+                e('linearGradient', { id: 'ag-area-fill', x1: 0, y1: 0, x2: 0, y2: 1 },
+                    e('stop', { offset: '0%', stopColor: 'var(--nx-accent)', stopOpacity: 0.16 }),
+                    e('stop', { offset: '100%', stopColor: 'var(--nx-accent)', stopOpacity: 0 }))),
+            e('g', { className: 'ag-traces-drift' },
+                e('path', { className: 'ag-area', d: lead.d + ' L' + width + ' ' + height + ' L0 ' + height + ' Z', fill: 'url(#ag-area-fill)' }),
+                TRACES.map((t) => e('path', { key: t.key, className: 'ag-line ag-line--' + t.tone, d: t.d, pathLength: 1 })),
+                e('circle', { className: 'ag-dot-ring', cx: lead.end.x - 2, cy: lead.end.y, r: 4 }),
+                e('circle', { className: 'ag-dot', cx: lead.end.x - 2, cy: lead.end.y, r: 3.5 }))));
+}
+
 function Shell({ subtitle, children }) {
-    return e('main', { style: S.page },
-        e('div', { style: S.card },
+    return e('main', { className: 'ag-page' },
+        e(Backdrop, null),
+        e('div', { className: 'ag-card' },
             e('div', { style: S.mark }, 'ATLAS'),
             e('div', { style: S.sub }, subtitle),
-            children));
+            children,
+            e('div', { className: 'ag-foot' }, 'PORTFOLIO · RISK · RESEARCH')));
 }
 
 function SignInForm() {
@@ -205,8 +250,8 @@ function SignInForm() {
                 autoComplete: 'username', inputMode: 'email', enterKeyHint: signIn ? 'next' : 'send',
                 autoCapitalize: 'none', spellCheck: false, onChange: (ev) => setEmail(ev.target.value),
             }),
-            signIn && e(Field, {
-                id: 'atlas-password', label: 'Password', type: 'password', value: password,
+            signIn && e(PasswordField, {
+                id: 'atlas-password', label: 'Password', value: password,
                 autoComplete: 'current-password', enterKeyHint: 'go',
                 onChange: (ev) => setPassword(ev.target.value),
             }),
@@ -245,12 +290,12 @@ function NewPasswordForm({ onDone }) {
 
     return e(Shell, { subtitle: 'Choose a new password' },
         e('form', { onSubmit, noValidate: true },
-            e(Field, {
-                id: 'atlas-new-password', label: 'New password', type: 'password', value: password,
+            e(PasswordField, {
+                id: 'atlas-new-password', label: 'New password', value: password,
                 autoComplete: 'new-password', enterKeyHint: 'next', onChange: (ev) => setPassword(ev.target.value),
             }),
-            e(Field, {
-                id: 'atlas-confirm-password', label: 'Confirm new password', type: 'password', value: confirm,
+            e(PasswordField, {
+                id: 'atlas-confirm-password', label: 'Confirm new password', value: confirm,
                 autoComplete: 'new-password', enterKeyHint: 'go', onChange: (ev) => setConfirm(ev.target.value),
             }),
             e('button', { type: 'submit', style: { ...S.button, opacity: busy ? 0.6 : 1 }, disabled: busy },
@@ -267,7 +312,7 @@ export function AuthGate({ children }) {
             e('div', { style: S.note }, 'Set VITE_SUPABASE_ANON_KEY and rebuild.'));
     }
     if (gate === GATE_LOADING) {
-        return e('main', { style: S.page, 'aria-busy': 'true' }, e('div', { style: S.mark }, 'ATLAS'));
+        return e('main', { className: 'ag-page', 'aria-busy': 'true' }, e(Backdrop, null), e('div', { style: S.mark }, 'ATLAS'));
     }
     if (gate === GATE_RECOVERY) {
         return e(NewPasswordForm, { onDone: () => setSt((s) => ({ ...s, recovery: false })) });
