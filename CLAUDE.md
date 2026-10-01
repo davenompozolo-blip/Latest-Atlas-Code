@@ -7128,6 +7128,35 @@ look at what is left.
 object before trusting a file. A clean replay still would not rebuild the
 database -- that would need a baseline dumped from production, not done.
 
+### Signing in is a gate, not yet a lock (AUTH-1, 2026-10-01)
+
+The terminal does not render without a Supabase Auth session
+(`src/components/AuthGate.js`, decisions in `src/lib/authGate.js`). Email and
+password; **public sign-up is OFF** in the Auth config, so accounts are created
+by an administrator (Supabase dashboard: Authentication -> Users -> Add user),
+and the landing page offers sign-in and password reset only. Minimum password
+length is 12, set on the server; the client check only saves a round trip.
+
+**Who sees which portfolio is `portfolio_members`**, written only by
+`atlas_grant_portfolio_access(user_id, portfolio_id, role)` (service_role).
+Signed in, `atlas_active_portfolio()` resolves the requested portfolio only if
+the caller is a member, else their default, else their earliest grant, else
+NULL -- an empty book, never someone else's. `vw_portfolios` lists only the
+caller's portfolios. Anonymous and headerless calls take the old path, so
+pg_cron and the per-account refreshes are untouched.
+`supabase/tests/auth1_portfolio_membership_gate.sql` 9/9, inside a block that
+always raises.
+
+**Signing in changes the request role from `anon` to `authenticated`.** Five
+tables (Scrapbook x4, `cc_chats`) and `atlas_memory`'s writes were granted to
+anon alone and would have gone blank behind the gate; their policies now name
+both roles. Check this parity before any change to a policy's roles.
+
+**What it does NOT do yet -- AUTH-2:** the anon key still reads what anon may
+read, so the gate keeps the terminal closed but not the data. And `/api/*`
+routes read with the service key and honour `?portfolio=` without checking a
+session, including `api/trading.js`. Closing those two is the lockdown.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
