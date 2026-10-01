@@ -121,3 +121,57 @@ export function signOutStorageKeys(storage) {
     } catch (_) { /* storage blocked: nothing to clear */ }
     return keys;
 }
+
+/**
+ * The browser keys holding the Supabase session, for a sign-out the server
+ * refused. auth-js removes the stored session only AFTER the revoke request
+ * succeeds (2.105.4, GoTrueClient._signOut), so a 503 or a dropped connection
+ * would leave the user signed in on this device behind a reload that looks
+ * like a sign-out. Keys are the configured storageKey and its suffixed
+ * companions (`-code-verifier`, `-user`), never another project's.
+ */
+export function sessionStorageKeys(storage, storageKey) {
+    const keys = [];
+    if (typeof storageKey !== 'string' || !storageKey) return keys;
+    try {
+        if (!storage || typeof storage.length !== 'number') return keys;
+        for (let i = 0; i < storage.length; i++) {
+            const k = storage.key(i);
+            if (k === storageKey || (typeof k === 'string' && k.indexOf(storageKey + '-') === 0)) keys.push(k);
+        }
+    } catch (_) { /* storage blocked: nothing to clear */ }
+    return keys;
+}
+
+/** sessionStorage key marking that THIS tab's session came from a reset link. */
+export const RECOVERY_MARKER_KEY = 'atlas.auth.recovery.v1';
+
+/**
+ * Whether the set-new-password form is owed. A reset link's fragment is
+ * consumed on the first load and the PASSWORD_RECOVERY event does not fire
+ * again, so a refresh before saving would otherwise drop the user into the
+ * terminal with the form gone. The marker records which user the recovery was
+ * for; it counts only while that same user is the session, so a marker left
+ * behind by someone else can never hold a different session in the form.
+ */
+export function recoveryPending({ hash, marker, session }) {
+    if (isRecoveryUrl(hash)) return true;
+    const uid = session && session.user && session.user.id;
+    return typeof marker === 'string' && marker.length > 0 && marker === uid;
+}
+
+/**
+ * Whether an auth event must reload the page. Loaders across the app cache in
+ * module-level promises, so a tab that saw one user sign out and another sign
+ * in (in this tab or another -- auth-js broadcasts across tabs) would render
+ * the second user's terminal from the first user's cached data. Reload when a
+ * session that existed ends, or when the user behind the session changes.
+ * Never on a token refresh or a repeat of the same user.
+ */
+export function authChangeNeedsReload(prevUserId, event, nextUserId) {
+    const prev = prevUserId || null;
+    const next = nextUserId || null;
+    if (!prev) return false;            // nothing was rendered for anyone yet
+    if (event === 'SIGNED_OUT' || !next) return true;
+    return prev !== next;
+}

@@ -84,3 +84,36 @@ test('sign-out clears the account choice and nothing else', () => {
     const throwing = { get length() { throw new Error('blocked'); }, key() { return null; } };
     assert.deepEqual(signOutStorageKeys(throwing), []);
 });
+
+import { sessionStorageKeys, recoveryPending, authChangeNeedsReload } from './authGate.js';
+
+test('a refused sign-out still finds this project session keys, and only those', () => {
+    const k = 'sb-vdmojjszvvcithuxwexx-auth-token';
+    const s = fakeStorage([k, k + '-code-verifier', k + '-user', 'sb-otherproject-auth-token', 'atlas.portfolio.v1', k + 'x']);
+    assert.deepEqual(sessionStorageKeys(s, k), [k, k + '-code-verifier', k + '-user']);
+    assert.deepEqual(sessionStorageKeys(s, ''), []);
+    assert.deepEqual(sessionStorageKeys(null, k), []);
+});
+
+test('the new-password form survives a refresh that consumed the reset fragment', () => {
+    const session = { user: { id: 'u1' } };
+    // first load: the fragment says so
+    assert.equal(recoveryPending({ hash: '#access_token=a&type=recovery', marker: null, session: null }), true);
+    // refresh: fragment gone, marker for this user remains
+    assert.equal(recoveryPending({ hash: '', marker: 'u1', session }), true);
+    // a marker for another user never holds this session in the form
+    assert.equal(recoveryPending({ hash: '', marker: 'u2', session }), false);
+    // marker cleared after saving: the terminal renders
+    assert.equal(recoveryPending({ hash: '', marker: null, session }), false);
+    // no session yet: the marker alone proves nothing
+    assert.equal(recoveryPending({ hash: '', marker: 'u1', session: null }), false);
+});
+
+test('a change of user reloads; a token refresh does not', () => {
+    assert.equal(authChangeNeedsReload(null, 'SIGNED_IN', 'u1'), false);
+    assert.equal(authChangeNeedsReload('u1', 'TOKEN_REFRESHED', 'u1'), false);
+    assert.equal(authChangeNeedsReload('u1', 'SIGNED_IN', 'u1'), false);
+    assert.equal(authChangeNeedsReload('u1', 'SIGNED_OUT', null), true);
+    assert.equal(authChangeNeedsReload('u1', 'SIGNED_IN', 'u2'), true);
+    assert.equal(authChangeNeedsReload('u1', 'USER_UPDATED', null), true);
+});

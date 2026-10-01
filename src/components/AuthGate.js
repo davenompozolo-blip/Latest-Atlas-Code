@@ -12,7 +12,8 @@ import React from 'react';
 import { supabase } from '../lib/supabase.js';
 import {
     gateState, validateCredentials, validateNewPassword, authErrorMessage,
-    isRecoveryUrl, signOutStorageKeys,
+    signOutStorageKeys, sessionStorageKeys, recoveryPending, authChangeNeedsReload,
+    RECOVERY_MARKER_KEY,
     GATE_UNCONFIGURED, GATE_LOADING, GATE_RECOVERY, GATE_SIGNED_IN,
 } from '../lib/authGate.js';
 
@@ -20,6 +21,23 @@ const e = React.createElement;
 
 function currentHash() {
     try { return globalThis.location ? globalThis.location.hash : ''; } catch (_) { return ''; }
+}
+
+function readMarker() {
+    try { return globalThis.sessionStorage ? globalThis.sessionStorage.getItem(RECOVERY_MARKER_KEY) : null; } catch (_) { return null; }
+}
+
+function writeMarker(userId) {
+    try {
+        const ss = globalThis.sessionStorage;
+        if (!ss) return;
+        if (userId) ss.setItem(RECOVERY_MARKER_KEY, userId);
+        else ss.removeItem(RECOVERY_MARKER_KEY);
+    } catch (_) { /* storage blocked: the fragment still covers the first load */ }
+}
+
+function reloadPage() {
+    try { globalThis.location.reload(); } catch (_) { /* not in a browser */ }
 }
 
 function clearAuthFragment() {
@@ -39,29 +57,59 @@ export async function signOut() {
         const storage = globalThis.localStorage;
         signOutStorageKeys(storage).forEach((k) => { try { storage.removeItem(k); } catch (_) { /* ignore */ } });
     } catch (_) { /* storage blocked */ }
+    writeMarker(null);
     if (supabase) {
         const { error } = await supabase.auth.signOut({ scope: 'local' });
-        if (error) console.error('[AuthGate] sign-out:', error.message || error);
+        if (error) {
+            // auth-js keeps the stored session when the revoke request fails
+            // (a 503, a dropped connection). Remove it here, or the reload
+            // below would land the user straight back inside the terminal.
+            console.error('[AuthGate] sign-out refused by the server; clearing this device\'s session:', error.message || error);
+            try {
+                const storage = globalThis.localStorage;
+                sessionStorageKeys(storage, supabase.auth.storageKey).forEach((k) => {
+                    try { storage.removeItem(k); } catch (_) { /* ignore */ }
+                });
+            } catch (_) { /* storage blocked */ }
+        }
     }
-    try { globalThis.location.reload(); } catch (_) { /* not in a browser */ }
+    reloadPage();
 }
 
 function useAuthSession() {
-    const [st, setSt] = React.useState({ loading: !!supabase, session: null, recovery: isRecoveryUrl(currentHash()) });
+    const [st, setSt] = React.useState({ loading: !!supabase, session: null, recovery: false });
+    const userRef = React.useRef(null);
     React.useEffect(() => {
         if (!supabase) return undefined;
         let live = true;
+        const hash = currentHash();
+        const uidOf = (sess) => (sess && sess.user && sess.user.id) || null;
         supabase.auth.getSession().then(({ data, error }) => {
             if (!live) return;
             if (error) console.error('[AuthGate] reading the stored session:', error.message || error);
-            setSt((s) => ({ ...s, loading: false, session: (data && data.session) || null }));
+            const session = (data && data.session) || null;
+            const recovery = recoveryPending({ hash, marker: readMarker(), session });
+            if (recovery && uidOf(session)) writeMarker(uidOf(session));
+            userRef.current = uidOf(session);
+            setSt({ loading: false, session, recovery });
         });
         const { data } = supabase.auth.onAuthStateChange((event, session) => {
             if (!live) return;
+            const next = uidOf(session);
+            // Another tab signing out or in reaches this tab too. Module-level
+            // loader caches hold the previous user's book, so a change of user
+            // reloads rather than re-rendering over them.
+            if (authChangeNeedsReload(userRef.current, event, next)) {
+                writeMarker(null);
+                reloadPage();
+                return;
+            }
+            userRef.current = next;
+            if (event === 'PASSWORD_RECOVERY' && next) writeMarker(next);
             setSt((s) => ({
                 loading: false,
                 session: session || null,
-                recovery: event === 'PASSWORD_RECOVERY' ? true : (event === 'SIGNED_OUT' ? false : s.recovery),
+                recovery: event === 'PASSWORD_RECOVERY' ? true : s.recovery,
             }));
         });
         return () => { live = false; data && data.subscription && data.subscription.unsubscribe(); };
@@ -188,6 +236,7 @@ function NewPasswordForm({ onDone }) {
             const { error: err } = await supabase.auth.updateUser({ password });
             if (err) { setError(authErrorMessage(err, 'update_password')); return; }
             clearAuthFragment();
+            writeMarker(null);
             onDone();
         } finally {
             setBusy(false);
