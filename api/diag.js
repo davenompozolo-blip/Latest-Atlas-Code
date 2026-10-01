@@ -2,6 +2,7 @@
 // Returns booleans only — never exposes secret values.
 // Visit: https://<your-vercel-domain>/api/diag
 
+import { withAuth } from '../src/lib/apiAuth.js';
 const KEYS = [
     'SUPABASE_URL',
     'ATLAS_SUPABASE_URL',
@@ -21,7 +22,7 @@ const KEYS = [
     'VERCEL_TOKEN'
 ];
 
-export default function handler(req, res) {
+function handler(req, res) {
     var presence = {};
     KEYS.forEach(function (k) {
         var v = process.env[k];
@@ -42,3 +43,6 @@ export default function handler(req, res) {
         env_presence: presence
     });
 };
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

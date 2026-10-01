@@ -1,6 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+  // AUTH-2: /api routes need the signed-in session. This page sits outside the
+  // React app, so it reads the session supabase-js stored for this origin and
+  // attaches its access token to same-origin /api calls. Sign in to the
+  // terminal first; an expired session is refreshed there, not here.
+  (function () {
+    var KEY = 'sb-vdmojjszvvcithuxwexx-auth-token';
+    var orig = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (url.indexOf('/api/') === 0 || url.indexOf(location.origin + '/api/') === 0) {
+        try {
+          var s = JSON.parse(localStorage.getItem(KEY) || 'null');
+          var tok = s && (s.access_token || (s.currentSession && s.currentSession.access_token));
+          if (tok) {
+            var h = new Headers((init && init.headers) || undefined);
+            if (!h.has('Authorization')) h.set('Authorization', 'Bearer ' + tok);
+            init = Object.assign({}, init, { headers: h });
+          }
+        } catch (_) { /* no stored session: the route answers 401 */ }
+      }
+      return orig(input, init);
+    };
+  })();
+</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ATLAS Command Centre</title>

@@ -24,6 +24,7 @@
 // No response ever carries a key.
 // ============================================================
 
+import { withAuth } from '../src/lib/apiAuth.js';
 const SB_URL = (process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL
     || 'https://vdmojjszvvcithuxwexx.supabase.co').replace(/\/$/, '');
 const SB_KEY = process.env.ATLAS_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -189,7 +190,7 @@ async function adoptEnv(req, res) {
     return res.status(failed ? 207 : 200).json({ accounts: results });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (!secret) {
         console.error('broker-accounts: CRON_SECRET unset -- refusing (this route stores credentials)');
@@ -208,3 +209,6 @@ export default async function handler(req, res) {
     if (action === 'adopt_env') return adoptEnv(req, res);
     return res.status(400).json({ error: 'action must be register or adopt_env' });
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

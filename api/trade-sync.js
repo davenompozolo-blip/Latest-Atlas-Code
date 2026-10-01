@@ -27,6 +27,7 @@ import { assessCoherence } from '../src/lib/trade/coherence.js';
 import { buildUniverse } from '../src/lib/trade/universe.js';
 import { clusterByCorrelation, percentileRank } from '../src/lib/trade/stats.js';
 import { bookPricesPath } from '../src/lib/bookPriceRead.js';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const SB_URL = (process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
@@ -779,7 +780,7 @@ async function closeLog(id, status, details, errorMsg) {
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
         const auth = req.headers.authorization || '';
@@ -841,3 +842,6 @@ export default async function handler(req, res) {
         return res.status(500).json(out);
     }
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

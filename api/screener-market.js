@@ -11,6 +11,7 @@
 //   SUPABASE_URL / ATLAS_SUPABASE_URL  (optional — for caching)
 //   SUPABASE_SERVICE_ROLE_KEY          (optional — for caching)
 
+import { withAuth, supabaseHeaders } from '../src/lib/apiAuth.js';
 const AV_BASE      = 'https://www.alphavantage.co/query';
 const OVERVIEW_TTL = 24 * 60 * 60 * 1000;
 const QUOTE_TTL    =  1 * 60 * 60 * 1000;
@@ -146,10 +147,11 @@ async function getUniverse(cfg) {
   const now = Date.now();
   if (_cache.universe && (now - _cache.universeAt) < UNIVERSE_TTL) return _cache.universe;
 
-  // Prefer anon key for this public read — avoids stale service-role key failures
+  // AUTH-2: the anon key no longer reads the database. `assets` is market
+  // reference data, not anyone's book, so the server key serves every caller.
   const anonKey = process.env.SUPABASE_ANON_KEY || process.env.ATLAS_SUPABASE_KEY;
   const url = (cfg && cfg.url) || 'https://vdmojjszvvcithuxwexx.supabase.co';
-  const key = anonKey || (cfg && cfg.key);
+  const key = (cfg && cfg.key) || anonKey;
   if (!key) return UNIVERSE;
 
   try {
@@ -238,22 +240,30 @@ async function cacheSet(cfg, symbol, endpoint, payload, ttlMs) {
   } catch (_) { /* non-fatal */ }
 }
 
-async function getPortfolioSymbols(cfg) {
+// AUTH-2: the held names are the CALLER's book, read with the caller's own
+// credentials, and cached per (user, portfolio). One shared cache would hand
+// the first caller's holdings to every other user on this instance.
+async function getPortfolioSymbols(cfg, req) {
   const now = Date.now();
-  if (_cache.portfolio && (now - _cache.portfolioAt) < PORTFOLIO_TTL) return _cache.portfolio;
+  const a = req && req.atlasAuth;
+  const who = (a && a.kind === 'user' ? a.user.id : 'cron') + ':' + ((req && req.query && req.query.portfolio) || '');
+  if (!_cache.portfolio || typeof _cache.portfolio.get !== 'function') _cache.portfolio = new Map();
+  const hit = _cache.portfolio.get(who);
+  if (hit && (now - hit.at) < PORTFOLIO_TTL) return hit.syms;
 
-  if (!cfg) return new Set();
+  const h = supabaseHeaders(a, req);
+  if (!cfg || !h) return new Set();
   try {
     const r = await ft(
       cfg.url + '/rest/v1/vw_screener?select=symbol',
-      { headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, accept: 'application/json' } },
+      { headers: { ...h, accept: 'application/json' } },
       8000
     );
     if (!r.ok) return new Set();
     const rows = await r.json();
     const syms = new Set((Array.isArray(rows) ? rows : []).map(r => r.symbol));
-    _cache.portfolio = syms;
-    _cache.portfolioAt = now;
+    if (_cache.portfolio.size > 200) _cache.portfolio.clear();
+    _cache.portfolio.set(who, { syms, at: now });
     return syms;
   } catch (_) { return new Set(); }
 }
@@ -403,7 +413,7 @@ function cors(res) {
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method === 'OPTIONS') { cors(res); return res.status(204).end(); }
   if (req.method !== 'GET')    { cors(res); return res.status(405).json({ error: 'GET only' }); }
   cors(res);
@@ -449,7 +459,7 @@ export default async function handler(req, res) {
   // ── Main handler: serve universe list + cached data instantly ───────────────
   // No live AV calls here — frontend handles progressive enrichment per-symbol.
   const [portfolioSymbols, universe] = await Promise.all([
-    getPortfolioSymbols(cfg),
+    getPortfolioSymbols(cfg, req),
     getUniverse(cfg),
   ]);
   const candidates = universe.filter(c => !portfolioSymbols.has(c.s));
@@ -480,3 +490,6 @@ export default async function handler(req, res) {
     has_av_key: !!apiKey,
   });
 };
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

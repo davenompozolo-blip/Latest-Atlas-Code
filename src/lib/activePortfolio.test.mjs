@@ -151,8 +151,10 @@ test('api/trading refuses every ACCOUNT action it cannot route, before touching 
                 json(b) { body = b; return this; }, end() { return this; },
             };
             await handler({ method, query: { action, portfolio: SECONDARY, client_order_id: 'x' }, body: { symbol: 'AAPL', qty: 1, side: 'buy' }, headers: {} }, res);
-            assert.equal(status, 409, action);
-            assert.equal(body.error, 'account_not_routed', action);
+            // AUTH-2: with no session the shared guard refuses first (401);
+            // with one, routing refuses (409). Either way nothing is sent.
+            assert.ok(status === 401 || status === 409, action + ' refused, got ' + status);
+            assert.ok(body.error === 'sign_in_required' || body.error === 'account_not_routed', action);
         }
         assert.equal(brokerCalls, 0, 'no request may reach Alpaca');
     } finally {

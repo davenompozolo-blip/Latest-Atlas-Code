@@ -12,6 +12,7 @@
 // Degrades explicitly, never throws, never invents.
 
 import { assetIdsPath, bookPricesPath, symbolById } from '../src/lib/bookPriceRead.js';
+import { withAuth, supabaseHeaders, privateCache } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
@@ -45,7 +46,12 @@ const ymd = d => d.toISOString().slice(0, 10);
 const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function portfolioHeader(req) {
     const p = req && req.query ? req.query.portfolio : null;
-    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+    // AUTH-2: the caller's own credentials (user token, or the service key for
+    // pg_cron) plus x-atlas-portfolio. Spread after the route's defaults, so they win.
+    void p;
+    const h = supabaseHeaders(req && req.atlasAuth, req);
+    if (!h) console.error('[auth] no Supabase key for this caller on this deployment');
+    return h || {};
 }
 
 // `ph` (the portfolio header) is REQUIRED and FIRST: a call site that forgets
@@ -128,7 +134,7 @@ function downsample(arr, cap) {
     return out;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const ph = portfolioHeader(req);
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -439,7 +445,7 @@ export default async function handler(req, res) {
         // briefly, like nexus-theme's degraded answer: a transient read
         // failure must not keep series missing for the full TTL.
         const tapeComplete = prices != null && !prices.truncated;
-        res.setHeader('Cache-Control', tapeComplete ? 's-maxage=900, stale-while-revalidate=3600' : 's-maxage=60');
+        res.setHeader('Cache-Control', tapeComplete ? privateCache(900) : privateCache(60));
         // tapeAvailable separates "the price feed did not answer" from "this
         // name has no bars in the window" -- the second is a fact about the
         // name, the first must never be rendered as one.
@@ -448,3 +454,6 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'bench error', docket: [], series: {}, diagnostics: [] });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

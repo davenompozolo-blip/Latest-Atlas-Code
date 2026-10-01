@@ -10,6 +10,7 @@
 // daily from vercel.json crons, or on demand.
 
 import { createClient } from '@supabase/supabase-js';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 // Env resolution mirrors api/options-snapshot.js: several Vercel projects
@@ -73,7 +74,7 @@ async function upsertSpy(sb, bars) {
     return { upserted: rows.length, error: null };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const sb = sbService();
     if (!sb) return res.status(503).json({ error: 'supabase misconfigured' });
 
@@ -99,3 +100,6 @@ export default async function handler(req, res) {
         ts: new Date().toISOString(),
     });
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

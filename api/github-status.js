@@ -2,6 +2,7 @@
 // GITHUB_TOKEN is optional but raises the rate limit from 60 to 5000 req/hr.
 // Uses only built-in Node.js modules (no npm install required).
 import https from 'https';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
@@ -18,7 +19,7 @@ function fetchJSON(url, headers) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 
@@ -97,3 +98,6 @@ export default async function handler(req, res) {
     });
   }
 };
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

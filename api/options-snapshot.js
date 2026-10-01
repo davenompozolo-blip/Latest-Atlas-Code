@@ -16,13 +16,17 @@
 // says so at error level rather than leaving the job invisible.
 
 import { chainMetrics } from '../src/pages/nexus/nexusOptionsCompute.js';
+import { withAuth, supabaseEnv } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
 // Reads (tracked pool) go through the anon key; writes need the service role
 // because the snapshot table is RLS-locked to anon reads only.
-const SB_ANON = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_ANON;
+// AUTH-2: cron-only; every read and write uses the service key (the name
+// SB_ANON is kept so the call sites below are unchanged).
+const SB_ANON = supabaseEnv().serviceKey || '';
+void FALLBACK_ANON;
 const SB_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -49,7 +53,7 @@ function pickExpiries(expiries, today) {
     return { front, back };
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     // Auth — Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}`.
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
@@ -182,3 +186,6 @@ export default async function handler(req, res) {
 
     return res.status(200).json(summary);
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

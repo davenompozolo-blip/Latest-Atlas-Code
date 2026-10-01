@@ -2,6 +2,7 @@
 // Generates a sector-level synthesis note from all company theses in a sector.
 // Called when the user clicks "Generate sector note" in the Sector Playbook.
 
+import { withAuth } from '../src/lib/apiAuth.js';
 function extractJSON(text) {
   if (!text) return null;
   try { return JSON.parse(text); } catch {}
@@ -13,7 +14,7 @@ function extractJSON(text) {
   return null;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   const origin = req.headers.origin || '';
   const allowed = process.env.ATLAS_ALLOWED_ORIGIN || '';
   if (allowed && origin && origin !== allowed) {
@@ -222,3 +223,6 @@ Return ONLY this JSON:
   "sector_conviction": "<one of: Overweight | Neutral | Underweight>"
 }`;
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

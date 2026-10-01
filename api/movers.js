@@ -7,6 +7,7 @@
 //   SUPABASE_SERVICE_ROLE_KEY          -- optional
 //   ATLAS_ALLOWED_ORIGIN               -- optional CORS allow-list
 
+import { withAuth } from '../src/lib/apiAuth.js';
 var FINNHUB_BASE = 'https://finnhub.io/api/v1';
 var CACHE_KEY = 'movers_data';
 var CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -141,7 +142,7 @@ function applyCors(res) {
 
 // ---- handler ----
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     applyCors(res);
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
@@ -192,3 +193,6 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: (err && err.message) || 'Internal error' });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

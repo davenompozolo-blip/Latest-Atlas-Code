@@ -20,6 +20,7 @@
 //     "max_tokens": 2048            // optional, default 2048
 //   }
 
+import { withAuth } from '../src/lib/apiAuth.js';
 const DEFAULT_MODEL = 'claude-opus-4-6';
 const DEFAULT_MAX_TOKENS = 2048;
 
@@ -30,7 +31,7 @@ const AGENT_SYSTEM_PROMPTS = {
   strategist:'You are the ATLAS Strategist. You evaluate macro regime, positioning, and thesis integrity. Challenge assumptions and surface second-order effects.',
 };
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     applyCors(res);
     return res.status(204).end();
@@ -101,3 +102,6 @@ function applyCors(res) {
     res.setHeader('Access-Control-Allow-Headers', 'content-type');
   }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

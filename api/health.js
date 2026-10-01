@@ -3,6 +3,7 @@
 // Returns: { alpaca: 'ok'|'down', supabase: 'ok'|'down', ts: ISO }
 
 import { createClient } from '@supabase/supabase-js';
+import { withAuth, supabaseEnv, supabaseHeaders } from '../src/lib/apiAuth.js';
 
 function cors(res) {
     var origin = process.env.ATLAS_ALLOWED_ORIGIN;
@@ -27,14 +28,17 @@ async function pingAlpaca() {
     } catch (_) { return 'down'; }
 }
 
-async function pingSupabase() {
+async function pingSupabase(req) {
     // ATLAS_ overrides first — SUPABASE_URL may be integration-injected and
     // point at a non-ATLAS Supabase project (see api/options-snapshot.js).
     var url = process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co';
-    var key = process.env.ATLAS_SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+    // AUTH-2: probe as the caller (user token, or the service key for cron).
+    var h = supabaseHeaders(req && req.atlasAuth, req);
+    var key = h && h.apikey;
     if (!url || !key) return 'misconfigured';
+    void supabaseEnv;
     try {
-        var sb = createClient(url, key);
+        var sb = createClient(url, key, { auth: { persistSession: false }, global: { headers: h } });
         // Probe a table that actually exists — system_health was never
         // created, so the old check reported 'down' unconditionally.
         var { error } = await sb.from('assets').select('id').limit(1);
@@ -42,10 +46,13 @@ async function pingSupabase() {
     } catch (_) { return 'down'; }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     cors(res);
     if (req.method === 'OPTIONS') return res.status(204).end();
-    const [alpaca, supabase] = await Promise.all([pingAlpaca(), pingSupabase()]);
+    const [alpaca, supabase] = await Promise.all([pingAlpaca(), pingSupabase(req)]);
     const status = (alpaca === 'ok' && supabase === 'ok') ? 200 : 503;
     return res.status(status).json({ alpaca, supabase, ts: new Date().toISOString() });
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

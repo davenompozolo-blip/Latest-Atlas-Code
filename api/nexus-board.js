@@ -14,6 +14,7 @@
 import {
     closeSeriesFromAlpaca, ratioSeries, lastChange, computeFearGreed, eventMarkers,
 } from '../src/pages/nexus/nexusBoardCompute.js';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 
@@ -57,7 +58,7 @@ async function dailyCloses(origin, symbol, headers) {
 
 const tail = (arr, n) => (arr.length > n ? arr.slice(arr.length - n) : arr);
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -122,3 +123,6 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'board error' });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

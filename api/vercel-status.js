@@ -1,6 +1,7 @@
 // Vercel serverless function — proxies Vercel REST API to protect VERCEL_TOKEN.
 // Uses only built-in Node.js modules (no npm install required).
 import https from 'https';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
@@ -17,7 +18,7 @@ function fetchJSON(url, headers) {
   });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 
@@ -74,3 +75,6 @@ export default async function handler(req, res) {
     res.status(200).json({ error: e.message, deployments: [], latest: null });
   }
 };
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

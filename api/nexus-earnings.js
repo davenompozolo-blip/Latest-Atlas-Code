@@ -12,6 +12,7 @@
 
 import { buildEarningsRow, sortRows, pickEarningsExpiry, atmStraddleMovePct } from '../src/pages/nexus/nexusEarningsCompute.js';
 import { closeSeriesFromAlpaca } from '../src/pages/nexus/nexusBoardCompute.js';
+import { withAuth, supabaseHeaders, privateCache } from '../src/lib/apiAuth.js';
 
 const FINNHUB = 'https://finnhub.io/api/v1';
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
@@ -49,10 +50,15 @@ const ymd = d => d.toISOString().slice(0, 10);
 const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function portfolioHeader(req) {
     const p = req && req.query ? req.query.portfolio : null;
-    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+    // AUTH-2: the caller's own credentials (user token, or the service key for
+    // pg_cron) plus x-atlas-portfolio. Spread after the route's defaults, so they win.
+    void p;
+    const h = supabaseHeaders(req && req.atlasAuth, req);
+    if (!h) console.error('[auth] no Supabase key for this caller on this deployment');
+    return h || {};
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -143,9 +149,12 @@ export default async function handler(req, res) {
         });
         const reportingCount = rows.filter(r => r.daysUntil != null && r.daysUntil >= 0 && r.daysUntil <= HORIZON_DAYS).length;
 
-        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=21600');
+        res.setHeader('Cache-Control', privateCache(3600));
         return res.status(200).json({ ok: true, asOf: new Date().toISOString(), horizonDays: HORIZON_DAYS, total: rows.length, reportingCount, rows: sortRows(rows) });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'earnings error', rows: [] });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

@@ -11,6 +11,7 @@
 //   SUPABASE_SERVICE_ROLE_KEY          -- optional, for durable cache
 //   ATLAS_ALLOWED_ORIGIN               -- optional CORS allow-list
 
+import { withAuth } from '../src/lib/apiAuth.js';
 var FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 var FINNHUB_BASE = 'https://finnhub.io/api/v1';
 var CACHE_KEY = 'macro_data';
@@ -210,7 +211,7 @@ function applyCors(res) {
 
 // ---- handler ----
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     applyCors(res);
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
@@ -408,3 +409,6 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: (err && err.message) || 'Internal error' });
     }
 };
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

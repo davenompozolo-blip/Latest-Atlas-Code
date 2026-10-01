@@ -7,6 +7,7 @@
 // the chain was intact at export time.
 
 import { createClient } from '@supabase/supabase-js';
+import { withAuth, supabaseHeaders, privateCache } from '../src/lib/apiAuth.js';
 
 // MP-4a: decisions / decision_outcomes are scoped to the active portfolio by
 // their read policy, so the export carries the account the terminal is on.
@@ -14,7 +15,12 @@ import { createClient } from '@supabase/supabase-js';
 const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function portfolioHeader(req) {
     const p = req && req.query ? req.query.portfolio : null;
-    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+    // AUTH-2: the caller's own credentials (user token, or the service key for
+    // pg_cron) plus x-atlas-portfolio. Spread after the route's defaults, so they win.
+    void p;
+    const h = supabaseHeaders(req && req.atlasAuth, req);
+    if (!h) console.error('[auth] no Supabase key for this caller on this deployment');
+    return h || {};
 }
 
 function sbAnon(headers) {
@@ -26,7 +32,7 @@ function sbAnon(headers) {
     return createClient(url, key, { auth: { persistSession: false }, global: { headers: headers || {} } });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).end();
 
     const sb = sbAnon(portfolioHeader(req));
@@ -66,3 +72,6 @@ export default async function handler(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.status(200).json(artifact);
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

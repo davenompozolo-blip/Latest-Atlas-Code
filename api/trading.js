@@ -1,5 +1,6 @@
 import { createClient as _sbCreateClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
+import { withAuth, supabaseHeaders } from '../src/lib/apiAuth.js';
 // Vercel Serverless Function: trading data + order execution for ATLAS Terminal.
 //
 // Actions:
@@ -12,8 +13,10 @@ import { createHash } from 'node:crypto';
 // Accounts (MP-3): account actions -- account, orders, order_status, order --
 // run against the portfolio named by ?portfolio=<id>, resolved SERVER-SIDE to
 // that portfolio's broker_accounts row and its own credential pair, behind an
-// identity gate on /v2/account. No ?portfolio= means the default account's
-// ALPACA_API_* keys, exactly as before. Keys are never taken from the client.
+// identity gate on /v2/account. Keys are never taken from the client.
+// AUTH-2: only for a signed-in user who is a member of that portfolio (owner,
+// to place an order). No ?portfolio= means the user's own default portfolio,
+// resolved by the database -- no longer the deployment's default account.
 //
 // Environment variables:
 //   ALPACA_API_KEY        — required (default account; also all market data)
@@ -83,13 +86,40 @@ function routeError(msg) {
 var _verified = {};
 var VERIFY_TTL_MS = 5 * 60 * 1000;
 
-async function accountContext(req, opts) {
-    var p = req && req.query ? req.query.portfolio : null;
-    if (!(typeof p === 'string' && PORTFOLIO_RE.test(p))) {
-        return { hdrs: alpacaHdrs(), base: brokerBase(), paper: isPaper(), portfolioId: null, routed: false };
+// AUTH-2: which portfolio this USER may act on. An explicit ?portfolio= must be
+// one they are a member of; with none, it is the portfolio the database
+// resolves for them (atlas_active_portfolio() under their own token: their
+// default membership). Never the deployment's default account by fallback --
+// that was right with one user and is another user's book with two. Placing an
+// order needs the owner role; reading needs any membership.
+async function memberPortfolio(req, sb, needOwner) {
+    var a = req && req.atlasAuth;
+    if (!a || a.kind !== 'user') throw routeError('account actions need a signed-in user');
+    var p = req.query ? req.query.portfolio : null;
+    var id = typeof p === 'string' && PORTFOLIO_RE.test(p) ? p.toLowerCase() : null;
+    if (!id) {
+        var h = supabaseHeaders(a, { query: {} });
+        if (!h) throw routeError('no Supabase key configured for user requests');
+        var url = process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co';
+        var r = await fetchT(url.replace(/\/+$/, '') + '/rest/v1/rpc/atlas_active_portfolio',
+            { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, h), body: '{}' }, 8000);
+        if (!r.ok) throw routeError('could not resolve your portfolio: HTTP ' + r.status);
+        var v = await r.json();
+        id = typeof v === 'string' && PORTFOLIO_RE.test(v) ? v.toLowerCase() : null;
+        if (!id) throw routeError('you have no portfolio on this terminal');
     }
+    var m = await sb.from('portfolio_members').select('role')
+        .eq('user_id', a.user.id).eq('portfolio_id', id).maybeSingle();
+    if (m.error) throw routeError('membership lookup failed: ' + m.error.message);
+    if (!m.data) throw routeError('not a member of portfolio ' + id);
+    if (needOwner && m.data.role !== 'owner') throw routeError('placing orders needs the owner role on this portfolio');
+    return id;
+}
+
+async function accountContext(req, opts) {
     var sb = sbService();
     if (!sb) throw routeError('account routing needs the Supabase service key, which is not configured on this deployment');
+    var p = await memberPortfolio(req, sb, !!(opts && opts.owner));
     var q = await sb.from('portfolios')
         .select('id, broker_accounts(id, credential_prefix, alpaca_account_number, is_paper)')
         .eq('id', p.toLowerCase())
@@ -585,7 +615,7 @@ async function getIVSurface(underlying) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     if (req.method === 'OPTIONS') { cors(res); return res.status(204).end(); }
     cors(res);
 
@@ -600,7 +630,7 @@ export default async function handler(req, res) {
     var ctx = null;
     if (ACCOUNT_ACTIONS[action]) {
         try {
-            ctx = await accountContext(req, { fresh: action === 'order' });
+            ctx = await accountContext(req, { fresh: action === 'order', owner: action === 'order' });
         } catch (e) {
             if (e && e.route) {
                 console.error('[trading] account_not_routed (' + action + '): ' + e.message);
@@ -688,3 +718,6 @@ export default async function handler(req, res) {
         return res.status(status).json({ error: msg });
     }
 };
+
+// AUTH-2: signed-in users only.
+export default withAuth(handler, { cron: false });
