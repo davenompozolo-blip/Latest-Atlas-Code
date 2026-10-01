@@ -7157,6 +7157,63 @@ read, so the gate keeps the terminal closed but not the data. And `/api/*`
 routes read with the service key and honour `?portfolio=` without checking a
 session, including `api/trading.js`. Closing those two is the lockdown.
 
+### The lock behind the gate (AUTH-2, 2026-10-01)
+
+AUTH-1 kept the terminal closed; this closes the data. Four parts, two of them
+already live in the database.
+
+**2a (applied): no browser role writes through a view.** A view owned by
+postgres reaches its base table as postgres, which has BYPASSRLS, so a simple
+view hands its writer the owner's reach. Supabase's default grants had given
+anon and authenticated INSERT/UPDATE/DELETE on three: probed, the public key
+alone could rewrite all 658 rows of the trade ledger through
+`vw_filled_transactions`. Write privileges are revoked on every view; nothing in
+the app writes through one. **A single-table view is a write path unless you
+revoke it** -- MP-0 found the same on four `vw_active_*` views one at a time.
+
+**2b: every `/api` route goes through `withAuth`** (`src/lib/apiAuth.js`). A
+caller is a Supabase session, verified against `/auth/v1/user` (cached 60 s),
+or the exact `Bearer CRON_SECRET` that `atlas_chain_dispatch` sends -- never
+`?token=`, and an unset secret authorises nothing. Each route declares its
+policy (cron-only, user-only for trading, or either); `apiAuth.test.mjs` fails a
+route exported without the wrapper. A user's PostgREST reads carry the USER's
+token, so RLS and `atlas_active_portfolio()` decide what they see -- a route
+never widens a user to the service key. Book responses are `private`, not
+`s-maxage`: a CDN-cached copy is served without running the function, so it
+skips the auth check. Trading acts only on a portfolio the user is a member of
+(owner to place an order); with no `?portfolio=` it is the user's own default,
+**no longer the deployment's default account**. The browser attaches the token
+in one fetch wrapper (`installApiAuth`), like the MP-2 portfolio tag.
+
+**2c (PENDING, `supabase/pending/auth2c_no_anon_reads.sql`): anon reads
+nothing.** Must wait until 2b is deployed -- the old routes read with the anon
+key. Dry-run proven: authenticated and service_role keep all 1,585 privileges
+they had, anon ends with none, and default privileges stop new objects granting
+it. Schema USAGE is left alone (anon inherits it through PUBLIC, and USAGE alone
+reaches nothing). Before applying, reset anon's `pg_stat_statements` rows and
+watch for stragglers -- `atlas-status/` and the legacy static pages read with
+the anon key.
+
+**2d (applied): one user cannot read another's book.** The raw book tables
+(`positions`, `transactions`, `account_snapshots`, `portfolio_equity_curve`,
+`orders`, `sync_log`) had a read policy of `true`; harmless with one user, a
+leak with two. `atlas_member_portfolios()` is the set a caller may read --
+their memberships, or every portfolio when `auth.uid()` is NULL so pg_cron and
+headerless jobs do not move -- used as `portfolio_id in (select ...)` so it is
+evaluated once, not per row. `vw_sync_status` and `atlas_account_sync_health()`
+filter on it too, because both read `sync_log` past RLS.
+`supabase/tests/auth2_per_user_book_isolation.sql`: 3/12 before, 12/12 after.
+
+**Found on the way:** `atlas_account_sync_health()` selected accounts by
+`credential_prefix`, so Atlas Tertiary -- Vault-held, no prefix (VC-1) -- had
+never been graded at all. It now selects by account number. Same shape as
+`price_coverage` counting holdings while the universe froze: a selector written
+before a new kind of row existed silently excludes it.
+
+**Still open:** edge functions run with `verify_jwt` off and pg_cron calls them
+with empty headers, so anyone can trigger a sync. They write broker data, not
+read it out, so this is cost and noise rather than a leak -- its own change.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
