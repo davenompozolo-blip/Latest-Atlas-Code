@@ -24,6 +24,7 @@
 // ============================================================
 
 import { statementRowsFromFacts, quarterlyStatementRowsFromFacts, SOURCE_EDGAR } from '../src/lib/edgarFacts.js';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 const SEC_WWW  = 'https://www.sec.gov';
 const SEC_DATA = 'https://data.sec.gov';
@@ -219,7 +220,7 @@ async function resolveSymbols(explicit, limit, refreshDays) {
 
 // ── handler ─────────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
         const auth = req.headers.authorization || '';
@@ -360,3 +361,6 @@ export default async function handler(req, res) {
     await logClose(logId, status, summary, errMsg);
     return res.status(status === 'error' ? 500 : 200).json(summary);
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

@@ -18,10 +18,14 @@
 // ?token=CRON_SECRET. snapshot_date = the price session the momentum is
 // as of (nexus-theme's priceAsOf), not the wall-clock run date.
 
+import { withAuth, supabaseEnv } from '../src/lib/apiAuth.js';
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
-const SB_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_ANON;
+// AUTH-2: cron-only, so it reads and writes with the service key. The anon
+// key no longer has a path into the database.
+const SB_KEY = supabaseEnv().serviceKey || '';
+void FALLBACK_ANON;
 
 async function fetchT(url, ms, headers) {
     const ac = new AbortController();
@@ -30,7 +34,7 @@ async function fetchT(url, ms, headers) {
     finally { clearTimeout(t); }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     // Auth — Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}`.
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
@@ -44,6 +48,8 @@ export default async function handler(req, res) {
     const origin = (process.env.SYNC_ORIGIN || (host ? proto + '://' + host : '')).replace(/\/$/, '');
     const fwd = {};
     if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
+    // AUTH-2: nexus-theme is gated too; pass on the cron credential this call arrived with.
+    if (req.headers.authorization) fwd.authorization = req.headers.authorization;
 
     try {
         // 1. The page's own momentum computation — one source of truth.
@@ -130,3 +136,6 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: (e && e.message) || 'snapshot error' });
     }
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

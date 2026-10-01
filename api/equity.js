@@ -29,6 +29,7 @@
 // If SUPABASE_SERVICE_ROLE_KEY is missing, caching silently degrades to
 // the in-memory Map (same behaviour as the previous version).
 
+import { withAuth } from '../src/lib/apiAuth.js';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
 const SYMBOL_RE = /^[A-Z0-9.\-^=]{1,14}$/;
 const ALLOWED_ENDPOINTS = new Set(['combined', 'overview', 'daily']);
@@ -1163,7 +1164,7 @@ async function getOverview(symbol, skipCache) {
 // Handler
 // ------------------------------------------------------------
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     if (req.method === 'OPTIONS') { applyCors(res); return res.status(204).end(); }
     if (req.method !== 'GET')     { applyCors(res); return res.status(405).json({ error: 'GET only' }); }
 
@@ -1234,3 +1235,6 @@ function applyCors(res) {
         res.setHeader('Access-Control-Allow-Headers', 'content-type');
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

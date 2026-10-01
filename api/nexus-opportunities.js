@@ -15,6 +15,7 @@
 
 import { rankLedger, sectorTilts } from '../src/pages/nexus/nexusOpportunitiesCompute.js';
 import { optionsRead, entryTiming } from '../src/pages/nexus/nexusOptionsCompute.js';
+import { withAuth, supabaseHeaders, privateCache } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
@@ -52,7 +53,12 @@ const normSector = s => {
 const PORTFOLIO_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function portfolioHeader(req) {
     const p = req && req.query ? req.query.portfolio : null;
-    return typeof p === 'string' && PORTFOLIO_RE.test(p) ? { 'x-atlas-portfolio': p.toLowerCase() } : {};
+    // AUTH-2: the caller's own credentials (user token, or the service key for
+    // pg_cron) plus x-atlas-portfolio. Spread after the route's defaults, so they win.
+    void p;
+    const h = supabaseHeaders(req && req.atlasAuth, req);
+    if (!h) console.error('[auth] no Supabase key for this caller on this deployment');
+    return h || {};
 }
 
 // `ph` is REQUIRED and FIRST -- see nexus-bench.
@@ -66,7 +72,7 @@ async function sb(ph, path, ms) {
     finally { clearTimeout(t); }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const ph = portfolioHeader(req);
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
@@ -185,9 +191,12 @@ export default async function handler(req, res) {
         const sorted = Object.entries(sectorWeights).sort((a, b) => b[1] - a[1]);
         const frame = { topSector: sorted[0] ? sorted[0][0] : null, topSectorPct: sorted[0] ? +sorted[0][1].toFixed(0) : null, valued: candidates.length };
 
-        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=21600');
+        res.setHeader('Cache-Control', privateCache(3600));
         return res.status(200).json({ ok: true, asOf: new Date().toISOString(), ledger, sectorTilts: tilts, frame, topThesis, funding });
     } catch (e) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'opportunities error', ledger: [], sectorTilts: [], funding: { sleeve: [], unresolved: true, disqualifications: [] } });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

@@ -43,6 +43,7 @@
 // programme" for a company that bought back stock every year for two decades.
 // ============================================================
 
+import { withAuth } from '../src/lib/apiAuth.js';
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
 const SB_SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -365,7 +366,7 @@ async function sbUpsertReportedLines(rows) {
     return res.json();
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
         const auth = req.headers.authorization || '';
@@ -1237,3 +1238,6 @@ export async function probeSymbol(symbol, count, conceptLike) {
         institution: probeConcepts(reports, INSTITUTION_CONCEPTS),
     };
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

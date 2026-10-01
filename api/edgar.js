@@ -33,6 +33,7 @@
 //     _source: "edgar"
 //   }
 
+import { withAuth } from '../src/lib/apiAuth.js';
 const SEC_BASE = 'https://data.sec.gov';
 const CIK_JSON = SEC_BASE + '/files/company_tickers.json';
 const EDGAR_TTL_MS  = 24 * 60 * 60 * 1000;   // 24h
@@ -220,7 +221,7 @@ async function fetchConceptWithFallbacks(cik, tagList, units) {
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const corsOrigin = process.env.ATLAS_ALLOWED_ORIGIN;
     if (corsOrigin) {
         res.setHeader('Access-Control-Allow-Origin', corsOrigin);
@@ -305,3 +306,6 @@ export default async function handler(req, res) {
         return res.status(502).json({ error: 'EDGAR fetch failed: ' + msg });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

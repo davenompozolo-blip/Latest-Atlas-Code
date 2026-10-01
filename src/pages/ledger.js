@@ -5,6 +5,25 @@
 import React from 'react';
 import { sb } from './config.js';
 
+async function downloadLedgerExport() {
+    try {
+        const r = await fetch('/api/ledger-export');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const cd = r.headers.get('Content-Disposition') || '';
+        const m = /filename="([^"]+)"/.exec(cd);
+        const name = m ? m[1] : 'atlas-ledger.json';
+        const url = URL.createObjectURL(await r.blob());
+        const a = document.createElement('a');
+        a.href = url; a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+        console.error('[ledger] export failed:', err && err.message);
+        alert('The ledger export did not download: ' + (err && err.message));
+    }
+}
+
+
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const e = React.createElement;
 
@@ -735,9 +754,12 @@ export function LedgerPage() {
             ),
             e('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
                 e(IntegrityBadge, { integrity, onRecheck: fetchAll }),
+                // AUTH-2: a plain link cannot carry the session token (or the
+                // chosen portfolio), so the export is fetched -- through the
+                // tagged, authenticated transport -- and saved from a blob.
                 e('a', {
                     href: '/api/ledger-export',
-                    download: true,
+                    onClick: (ev) => { ev.preventDefault(); downloadLedgerExport(); },
                     style: {
                         ...mono, fontSize: 9, padding: '5px 12px', borderRadius: 4, letterSpacing: 1,
                         border: `1px solid ${C.border}`, background: 'transparent', color: C.text2,

@@ -37,6 +37,7 @@
 
 import { runValuation } from '../src/lib/valuationEngine.js';
 import { rateWindow } from '../src/lib/rateWindow.js';
+import { withAuth, supabaseEnv } from '../src/lib/apiAuth.js';
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 
@@ -51,7 +52,10 @@ const FALLBACK_URL  = 'https://vdmojjszvvcithuxwexx.supabase.co';
 // bundle; writes are gated by RLS, so this is safe to commit).
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
-const SB_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_ANON;
+// AUTH-2: cron-only, so the service key. The URL stays pinned above, so a
+// key for another project fails with 401 here rather than writing elsewhere.
+const SB_KEY = supabaseEnv().serviceKey || '';
+void FALLBACK_ANON;
 
 function sbHeaders(key) {
     return { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' };
@@ -159,7 +163,7 @@ async function stalestFirst(tickers) {
     });
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     // Auth — Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}`; manual
     // callers can pass ?token=. If no secret is configured, allow (dev only).
     const secret = (process.env.CRON_SECRET || '').trim();
@@ -316,3 +320,6 @@ export default async function handler(req, res) {
     const wrote = summary.results.some(r => !r.error && !r.kept);
     return res.status(wrote ? 200 : 503).json(summary);
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

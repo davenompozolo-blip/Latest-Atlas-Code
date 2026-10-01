@@ -60,7 +60,10 @@ test('fails CLOSED when CRON_SECRET is unset -- a credentials route is never ope
     reset();
     delete process.env.CRON_SECRET;
     const r = await call('register', { name: 'X', key_id: 'K', secret_key: 'S' });
-    assert.equal(r.status, 503);
+    // AUTH-2: the shared guard refuses first (401: no secret configured means no
+    // bearer can match). Either refusal is fail-closed; what matters is that
+    // nothing is contacted.
+    assert.ok(r.status === 401 || r.status === 503, 'refused, got ' + r.status);
     assert.equal(calls.length, 0);
 });
 

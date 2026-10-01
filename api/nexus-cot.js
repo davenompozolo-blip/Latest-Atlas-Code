@@ -9,6 +9,7 @@
 // throws.
 
 import { groupByCode, buildCotRows } from '../src/pages/nexus/nexusCotCompute.js';
+import { withAuth } from '../src/lib/apiAuth.js';
 
 const CFTC = 'https://publicreporting.cftc.gov/resource/6dca-aqww.json';
 
@@ -31,7 +32,7 @@ const SELECT = [
     'change_in_noncomm_long_all', 'change_in_noncomm_short_all',
 ].join(',');
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', process.env.ATLAS_ALLOWED_ORIGIN || '*');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -60,3 +61,6 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: false, error: (e && e.message) || 'cot error', rows: [] });
     }
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

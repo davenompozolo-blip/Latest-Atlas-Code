@@ -3,6 +3,7 @@
 // Optional: &compare=QQQ,IWM  &nocache=1
 // Env: FINNHUB_API_KEY, ALPACA_API_KEY, ALPACA_API_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ATLAS_ALLOWED_ORIGIN
 
+import { withAuth } from '../src/lib/apiAuth.js';
 var SYMBOL_RE = /^[A-Z0-9.\-^=]{1,14}$/;
 var FINNHUB_BASE = 'https://finnhub.io/api/v1';
 var ALPACA_BASE = 'https://data.alpaca.markets/v2';
@@ -287,7 +288,7 @@ function slimMetrics(m) {
     return out;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     if (req.method === 'OPTIONS') { applyCors(res); return res.status(204).end(); }
     if (req.method !== 'GET')     { applyCors(res); return res.status(405).json({ error: 'GET only' }); }
     var symbol = String((req.query && req.query.symbol) || '').trim().toUpperCase();
@@ -318,3 +319,6 @@ export default async function handler(req, res) {
         return res.status(status).json({ error: msg });
     }
 };
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});

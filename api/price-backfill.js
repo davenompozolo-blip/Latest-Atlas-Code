@@ -31,6 +31,7 @@
 // Rate limits: Alpaca's free data tier allows 200 requests/minute. Every loop
 // throttles below that rather than trusting burst headroom.
 
+import { withAuth } from '../src/lib/apiAuth.js';
 'use strict';
 
 const ALPACA_DATA = 'https://data.alpaca.markets/v2';
@@ -272,7 +273,7 @@ async function stageBars(cursor, limit) {
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     const secret = (process.env.CRON_SECRET || '').trim();
     if (secret) {
         const auth = req.headers.authorization || '';
@@ -304,3 +305,6 @@ export default async function handler(req, res) {
         });
     }
 }
+
+// AUTH-2: pg_cron only (Bearer CRON_SECRET).
+export default withAuth(handler, { user: false });

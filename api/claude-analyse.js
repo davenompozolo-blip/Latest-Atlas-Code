@@ -3,6 +3,7 @@
 // Follows the same pattern as api/equity.js (API key stays server-side only).
 // Called by: ScrapbookSaveBar component (POST with company + all snapshots).
 
+import { withAuth } from '../src/lib/apiAuth.js';
 function extractJSON(text) {
   if (!text) return null;
   try { return JSON.parse(text); } catch {}
@@ -14,7 +15,7 @@ function extractJSON(text) {
   return null;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   // CORS
   const origin = req.headers.origin || '';
   const allowed = process.env.ATLAS_ALLOWED_ORIGIN || '';
@@ -458,3 +459,6 @@ function formatObj(obj) {
   if (!obj || typeof obj !== 'object') return '  (none)';
   return Object.entries(obj).map(([k, v]) => `  ${k}: ${v}`).join('\n');
 }
+
+// AUTH-2: signed-in users, or pg_cron.
+export default withAuth(handler, {});
