@@ -14,6 +14,7 @@ import { analyticsPending, convictionOf, actionOf, partitionByAnalytics,
 import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 import { NexusRiskPill } from './nexus/NexusRiskPill.js';
 import { PortfolioSwitcher, PortfolioBanner } from './nexus/PortfolioSwitcher.js';
+import { SignOutButton } from '../components/AuthGate.js';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const e = React.createElement;
@@ -1235,7 +1236,8 @@ export function NexusShell({ children, onNavigate, activeTab }) {
             // Now one computation, shared with the cross-asset panel.
             e(PortfolioSwitcher, null),
             e(NexusRiskPill, null),
-            e(Clock, null)
+            e(Clock, null),
+            e(SignOutButton, null)
         ),
         // MP-2: says what a non-default account means for the analytics panels.
         e(PortfolioBanner, null),
