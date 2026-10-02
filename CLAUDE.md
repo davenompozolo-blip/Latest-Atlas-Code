@@ -125,7 +125,8 @@ When operating Atlas via remote control, use these session roles:
 - **Add a scheduled job**: a nightly one is a stage in `atlas_chain_stages`;
   anything else is `cron.job`. Either way it logs to `sync_log`.
 - **Add a person**: an administrator opens ACCOUNTS (topbar) -> Invite
-  someone, and sends the one-time link it returns (ON-1; no email server is
+  someone (or Requests -> Approve, for someone who asked on the landing page),
+  and sends the one-time link it returns (ON-1, RA-1; no email server is
   configured). The person sets a password, then connects their own broker.
 - **Add a broker account**: signed in, ACCOUNTS -> Connect an account (or the
   connect screen a person with no portfolio lands on), which posts to
@@ -7347,6 +7348,84 @@ survives); `onboardingRoute.test.mjs` 13, `onboarding.test.mjs` 8.
 **Not built:** removing an account, renaming one, a person leaving, and any
 broker other than Alpaca (`BROKERS` in `src/lib/brokerOnboarding.js` is the
 registry the form reads). Regulatory/KYC data is out of scope.
+
+### What a signed-in person can reach (AU-1, 2026-10-02)
+
+Audited before a second person signs in. AUTH-2 isolated the book tables;
+everything else a signed-in user touches had been written for one user.
+`supabase/tests/au1_authenticated_reach_contract.sql`, 8 checks; on the
+pre-fix database it fails at the first.
+
+**The SQL Terminal was a way into anyone's book.** `run_read_sql` runs the
+caller's SQL as the caller, so RLS applies -- and the caller's SQL could call
+`set_config('request.jwt.claims', ...)` first, after which `auth.uid()`
+returns whoever they named. Measured: a user with no portfolio read **0** rows
+of `positions` directly and **all 11,907** of the administrator's through the
+terminal. It is administrator-only now, checked before the caller's SQL runs,
+and refuses `set_config`. **Any function that EXECUTEs caller-supplied SQL
+inherits this**; it was the only one (checked across every function
+`authenticated` can call).
+
+**A RLS policy of `true` on a table nobody else used was fine until there was
+somebody else.** Three classes were open to every signed-in user:
+- *personal, per account:* the ticket's theses (`bench_claims`), triggers,
+  forward-test positions, ledger alerts and the IPS carry `portfolio_id` now,
+  read on the ACTIVE account (as `decisions` already did) and written only into
+  an account the caller owns (`atlas_owner_portfolios()`). The IPS is one row
+  per account (`onConflict: 'portfolio_id'`, never `id: 1`).
+- *personal, administrator's:* saved queries, query log, chats, bug memory.
+  The Cortex watchlist is per user.
+- *platform:* the nightly outputs (signals, universe, clusters, options, theme
+  leadership, dispersion, assessments) had browser write policies nothing used
+  -- dropped; service_role bypasses RLS so the writers are unaffected. The
+  Scrapbook and Cortex mute/tune are written from the UI and are platform
+  state -- **the Scrapbook's fair values feed every account's conviction** --
+  so they are administrator-write. A non-administrator sees them read-only.
+
+**`decisions` accepted an INSERT with any `portfolio_id`**, so a user could
+append to someone else's hash-chained, append-only ledger. The check now
+requires an owned portfolio.
+
+**Views run as their owner and bypass RLS**, and `vw_position_risk_thesis`
+reads the thesis views -- so `security_invoker` would not have filtered that
+path. The active-account filter is written into each view.
+
+**Flagged, not fixed:** `/api/command-centre`, `/api/claude-analyse` and
+`/api/claude-sector` proxy Anthropic with caller-supplied prompts for any
+signed-in user (cost, not data); the browser-callable
+`generate_cortex_signals` lets any signed-in user rebuild the platform's
+Cortex signals; `vw_ledger_integrity` publishes platform-wide decision counts;
+`vw_forward_summary` takes over 90 s on `select *` (1.2 s on `count(*)` -- the
+planner elides the joins) and nothing reads it. `public.users` is empty and
+read by nothing.
+
+### Request access (RA-1, 2026-10-02)
+
+The landing page offers **Request access** beside sign-in. Invite-only stands:
+a request is a message to an administrator, never an account. ACCOUNTS ->
+Requests lists them; **Approve issues the usual one-time invite link first and
+only then marks the request approved** (a request marked approved with no link
+is a promise nobody can keep); Decline records the decision. The ACCOUNTS
+button shows the pending count to an administrator.
+
+`api/access-request.js` is the **one public route** (`withAuth(handler,
+{ public: true })`); `apiAuth.test.mjs` pins the list so a second one fails CI
+until it is added on purpose. It writes through
+`atlas_submit_access_request()` with the service key; the browser holds no
+grant on `access_requests` beyond an administrator's read.
+
+**The form is not an oracle.** A new request, a repeat and an address that
+already has an account all get the same 202 and the same sentence; the
+existing-user case records nothing. Only the rate limit is visible (3 an hour
+per IP, 50 a day overall, under a lock). The IP is stored as a keyed hash
+(`ACCESS_REQUEST_PEPPER`, falling back to the service key). A hidden honeypot
+field drops naive bots with the same success reply.
+`supabase/tests/ra1_access_requests_contract.sql` (6), `accessRequest.test.mjs`
+(7), plus the decide cases in `onboardingRoute.test.mjs`.
+
+**No email reaches the requester either** -- send them the link the approval
+returns. The reset-password page now says the same: nothing arriving means ask
+an administrator.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

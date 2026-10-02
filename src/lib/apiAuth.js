@@ -142,6 +142,17 @@ export function supabaseHeaders(auth, req, env = process.env) {
  * the decision on req.atlasAuth. OPTIONS passes through for CORS preflight.
  */
 export function withAuth(handler, opts = {}) {
+    // RA-1: a route a signed-out visitor must reach (the request-access form).
+    // It runs with no caller at all, so it may never read on anyone's behalf;
+    // apiAuth.test.mjs pins the list of routes allowed to declare this.
+    if (opts.public === true) {
+        const open = async function atlasPublic(req, res) {
+            if (req) req.atlasAuth = { ok: true, kind: 'public' };
+            return handler(req, res);
+        };
+        open.__atlasAuth = { public: true };
+        return open;
+    }
     const allow = { user: opts.user !== false, cron: opts.cron !== false };
     const wrapped = async function atlasAuthed(req, res) {
         if (req && req.method === 'OPTIONS') return handler(req, res);

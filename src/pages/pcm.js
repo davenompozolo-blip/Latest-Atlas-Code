@@ -1399,7 +1399,10 @@ export function PortfolioConstruction() {
     function saveIPS() {
         setIpsSaved(true);
         if (sb) {
-            sb.from('portfolio_ips').upsert([Object.assign({ id: 1 }, {
+            // AU-1: one IPS per account. portfolio_id defaults to the active
+            // account in the database, so it is the conflict key -- never a
+            // fixed id, which would overwrite whichever account owned row 1.
+            sb.from('portfolio_ips').upsert([Object.assign({}, {
                 risk_tolerance:      ips.risk_tolerance != null ? Math.max(1, Math.min(10, Number(ips.risk_tolerance))) : ips.risk_tolerance,
                 risk_label:          ips.risk_label,
                 return_target:       ips.return_target,
@@ -1407,7 +1410,7 @@ export function PortfolioConstruction() {
                 benchmark:           ips.benchmark,
                 concentration_limit: ips.concentration_limit,
                 liquidity_need:      ips.liquidity_need,
-            })], { onConflict: 'id' }).then(function(r) {
+            })], { onConflict: 'portfolio_id' }).then(function(r) {
                 if (r.error) console.warn('[PCM] IPS save:', r.error);
             });
         }

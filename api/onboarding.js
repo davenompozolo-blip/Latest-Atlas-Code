@@ -5,6 +5,8 @@
 //        { "broker": "alpaca", "name": "...", "key_id": "...",
 //          "secret_key": "...", "paper": true }
 //   POST /api/onboarding?action=invite   { "email": "..." }   administrators only
+//   POST /api/onboarding?action=decide   { "id": "...", "decision": "approve"|"decline" }
+//                                        administrators only (RA-1 access requests)
 //
 // connect: a signed-in person connects THEIR OWN broker account. The keys are
 // verified against the broker, the account number is taken from the broker's
@@ -105,28 +107,28 @@ function alreadyRegistered(r) {
     return code === 'email_exists' || /already (been )?registered|already exists/i.test(msg);
 }
 
-async function invite(req, res, env) {
+// The caller is an administrator, asked with THEIR token so the database
+// decides. Answers a response to send when they are not, null when they are.
+async function refuseNonAdmin(res, env, verb) {
     const isAdmin = await call(env.url + '/rest/v1/rpc/atlas_is_admin', {
         method: 'POST', headers: { ...env.userHeaders, 'Content-Type': 'application/json' }, body: '{}',
     });
     if (!isAdmin.ok) return res.status(503).json({ error: 'access_unavailable', detail: 'Could not confirm you are an administrator. Try again.' });
-    if (isAdmin.body !== true) return res.status(403).json({ error: 'admin_only', detail: 'Only an administrator can invite people.' });
+    if (isAdmin.body !== true) return res.status(403).json({ error: 'admin_only', detail: 'Only an administrator can ' + verb + '.' });
+    return null;
+}
 
-    const parsed = parseInviteInput(req.body);
-    if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
-    const { email } = parsed.value;
-
+// A one-time link for this address: an invite, or -- for someone who already
+// has an account -- a link to set a new password. Auth re-issues an invite for
+// a person who never accepted one; without an email server "Forgot your
+// password?" cannot reach anyone else, so the administrator is the only route
+// back in. Returns { kind, link } or null (logged).
+async function issueLink(req, env, email) {
     const redirect = inviteRedirect(req);
     const generate = (type) => call(env.url + '/auth/v1/admin/generate_link', {
         method: 'POST', headers: serviceHeaders(env.serviceKey),
         body: JSON.stringify(redirect ? { type, email, redirect_to: redirect } : { type, email }),
     });
-
-    // Auth re-issues an invite for a person who never accepted one. For a
-    // person who already has a working account it refuses; they get a link to
-    // set a new password instead -- without an email server, "Forgot your
-    // password?" cannot reach them either, so the administrator is the only
-    // route back in.
     let kind = 'invite';
     let r = await generate('invite');
     if (!r.ok && alreadyRegistered(r)) {
@@ -135,15 +137,71 @@ async function invite(req, res, env) {
     }
     if (!r.ok) {
         console.error('onboarding: generate_link failed:', r.status, (r.body && (r.body.error_code || r.body.code)) || '');
-        return res.status(502).json({ error: 'invite_failed', detail: 'The invitation could not be created. Try again.' });
+        return null;
     }
     const b = r.body || {};
     const link = b.action_link || (b.properties && b.properties.action_link) || null;
     if (!link) {
         console.error('onboarding: generate_link answered without a link');
-        return res.status(502).json({ error: 'invite_failed', detail: 'The invitation could not be created. Try again.' });
+        return null;
     }
-    return res.status(201).json({ email, kind, action_link: link, expires_in_seconds: INVITE_LINK_TTL_SECONDS });
+    return { kind, link };
+}
+
+async function invite(req, res, env) {
+    const refused = await refuseNonAdmin(res, env, 'invite people');
+    if (refused) return refused;
+    const parsed = parseInviteInput(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
+    const { email } = parsed.value;
+    const issued = await issueLink(req, env, email);
+    if (!issued) return res.status(502).json({ error: 'invite_failed', detail: 'The invitation could not be created. Try again.' });
+    return res.status(201).json({ email, kind: issued.kind, action_link: issued.link, expires_in_seconds: INVITE_LINK_TTL_SECONDS });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// RA-1: approve or decline a request for access. Approval issues the link
+// FIRST and only then marks the request approved: a request marked approved
+// with no link behind it would be a promise nobody can keep, while a link
+// issued for a request that then fails to close is just a pending request
+// with a working invitation.
+async function decide(req, res, env) {
+    const refused = await refuseNonAdmin(res, env, 'decide requests');
+    if (refused) return refused;
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const id = typeof b.id === 'string' ? b.id.trim() : '';
+    const decision = b.decision === 'approve' ? 'approved' : b.decision === 'decline' ? 'declined' : null;
+    if (!UUID_RE.test(id) || !decision) return res.status(400).json({ error: 'invalid_input', detail: 'A request id and approve or decline are required.' });
+
+    const row = await call(env.url + '/rest/v1/access_requests?select=id,email,status&id=eq.' + id, {
+        headers: serviceHeaders(env.serviceKey),
+    });
+    const reqRow = row.ok && Array.isArray(row.body) ? row.body[0] : null;
+    if (!row.ok) return res.status(503).json({ error: 'unavailable', detail: 'Could not read the request. Try again.' });
+    if (!reqRow) return res.status(404).json({ error: 'not_found', detail: 'That request no longer exists.' });
+    if (reqRow.status !== 'pending') return res.status(409).json({ error: 'already_decided', detail: 'That request was already ' + reqRow.status + '.' });
+
+    let issued = null;
+    if (decision === 'approved') {
+        issued = await issueLink(req, env, reqRow.email);
+        if (!issued) return res.status(502).json({ error: 'invite_failed', detail: 'The invitation could not be created, so the request is still pending. Try again.' });
+    }
+    const mark = await call(env.url + '/rest/v1/rpc/atlas_decide_access_request', {
+        method: 'POST', headers: serviceHeaders(env.serviceKey),
+        body: JSON.stringify({ p_id: id, p_status: decision, p_admin: req.atlasAuth.user.id }),
+    });
+    if (!mark.ok) {
+        console.error('onboarding: decide failed:', mark.status, (mark.body && mark.body.code) || '');
+        if (issued) {
+            // The link exists; say so rather than hide a working invitation.
+            return res.status(207).json({ email: reqRow.email, kind: issued.kind, action_link: issued.link,
+                expires_in_seconds: INVITE_LINK_TTL_SECONDS, warning: 'The link was created but the request could not be marked approved.' });
+        }
+        return res.status(502).json({ error: 'decide_failed', detail: 'The request could not be updated. Try again.' });
+    }
+    if (!issued) return res.status(200).json({ email: reqRow.email, decision });
+    return res.status(201).json({ email: reqRow.email, decision, kind: issued.kind, action_link: issued.link, expires_in_seconds: INVITE_LINK_TTL_SECONDS });
 }
 
 async function handler(req, res) {
@@ -159,7 +217,8 @@ async function handler(req, res) {
     const action = req.query && req.query.action;
     if (action === 'connect') return connect(req, res, env);
     if (action === 'invite') return invite(req, res, env);
-    return res.status(400).json({ error: 'action must be connect or invite' });
+    if (action === 'decide') return decide(req, res, env);
+    return res.status(400).json({ error: 'action must be connect, invite or decide' });
 }
 
 // A signed-in person only. The cron secret has no business here: an account

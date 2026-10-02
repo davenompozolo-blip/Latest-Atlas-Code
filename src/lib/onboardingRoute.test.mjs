@@ -22,6 +22,9 @@ function reset() {
         brokerAccount: { 'PKGOOD': 'PA0000ABCD99' },    // key id -> account number
         connect: null,                                   // override: { status, body }
         existingEmails: new Set(),
+        requests: { 'aaaaaaaa-0000-4000-8000-000000000001': { email: 'asker@example.com', status: 'pending' } },
+        linkFails: false,
+        decideFails: false,
     };
 }
 reset();
@@ -50,8 +53,21 @@ globalThis.fetch = async (url, init = {}) => {
         const n = state.brokerAccount[h['apca-api-key-id']];
         return n ? json({ account_number: n, status: 'ACTIVE' }) : json({ message: 'forbidden' }, 401);
     }
+    if (u.startsWith(SB + '/rest/v1/access_requests?')) {
+        if (tok !== 'service-role-test') return json({ message: 'permission denied' }, 401);
+        const id = /id=eq\.([0-9a-f-]+)/.exec(u)[1];
+        const r = state.requests[id];
+        return json(r ? [{ id, ...r }] : []);
+    }
+    if (u === SB + '/rest/v1/rpc/atlas_decide_access_request') {
+        if (tok !== 'service-role-test') return json({ message: 'permission denied' }, 401);
+        if (state.decideFails) return json({ code: 'XX000', message: 'boom' }, 500);
+        state.requests[body.p_id].status = body.p_status;
+        return json(state.requests[body.p_id].email);
+    }
     if (u === SB + '/auth/v1/admin/generate_link') {
         if (tok !== 'service-role-test') return json({ msg: 'not admin' }, 401);
+        if (state.linkFails) return json({ msg: 'down' }, 500);
         if (body.type === 'invite' && state.existingEmails.has(body.email)) {
             return json({ code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }, 422);
         }
@@ -183,4 +199,53 @@ test('invite: someone who already has an account gets a set-new-password link in
     assert.equal(r.status, 201);
     assert.equal(r.body.kind, 'recovery');
     assert.match(r.body.action_link, /type=recovery/);
+});
+
+const RID = 'aaaaaaaa-0000-4000-8000-000000000001';
+
+test('decide: a person who is not an administrator is refused before anything is read', async () => {
+    reset();
+    const r = await post('decide', { id: RID, decision: 'approve' }, 'tok-member');
+    assert.equal(r.status, 403);
+    assert.equal(hits(/access_requests|generate_link|decide_access/).length, 0);
+});
+
+test('decide: approve issues the invite link FIRST, then marks the request, as the calling admin', async () => {
+    reset();
+    const r = await post('decide', { id: RID, decision: 'approve' }, 'tok-admin');
+    assert.equal(r.status, 201);
+    assert.match(r.body.action_link, /type=invite/);
+    const order = calls.map((c) => c.url).filter((u) => /generate_link|decide_access/.test(u));
+    assert.deepEqual(order.map((u) => /generate_link/.test(u) ? 'link' : 'mark'), ['link', 'mark']);
+    const mark = hits(/atlas_decide_access_request/)[0];
+    assert.equal(mark.body.p_admin, 'u-admin');
+    assert.equal(mark.body.p_status, 'approved');
+    assert.equal(state.requests[RID].status, 'approved');
+});
+
+test('decide: when the link cannot be made the request stays pending', async () => {
+    reset();
+    state.linkFails = true;
+    const r = await post('decide', { id: RID, decision: 'approve' }, 'tok-admin');
+    assert.equal(r.status, 502);
+    assert.equal(hits(/atlas_decide_access_request/).length, 0);
+    assert.equal(state.requests[RID].status, 'pending');
+});
+
+test('decide: a link made but not recorded is still handed over, with a warning', async () => {
+    reset();
+    state.decideFails = true;
+    const r = await post('decide', { id: RID, decision: 'approve' }, 'tok-admin');
+    assert.equal(r.status, 207);
+    assert.ok(r.body.action_link && r.body.warning);
+});
+
+test('decide: decline makes no link; a decided request cannot be decided again; bad ids are refused', async () => {
+    reset();
+    const d = await post('decide', { id: RID, decision: 'decline' }, 'tok-admin');
+    assert.equal(d.status, 200);
+    assert.equal(hits(/generate_link/).length, 0);
+    assert.equal((await post('decide', { id: RID, decision: 'approve' }, 'tok-admin')).status, 409);
+    assert.equal((await post('decide', { id: 'not-a-uuid', decision: 'approve' }, 'tok-admin')).status, 400);
+    assert.equal((await post('decide', { id: RID, decision: 'maybe' }, 'tok-admin')).status, 400);
 });
