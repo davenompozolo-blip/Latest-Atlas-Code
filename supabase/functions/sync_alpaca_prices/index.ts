@@ -22,6 +22,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const ALPACA_DATA_BASE  = 'https://data.alpaca.markets'
@@ -351,7 +352,7 @@ async function runPriceSync(payload: Payload): Promise<RunResult> {
 }
 
 // ── HTTP entry point ─────────────────────────────────────────────────────────
-Deno.serve(async (req) => {
+serveGuarded({ user: false }, async (req) => {
   if (req.method !== 'POST') {
     return new Response('expected POST', { status: 405 })
   }

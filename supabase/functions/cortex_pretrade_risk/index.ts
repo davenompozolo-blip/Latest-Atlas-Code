@@ -25,6 +25,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 // ── CORS ────────────────────────────────────────────────────────────────────
 const CORS_HEADERS = {
@@ -343,7 +344,7 @@ async function computePreTradeRisk(
 }
 
 // ── HTTP entry point ───────────────────────────────────────────────────────
-Deno.serve(async (req: Request) => {
+serveGuarded({ user: true }, async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }

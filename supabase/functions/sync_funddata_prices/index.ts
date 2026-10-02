@@ -1,7 +1,7 @@
 // Edge Function: sync_funddata_prices
 //
 // Daily snapshot of SA mutual fund data from ProfileData FundsData ASISA
-// LatestPrices.aspx → fund_prices_raw.
+// LatestPrices.aspx -> fund_prices_raw.
 //
 // The LatestPrices.aspx page provides fund cost registry data (TER/TC/TIC)
 // for ~5600 SA funds. NAV prices are not available on this page (nav = null).
@@ -11,15 +11,25 @@
 //
 // Request body (all optional):
 //   { source?, dry_run?: boolean, debug?: boolean, raw_debug?: boolean }
+//
+// LOGGING (fixed 2026-08-16). Every run from 2026-06-05 left its sync_log row
+// stuck in 'running'. Two defects, one masking the other:
+//   1. finishLog sent duration_ms, which is GENERATED ALWAYS from
+//      (finished_at - started_at). PostgREST rejects the whole PATCH with
+//      428C9 'can only be updated to DEFAULT'. This is the one that fired.
+//   2. The status values written ('succeeded', 'failed', 'skipped_cache',
+//      'debug') were none of them permitted by sync_log_status_check, so the
+//      PATCH would have failed on the next line anyway.
+// Both are fixed, and sbPatch now logs at error level instead of warn - the
+// swallow is what hid this for two months.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 const PROVIDER_URL     = 'https://funds.profiledata.co.za/aci/ASISA/LatestPrices.aspx'
 const CACHE_HOURS      = 20
 const BATCH_SIZE       = 200
 const FETCH_TIMEOUT_MS = 25_000
-
-// ── Supabase helpers ─────────────────────────────────────────────────────────
 
 function sbHeaders(key: string): Record<string, string> {
   return { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }
@@ -43,8 +53,6 @@ async function sbPatch(base: string, key: string, table: string, id: number, pat
   const r = await fetch(base + '/rest/v1/' + table + '?id=eq.' + id, { method: 'PATCH', headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
   if (!r.ok) { const t = await r.text().catch(() => ''); console.error('sync_log patch FAILED', r.status, t.slice(0, 300)) }
 }
-
-// ── HTML parser ──────────────────────────────────────────────────────────────
 
 interface ParsedRow { [col: string]: string | null }
 
@@ -79,7 +87,6 @@ function rowsToObjects(rows: string[][]): { headers: string[]; data: ParsedRow[]
   return { headers, data }
 }
 
-// Pick the largest table (most data rows) — for this provider it's always the fund table
 function parseLargestTable(html: string): ParsedRow[] {
   const tableRe = /<table[^>]*>([\s\S]*?)<\/table>/gi
   let best: ParsedRow[] = []
@@ -114,15 +121,12 @@ function htmlDebugInfo(html: string, includeRaw: boolean): object {
   return { html_length: html.length, tables_found: tables.length, tables, first_500_chars: html.slice(0, 500).replace(/\s+/g, ' ') }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 function toNum(s: string | null | undefined): number | null {
   if (!s || s.trim() === 'n/a' || s.trim() === '-') return null
   const n = parseFloat(s.replace(/[,%\s]/g, ''))
   return isNaN(n) ? null : n
 }
 
-// Parse DD/MM/YY → YYYY-MM-DD  (SA date format, 2000-based for YY < 100)
 function parseDDMMYY(s: string | null | undefined, fallback: string): string {
   if (!s) return fallback
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
@@ -140,49 +144,35 @@ async function cacheIsFresh(base: string, key: string): Promise<boolean> {
 }
 
 interface RawRow {
-  source:         string
-  fund_code:      string
-  manager:        string | null
-  fund_name:      string | null
-  asisa_category: string | null
-  price_date:     string
-  nav:            number | null
-  ter:            number | null
-  tc:             number | null
-  tic:            number | null
+  source: string; fund_code: string; manager: string | null; fund_name: string | null
+  asisa_category: string | null; price_date: string; nav: number | null
+  ter: number | null; tc: number | null; tic: number | null
 }
 
-// ── Column mapping ────────────────────────────────────────────────────────────
-// ProfileData LatestPrices.aspx 10-column layout (image headers → col_N keys):
-//   col_0 FundName | col_1 Add Fee | col_2 Target Market | col_3 Max Init Fee
-//   col_4 TIC Date | col_5 TER Perf Comp | col_6 TER | col_7 TC | col_8 TIC
-//   col_9 PriceDate (DD/MM/YY)
-// Category group rows have only 1 cell — filtered out by requiring col_0 + col_9.
-
+// ProfileData LatestPrices.aspx 10-column positional mapping (image headers):
+//   col_0 FundName | col_6 TER | col_7 TC | col_8 TIC | col_9 PriceDate (DD/MM/YY)
+// Category group rows have only 1 cell (no col_9) and are skipped.
 function mapRow(r: ParsedRow, today: string): RawRow | null {
-  // Named headers path (future-proof)
-  let fundCode  = r['fund_code'] ?? r['code'] ?? r['isin'] ?? null
-  let fundName  = r['fund_name'] ?? r['name'] ?? r['fund'] ?? null
-  let manager   = r['manager'] ?? r['management_company'] ?? r['manco'] ?? null
-  let category  = r['category'] ?? r['asisa_category'] ?? r['class'] ?? null
-  let terStr    = r['ter'] ?? r['total_expense_ratio'] ?? null
-  let tcStr     = r['tc'] ?? r['transaction_costs'] ?? null
-  let ticStr    = r['tic'] ?? r['total_investment_charge'] ?? null
+  let fundCode     = r['fund_code'] ?? r['code'] ?? r['isin'] ?? null
+  let fundName     = r['fund_name'] ?? r['name'] ?? r['fund'] ?? null
+  let manager      = r['manager'] ?? r['management_company'] ?? r['manco'] ?? null
+  let category     = r['category'] ?? r['asisa_category'] ?? r['class'] ?? null
+  let terStr       = r['ter'] ?? r['total_expense_ratio'] ?? null
+  let tcStr        = r['tc'] ?? r['transaction_costs'] ?? null
+  let ticStr       = r['tic'] ?? r['total_investment_charge'] ?? null
   let priceDateRaw = r['price_date'] ?? r['date'] ?? null
 
-  // Positional fallback (current provider — image headers)
   if (!fundCode && r['col_0'] && r['col_9']) {
     fundName     = r['col_0']
-    fundCode     = r['col_0']           // no separate code column on this page
-    manager      = null                 // not in this table
-    category     = null                 // category comes from grouping rows (skipped)
+    fundCode     = r['col_0']
+    manager      = null
+    category     = null
     terStr       = r['col_6']
     tcStr        = r['col_7']
     ticStr       = r['col_8']
     priceDateRaw = r['col_9']
   }
 
-  // Skip category header rows (single cell, no price date)
   if (!fundCode) return null
 
   const priceDate = parseDDMMYY(priceDateRaw, today)
@@ -194,49 +184,37 @@ function mapRow(r: ParsedRow, today: string): RawRow | null {
     fund_name:      fundName,
     asisa_category: category,
     price_date:     priceDate,
-    nav:            null,               // NAV not available on LatestPrices.aspx
+    nav:            null,
     ter:            toNum(terStr),
     tc:             toNum(tcStr),
     tic:            toNum(ticStr),
   }
 }
 
-// ── Main handler ─────────────────────────────────────────────────────────────
-
-Deno.serve(async (req: Request) => {
+serveGuarded({ user: false }, async (req: Request) => {
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
-
   const base = Deno.env.get('SUPABASE_URL')
   const key  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!base || !key) return new Response(JSON.stringify({ error: 'Missing env vars' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
-
   let body: { source?: string; dry_run?: boolean; debug?: boolean; raw_debug?: boolean } = {}
   try { body = await req.json() } catch { /* ok */ }
   const dryRun    = body.dry_run    === true
   const debugMode = body.debug      === true
   const rawDebug  = body.raw_debug  === true
-
   const startedAt = new Date().toISOString()
   let logId: number | undefined
-  try {
-    logId = await sbInsert(base, key, 'sync_log', { function_name: 'sync_funddata_prices', status: 'running', source: body.source ?? 'edge_function', started_at: startedAt })
-  } catch (e) { console.warn('Could not open sync_log row:', e) }
-
+  try { logId = await sbInsert(base, key, 'sync_log', { function_name: 'sync_funddata_prices', status: 'running', source: body.source ?? 'edge_function', started_at: startedAt }) } catch (e) { console.error('Could not open sync_log row:', e) }
   async function finishLog(status: string, pricesUpserted: number, errorMsg?: string, details?: unknown) {
     if (logId == null) return
-    // duration_ms is GENERATED ALWAYS from (finished_at - started_at). Sending
-    // it made PostgREST reject the entire PATCH with 428C9, which is why every
-    // run since 2026-06-05 left its row open in 'running'.
+    // Never send duration_ms - it is GENERATED ALWAYS and PostgREST rejects
+    // the entire PATCH with 428C9 if it appears in the payload.
     await sbPatch(base!, key!, 'sync_log', logId, { status, finished_at: new Date().toISOString(), prices_upserted: pricesUpserted, error_message: errorMsg ?? null, details: details ?? null })
   }
-
   try {
     if (!dryRun && !debugMode && !rawDebug && await cacheIsFresh(base, key)) {
       await finishLog('skipped', 0, undefined, { reason: 'cache_fresh' })
       return new Response(JSON.stringify({ status: 'skipped', reason: 'cache_fresh' }), { headers: { 'Content-Type': 'application/json' } })
     }
-
-    // Fetch HTML
     console.log('Fetching', PROVIDER_URL)
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
@@ -252,36 +230,28 @@ Deno.serve(async (req: Request) => {
       await finishLog('error', 0, msg)
       return new Response(JSON.stringify({ error: msg }), { status: 502, headers: { 'Content-Type': 'application/json' } })
     }
-
-    // Debug modes
     if (debugMode || rawDebug) {
       const info = htmlDebugInfo(html, rawDebug)
       await finishLog('skipped', 0, undefined, { reason: 'debug_mode' })
       return new Response(JSON.stringify({ debug: true, ...info }), { headers: { 'Content-Type': 'application/json' } })
     }
-
-    // Parse
     const parsed = parseLargestTable(html)
     if (!parsed.length) {
       await finishLog('error', 0, 'No table rows parsed', { html_preview: html.slice(0, 500) })
       return new Response(JSON.stringify({ error: 'No rows parsed' }), { status: 422, headers: { 'Content-Type': 'application/json' } })
     }
     console.log('Parsed', parsed.length, 'candidate rows')
-
     const today = new Date().toISOString().slice(0, 10)
     const upsertRows: RawRow[] = []
     for (const r of parsed) {
       const row = mapRow(r, today)
       if (row) upsertRows.push(row)
     }
-
     if (!upsertRows.length) {
       await finishLog('error', 0, 'No valid rows after mapping', { sample_row: parsed[0] })
       return new Response(JSON.stringify({ error: 'No valid rows', sample_row: parsed[0] }), { status: 422, headers: { 'Content-Type': 'application/json' } })
     }
-
     console.log('Valid rows:', upsertRows.length, '| dry_run:', dryRun)
-
     let inserted = 0
     if (!dryRun) {
       // on_conflict names the unique constraint explicitly. Without it
@@ -295,10 +265,8 @@ Deno.serve(async (req: Request) => {
     } else {
       inserted = upsertRows.length
     }
-
     await finishLog('success', inserted, undefined, { parsed_rows: parsed.length, valid_rows: upsertRows.length, dry_run: dryRun, price_date: today, provider_url: PROVIDER_URL })
     return new Response(JSON.stringify({ status: 'ok', parsed_rows: parsed.length, upserted: inserted, dry_run: dryRun }), { headers: { 'Content-Type': 'application/json' } })
-
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     await finishLog('error', 0, msg).catch(() => {})

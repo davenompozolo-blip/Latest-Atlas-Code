@@ -58,6 +58,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 const FUNCTION_NAME = 'sync_portfolio_history'
 
@@ -197,7 +198,7 @@ function isStaleSnapshot(
 
 const sql = postgres(Deno.env.get('SUPABASE_DB_URL')!)
 
-Deno.serve(async (req) => {
+serveGuarded({ user: false }, async (req) => {
   if (req.method !== 'POST') return jsonResponse('expected POST', 405)
 
   const payload     = await req.json().catch(() => ({}))

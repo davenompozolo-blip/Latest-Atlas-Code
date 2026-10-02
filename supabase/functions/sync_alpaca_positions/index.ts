@@ -22,6 +22,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 // ── Broker targets (MP-1) ───────────────────────────────────────────────────
 // Each Alpaca portfolio names its OWN credentials and the account they must
@@ -413,7 +414,7 @@ async function runPositionsAndAccount(t: BrokerTarget): Promise<PositionsResult>
 
 // ── HTTP entry point ────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
+serveGuarded({ user: false }, async (req) => {
   if (req.method !== 'POST') {
     return new Response('expected POST', { status: 405 })
   }
