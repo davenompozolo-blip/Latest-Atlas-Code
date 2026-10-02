@@ -137,7 +137,7 @@
 
 /* ------------------------------------------------ RA-1: access requests */
 
-.ob-ask { margin-top: 14px; gap: 4px; font-size: 14px; color: var(--nx-text2); }
+.ob-ask { margin-top: 14px; gap: 4px; align-items: center; font-size: 14px; color: var(--nx-text2); }
 .ob-textarea { height: auto; min-height: 84px; padding: 12px 16px; resize: vertical; line-height: 1.5; }
 
 /* Honeypot: off-screen, not display:none (some bots skip hidden inputs). */
