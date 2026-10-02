@@ -127,3 +127,20 @@ test('looksLikeJwt', () => {
     assert.equal(looksLikeJwt('abc'), false);
     assert.equal(looksLikeJwt('a.b'), false);
 });
+
+test('a stalled auth server is cut off and refused with 503, not waited on', async () => {
+    // Never answers; only an abort signal can end it.
+    const stall = (url, init) => new Promise((_, reject) => {
+        if (init.signal) init.signal.addEventListener('abort', () => reject(init.signal.reason));
+    });
+    const d = { ...deps(), fetch: stall, timeoutMs: 20 };
+    // AbortSignal.timeout's timer is unref'd in Node; hold the loop open.
+    const keepAlive = setTimeout(() => {}, 3000);
+    const t0 = Date.now();
+    const a = await checkCaller(req('POST', 'Bearer ' + CRON), { user: false }, d);
+    const b = await checkCaller(req('POST', 'Bearer ' + USER_JWT), { user: true }, d);
+    assert.equal(a.status, 503);
+    assert.equal(b.status, 503);
+    assert.ok(Date.now() - t0 < 2000);
+    clearTimeout(keepAlive);
+});

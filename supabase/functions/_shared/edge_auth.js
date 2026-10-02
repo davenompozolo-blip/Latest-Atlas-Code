@@ -27,6 +27,7 @@ const CORS = {
 }
 
 const CACHE_MS = 60_000
+const AUTH_TIMEOUT_MS = 5_000
 const cache = new Map()   // token -> { kind, until }
 
 function bearer(req) {
@@ -52,6 +53,9 @@ export async function checkCaller(req, opts, deps) {
   const env = deps.env
   const doFetch = deps.fetch
   const now = deps.now ? deps.now() : Date.now()
+  // A stalled auth server must not hold the request until the platform kills
+  // it: bound both round trips, and the abort lands in the 503 path below.
+  const timeoutMs = deps.timeoutMs || AUTH_TIMEOUT_MS
 
   // CORS preflight carries no credentials by design; the function's own
   // handler answers it and the real request that follows is checked.
@@ -74,6 +78,7 @@ export async function checkCaller(req, opts, deps) {
       if (!allowUser) return refuse(401, 'unauthorized')
       const r = await doFetch(url + '/auth/v1/user', {
         headers: { Authorization: 'Bearer ' + token, apikey: env('SUPABASE_ANON_KEY') || service },
+        signal: AbortSignal.timeout(timeoutMs),
       })
       if (r.status === 401 || r.status === 403) return refuse(401, 'unauthorized')
       if (!r.ok) return refuse(503, 'auth check unavailable: ' + r.status)
@@ -86,6 +91,7 @@ export async function checkCaller(req, opts, deps) {
       method: 'POST',
       headers: { apikey: service, Authorization: 'Bearer ' + service, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_token: token }),
+      signal: AbortSignal.timeout(timeoutMs),
     })
     if (!r.ok) return refuse(503, 'auth check unavailable: ' + r.status)
     if ((await r.json().catch(() => false)) !== true) return refuse(401, 'unauthorized')
