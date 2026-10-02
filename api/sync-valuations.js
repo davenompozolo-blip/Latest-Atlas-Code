@@ -37,7 +37,7 @@
 
 import { runValuation } from '../src/lib/valuationEngine.js';
 import { rateWindow } from '../src/lib/rateWindow.js';
-import { withAuth, supabaseEnv } from '../src/lib/apiAuth.js';
+import { withAuth, supabaseEnv, internalCallHeaders } from '../src/lib/apiAuth.js';
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 
@@ -217,7 +217,7 @@ async function handler(req, res) {
         let liveFetch = true;
         try {
             const eqResp = await fetch(origin + '/api/equity?endpoint=combined&symbol=' + encodeURIComponent(tk),
-                { signal: AbortSignal.timeout(20000) });
+                { signal: AbortSignal.timeout(20000), headers: internalCallHeaders(req) });
             if (!eqResp.ok) throw new Error('equity ' + eqResp.status);
             const payload = await eqResp.json();
             const ch = payload.cache_hits && payload.cache_hits.overview;

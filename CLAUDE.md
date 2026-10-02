@@ -7218,6 +7218,32 @@ before a new kind of row existed silently excludes it.
 with empty headers, so anyone can trigger a sync. They write broker data, not
 read it out, so this is cost and noise rather than a leak -- its own change.
 
+### A gated route that calls another gated route must pass the caller on (2026-10-02)
+
+Reported from the terminal on every account: the index wall read *"Index history
+unavailable -- /api/nexus-board carried no series."* AUTH-2b gated every `/api`
+route, and six routes call another one server to server (`nexus-board`,
+`nexus-earnings`, `nexus-theme` -> `/api/equity`; `options-snapshot` ->
+`/api/trading`; `sync-valuations` -> `/api/equity`; `theme-leadership-snapshot`
+-> `/api/nexus-theme`). Only the last forwarded `Authorization`, so the inner
+call answered 401 and the outer route reported an empty series.
+`internalCallHeaders(req)` is now the one way to build those headers, and
+`internalApiCalls.test.mjs` fails a route that builds an internal `/api` URL
+without it.
+
+**The quiet half was the nightly jobs.** `options_snapshot` logged **success,
+`withChain 0, noChain 109`** on 2026-10-01: `/api/trading` was `cron: false`, so
+every chain read was refused, and the job wrote 109 rows claiming each name has
+**no listed options**. A run where no name returns a chain now writes nothing
+and answers 503. `/api/trading` accepts cron again for market data; every
+account action still refuses it (409 before any broker call, tested for all
+four). `nexus-board` no longer lets the CDN keep a board missing its indices.
+
+**Test the gate from both sides.** AUTH-2's tests proved each route refuses an
+unauthenticated caller; none proved a route still works when its caller IS
+authorised and it calls a neighbour. A lockdown can be correct at every door
+and still break the corridors between them.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

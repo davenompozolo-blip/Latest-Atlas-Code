@@ -11,7 +11,7 @@
 import { dailyReturns, themeReturnSeries, cumMomentum, beta, scaleReturnsToVol } from '../src/pages/nexus/nexusThemeCompute.js';
 import { closeSeriesFromAlpaca } from '../src/pages/nexus/nexusBoardCompute.js';
 import { assetIdsPath, bookPricesPath, symbolById } from '../src/lib/bookPriceRead.js';
-import { withAuth, supabaseHeaders, privateCache } from '../src/lib/apiAuth.js';
+import { withAuth, supabaseHeaders, privateCache, internalCallHeaders } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
@@ -72,9 +72,7 @@ async function handler(req, res) {
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const proto = req.headers['x-forwarded-proto'] || 'https';
     const origin = (process.env.SYNC_ORIGIN || (host ? proto + '://' + host : '')).replace(/\/$/, '');
-    const fwd = {};
-    if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
-    if (req.headers.cookie) fwd.cookie = req.headers.cookie;
+    const fwd = internalCallHeaders(req);
     const sbHdr = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, ...portfolioHeader(req) };
 
     try {

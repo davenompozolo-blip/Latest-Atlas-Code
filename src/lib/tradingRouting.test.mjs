@@ -162,11 +162,17 @@ test('a token Supabase Auth does not recognise is refused before any broker call
     assert.equal(brokerCalls().length, 0);
 });
 
-test('the cron secret cannot trade: this route is for signed-in users only', async () => {
-    reset({ 'SECONDARY-KEY': 'PA345SGOX9LY' });
-    const r = await call('POST', { action: 'order', portfolio: SECONDARY }, { symbol: 'AAPL', qty: 1, side: 'buy' }, 'cron-test');
-    assert.equal(r.status, 401);
-    assert.equal(brokerCalls().length, 0);
+test('the cron secret cannot touch an account: every account action is refused before the broker', async () => {
+    // pg_cron may reach this route for MARKET DATA (the nightly options
+    // snapshot reads option chains through it), never for an account.
+    for (const [method, action] of [['POST', 'order'], ['GET', 'account'], ['GET', 'orders'], ['GET', 'order_status']]) {
+        reset({ 'SECONDARY-KEY': 'PA345SGOX9LY' });
+        const r = await call(method, { action, portfolio: SECONDARY, id: 'x' },
+            method === 'POST' ? { symbol: 'AAPL', qty: 1, side: 'buy' } : undefined, 'cron-test');
+        assert.equal(r.status, 409, action + ': ' + JSON.stringify(r.body));
+        assert.match(r.body.detail, /signed-in user/);
+        assert.equal(brokerCalls().length, 0, action);
+    }
 });
 
 test('a portfolio the user is not a member of is refused, with no broker call', async () => {

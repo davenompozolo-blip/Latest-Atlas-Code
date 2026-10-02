@@ -719,5 +719,9 @@ async function handler(req, res) {
     }
 };
 
-// AUTH-2: signed-in users only.
-export default withAuth(handler, { cron: false });
+// AUTH-2: signed-in users, and pg_cron for MARKET DATA only. The nightly
+// options snapshot reads option_expiries / options_chain through this route;
+// refusing cron here made it log success with zero chains. Every ACCOUNT action
+// still refuses cron: accountContext -> memberPortfolio requires a user, so a
+// cron caller gets 409 before any broker call.
+export default withAuth(handler, {});
