@@ -12,7 +12,7 @@
 
 import { buildEarningsRow, sortRows, pickEarningsExpiry, atmStraddleMovePct } from '../src/pages/nexus/nexusEarningsCompute.js';
 import { closeSeriesFromAlpaca } from '../src/pages/nexus/nexusBoardCompute.js';
-import { withAuth, supabaseHeaders, privateCache } from '../src/lib/apiAuth.js';
+import { withAuth, supabaseHeaders, privateCache, internalCallHeaders } from '../src/lib/apiAuth.js';
 
 const FINNHUB = 'https://finnhub.io/api/v1';
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
@@ -65,9 +65,7 @@ async function handler(req, res) {
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const proto = req.headers['x-forwarded-proto'] || 'https';
     const origin = (process.env.SYNC_ORIGIN || (host ? proto + '://' + host : '')).replace(/\/$/, '');
-    const fwd = {};
-    if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
-    if (req.headers.cookie) fwd.cookie = req.headers.cookie;
+    const fwd = internalCallHeaders(req);
 
     const today = ymd(new Date());
     const to = ymd(new Date(Date.now() + HORIZON_DAYS * 86_400_000));

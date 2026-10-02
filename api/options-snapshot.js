@@ -16,7 +16,7 @@
 // says so at error level rather than leaving the job invisible.
 
 import { chainMetrics } from '../src/pages/nexus/nexusOptionsCompute.js';
-import { withAuth, supabaseEnv } from '../src/lib/apiAuth.js';
+import { withAuth, supabaseEnv, internalCallHeaders } from '../src/lib/apiAuth.js';
 
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
@@ -66,9 +66,7 @@ async function handler(req, res) {
     const proto = req.headers['x-forwarded-proto'] || 'https';
     const origin = (process.env.SYNC_ORIGIN || (host ? proto + '://' + host : '')).replace(/\/$/, '');
     if (!origin) return res.status(500).json({ error: 'Cannot resolve origin for /api/trading' });
-    const fwd = {};
-    if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
-    if (req.headers.cookie) fwd.cookie = req.headers.cookie;
+    const fwd = internalCallHeaders(req);
 
     const q = req.query || {};
     const limit = Math.min(Number(q.limit) || 0, 200);
@@ -160,7 +158,17 @@ async function handler(req, res) {
     // 3. One upsert. Writes with the anon key against the table's RLS write
     //    policy — the same headless pattern sync-valuations uses for
     //    scrapbook_snapshots, so there's no service-role/env-binding dependency.
-    if (snapRows.length) {
+    // Normally ~95 of ~110 names carry a chain. Zero means the chain reads
+    // themselves failed (2026-10-01: /api/trading refused every call after
+    // AUTH-2b) -- writing those rows would record "no listed options" for the
+    // whole book. Refuse instead of publishing a claim the run cannot support.
+    const allRefused = summary.scope > 0 && summary.withChain === 0;
+    if (allRefused) {
+        summary.errors++;
+        summary.writeError = 'no option chain came back for any of ' + summary.scope + ' names; nothing written';
+        console.error('options_snapshot: ' + summary.writeError);
+    }
+    if (snapRows.length && !allRefused) {
         try {
             const up = await fetch(SB_URL + '/rest/v1/options_positioning_snapshots?on_conflict=symbol,snapshot_date', {
                 method: 'POST', headers: { ...sbHeaders(SB_ANON), Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -184,7 +192,7 @@ async function handler(req, res) {
         } catch (e) { console.error('options_snapshot: sync_log close threw', e && e.message); }
     }
 
-    return res.status(200).json(summary);
+    return res.status(allRefused ? 503 : 200).json(summary);
 }
 
 // AUTH-2: pg_cron only (Bearer CRON_SECRET).

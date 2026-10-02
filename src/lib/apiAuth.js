@@ -157,6 +157,22 @@ export function withAuth(handler, opts = {}) {
     return wrapped;
 }
 
+/**
+ * Headers for a call this route makes to another /api route on the caller's
+ * behalf. Since AUTH-2b every route checks its caller, so the caller's own
+ * Authorization has to travel with the internal call -- a call that drops it is
+ * answered 401 and reads as "no data". Deployment-protection credentials ride
+ * along so previews work too.
+ */
+export function internalCallHeaders(req) {
+    const src = (req && req.headers) || {};
+    const h = {};
+    if (src['x-vercel-protection-bypass']) h['x-vercel-protection-bypass'] = src['x-vercel-protection-bypass'];
+    if (src.cookie) h.cookie = src.cookie;
+    if (src.authorization) h.authorization = src.authorization;
+    return h;
+}
+
 /** Cache-Control for a response that describes a user's book: never shared. */
 export function privateCache(seconds) {
     return 'private, max-age=' + Math.max(0, Math.floor(seconds || 0));

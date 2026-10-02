@@ -18,7 +18,7 @@
 // ?token=CRON_SECRET. snapshot_date = the price session the momentum is
 // as of (nexus-theme's priceAsOf), not the wall-clock run date.
 
-import { withAuth, supabaseEnv } from '../src/lib/apiAuth.js';
+import { withAuth, supabaseEnv, internalCallHeaders } from '../src/lib/apiAuth.js';
 const FALLBACK_URL = 'https://vdmojjszvvcithuxwexx.supabase.co';
 const FALLBACK_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkbW9qanN6dnZjaXRodXh3ZXh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzOTg1NDgsImV4cCI6MjA4Nzk3NDU0OH0.xFo-N9CGQlpHlsykinr_ORAmzV4N7MIq0emW5N1Vojk';
 const SB_URL = (process.env.VITE_SUPABASE_URL || FALLBACK_URL).replace(/\/+$/, '');
@@ -46,10 +46,7 @@ async function handler(req, res) {
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const proto = req.headers['x-forwarded-proto'] || 'https';
     const origin = (process.env.SYNC_ORIGIN || (host ? proto + '://' + host : '')).replace(/\/$/, '');
-    const fwd = {};
-    if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
-    // AUTH-2: nexus-theme is gated too; pass on the cron credential this call arrived with.
-    if (req.headers.authorization) fwd.authorization = req.headers.authorization;
+    const fwd = internalCallHeaders(req);
 
     try {
         // 1. The page's own momentum computation — one source of truth.

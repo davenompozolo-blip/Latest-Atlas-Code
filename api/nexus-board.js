@@ -14,7 +14,7 @@
 import {
     closeSeriesFromAlpaca, ratioSeries, lastChange, computeFearGreed, eventMarkers,
 } from '../src/pages/nexus/nexusBoardCompute.js';
-import { withAuth } from '../src/lib/apiAuth.js';
+import { withAuth, internalCallHeaders } from '../src/lib/apiAuth.js';
 
 const FRED_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 
@@ -68,9 +68,7 @@ async function handler(req, res) {
 
     // Forward deployment-protection credentials to the internal /api/equity
     // calls so the board fills in on protected previews too (no-op in prod).
-    const fwd = {};
-    if (req.headers['x-vercel-protection-bypass']) fwd['x-vercel-protection-bypass'] = req.headers['x-vercel-protection-bypass'];
-    if (req.headers.cookie) fwd.cookie = req.headers.cookie;
+    const fwd = internalCallHeaders(req);
 
     try {
         const [vix, hy, spy, qqq, iwm, dia, rsp, qqqe, tlt] = await Promise.all([
@@ -107,7 +105,10 @@ async function handler(req, res) {
             return { symbol, series: tail(series, 1300), last, changePct };
         };
 
-        res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=7200');
+        // A board missing its index series is a degraded answer: never let the
+        // CDN hold it for half an hour.
+        const complete = spy.length && qqq.length && iwm.length && dia.length;
+        res.setHeader('Cache-Control', complete ? 's-maxage=1800, stale-while-revalidate=7200' : 'no-store');
         return res.status(200).json({
             ok: true,
             asOf: new Date().toISOString(),
