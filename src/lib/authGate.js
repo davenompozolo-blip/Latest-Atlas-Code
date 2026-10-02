@@ -12,7 +12,7 @@
 export const GATE_UNCONFIGURED = 'unconfigured'; // no Supabase client in this build
 export const GATE_LOADING = 'loading';           // session not yet read from storage
 export const GATE_SIGNED_OUT = 'signed_out';
-export const GATE_RECOVERY = 'recovery';         // arrived from a password-reset link
+export const GATE_RECOVERY = 'recovery';         // arrived from a password-reset or invite link
 export const GATE_SIGNED_IN = 'signed_in';
 
 // Matches the server's password_min_length (Supabase Auth config, AUTH-1).
@@ -93,15 +93,25 @@ export function authErrorMessage(err, action = 'sign_in') {
 }
 
 /**
- * Whether the page was opened from a password-reset link. Supabase puts
- * `type=recovery` in the URL fragment (implicit flow) and fires a
- * PASSWORD_RECOVERY event; the fragment check covers the first render, before
- * the event arrives.
+ * Which set-a-password link opened the page, if any: 'recovery' (a reset
+ * link) or 'invite' (ON-1: an administrator's invitation). Supabase puts
+ * `type=...` in the URL fragment (implicit flow); the fragment check covers the
+ * first render, before any auth event arrives. Both links sign the person in
+ * with a session whose first legitimate use is to set a password, so both hold
+ * the terminal behind the form.
  */
-export function isRecoveryUrl(hash) {
-    if (typeof hash !== 'string' || !hash) return false;
+export function passwordSetupKind(hash) {
+    if (typeof hash !== 'string' || !hash) return null;
     const h = hash.charAt(0) === '#' ? hash.slice(1) : hash;
-    return h.split('&').some((kv) => kv === 'type=recovery');
+    const parts = h.split('&');
+    if (parts.some((kv) => kv === 'type=recovery')) return 'recovery';
+    if (parts.some((kv) => kv === 'type=invite')) return 'invite';
+    return null;
+}
+
+/** Whether the page was opened from a set-a-password link (reset or invite). */
+export function isRecoveryUrl(hash) {
+    return passwordSetupKind(hash) !== null;
 }
 
 /**
@@ -145,6 +155,9 @@ export function sessionStorageKeys(storage, storageKey) {
 
 /** sessionStorage key marking that THIS tab's session came from a reset link. */
 export const RECOVERY_MARKER_KEY = 'atlas.auth.recovery.v1';
+/** sessionStorage key holding which link it was ('invite' | 'recovery'), so a
+ *  refresh keeps the right wording. Wording only: it never opens the form. */
+export const SETUP_KIND_KEY = 'atlas.auth.setup_kind.v1';
 
 /**
  * Whether the set-new-password form is owed. A reset link's fragment is

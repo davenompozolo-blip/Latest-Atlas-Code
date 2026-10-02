@@ -13,6 +13,9 @@
     "api/broker-accounts.js": {
       "maxDuration": 60
     },
+    "api/onboarding.js": {
+      "maxDuration": 60
+    },
     "api/ledger-snapshot.js": {
       "maxDuration": 60
     },
