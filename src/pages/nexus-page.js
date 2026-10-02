@@ -15,6 +15,7 @@ import { useOrderMachine, useCircuitBreaker } from '../lib/useOrderMachine.js';
 import { NexusRiskPill } from './nexus/NexusRiskPill.js';
 import { PortfolioSwitcher, PortfolioBanner } from './nexus/PortfolioSwitcher.js';
 import { SignOutButton } from '../components/AuthGate.js';
+import { AccountsButton } from '../components/Onboarding.js';
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 const e = React.createElement;
@@ -1237,6 +1238,7 @@ export function NexusShell({ children, onNavigate, activeTab }) {
             e(PortfolioSwitcher, null),
             e(NexusRiskPill, null),
             e(Clock, null),
+            e(AccountsButton, null),
             e(SignOutButton, null)
         ),
         // MP-2: says what a non-default account means for the analytics panels.

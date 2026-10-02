@@ -25,16 +25,12 @@
 // ============================================================
 
 import { withAuth } from '../src/lib/apiAuth.js';
+import { verifyAlpacaKeys, startFirstSyncs as firstSyncs, keysRejectedDetail } from '../src/lib/brokerOnboarding.js';
 const SB_URL = (process.env.ATLAS_SUPABASE_URL || process.env.VITE_SUPABASE_URL
     || 'https://vdmojjszvvcithuxwexx.supabase.co').replace(/\/$/, '');
 const SB_KEY = process.env.ATLAS_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-const TRADING_BASE = (paper) => paper ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets';
 const TIMEOUT_MS = 8000;   // every outbound call is bounded: a hung upstream must not hold the function
-// The first syncs are an accelerant -- the cron picks every account up anyway --
-// so they are waited on only this long, well inside the route's maxDuration.
-const FIRST_SYNC_WAIT_MS = 25000;
-const FIRST_SYNCS = ['sync_alpaca_positions', 'sync_alpaca_transactions', 'sync_portfolio_history'];
 
 function sbHeaders(extra) {
     return Object.assign({
@@ -62,54 +58,6 @@ async function rpc(fn, args) {
     return { ok: r.ok, status: r.status, body };
 }
 
-// What the broker says these keys belong to. Never throws; the caller decides.
-async function brokerAccount(keyId, secretKey, paper) {
-    try {
-        const r = await fetch(TRADING_BASE(paper) + '/v2/account', {
-            headers: { 'APCA-API-KEY-ID': keyId, 'APCA-API-SECRET-KEY': secretKey, accept: 'application/json' },
-            signal: AbortSignal.timeout(TIMEOUT_MS),
-        });
-        if (!r.ok) return { ok: false, status: r.status };
-        const a = await r.json();
-        if (!a || typeof a.account_number !== 'string') return { ok: false, status: r.status };
-        return { ok: true, accountNumber: a.account_number, status: a.status || null };
-    } catch (e) {
-        return { ok: false, status: null, error: String(e && e.message || e) };
-    }
-}
-
-async function startFirstSyncs(portfolioId) {
-    const out = {};
-    await Promise.all(FIRST_SYNCS.map(async (fn) => {
-        const body = fn === 'sync_portfolio_history'
-            ? { period: '6M', timeframe: '1D', portfolio_id: portfolioId }   // first run widens to 'all' itself
-            : { time: new Date().toISOString() };
-        try {
-            // EF-1: every edge function checks its caller. This route is
-            // itself cron-only, so the secret it was called with is the one
-            // it passes on.
-            const r = await fetch(SB_URL + '/functions/v1/' + fn, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + (process.env.CRON_SECRET || '').trim(),
-                },
-                body: JSON.stringify(body),
-                signal: AbortSignal.timeout(FIRST_SYNC_WAIT_MS),
-            });
-            out[fn] = r.status;
-        } catch (e) {
-            if (e && e.name === 'TimeoutError') {
-                out[fn] = 'still running when the route stopped waiting';
-            } else {
-                console.error('broker-accounts: first sync ' + fn + ' failed to start:', e);
-                out[fn] = 'not started';
-            }
-        }
-    }));
-    return out;
-}
-
 async function register(req, res) {
     const b = req.body || {};
     const name = typeof b.name === 'string' ? b.name.trim() : '';
@@ -120,12 +68,11 @@ async function register(req, res) {
         return res.status(400).json({ error: 'name, key_id and secret_key are required' });
     }
 
-    const acct = await brokerAccount(keyId, secretKey, paper);
+    const acct = await verifyAlpacaKeys(keyId, secretKey, paper);
     if (!acct.ok) {
         return res.status(422).json({
             error: 'credentials_rejected',
-            detail: 'Alpaca did not accept these keys on the ' + (paper ? 'paper' : 'live') + ' API'
-                + (acct.status ? ' (HTTP ' + acct.status + ')' : ''),
+            detail: keysRejectedDetail(paper, acct.status),
         });
     }
 
@@ -142,7 +89,7 @@ async function register(req, res) {
         return res.status(500).json({ error: 'register_failed', detail: msg });
     }
     const portfolioId = r.body;
-    const syncs = await startFirstSyncs(portfolioId);
+    const syncs = await firstSyncs(SB_URL, portfolioId, process.env.CRON_SECRET);
     return res.status(201).json({
         portfolio_id: portfolioId, name, account_number: acct.accountNumber,
         paper, first_syncs: syncs,
@@ -179,7 +126,7 @@ async function adoptEnv(req, res) {
             results.push(Object.assign(row, { result: 'env_pair_missing_on_this_deployment' }));
             continue;
         }
-        const acct = await brokerAccount(keyId, secretKey, a.is_paper);
+        const acct = await verifyAlpacaKeys(keyId, secretKey, a.is_paper);
         if (!acct.ok) {
             results.push(Object.assign(row, { result: 'credentials_rejected', status: acct.status }));
             continue;

@@ -124,12 +124,17 @@ When operating Atlas via remote control, use these session roles:
   `EXCEPT ALL` both ways and time it against the 3s anon cap.
 - **Add a scheduled job**: a nightly one is a stage in `atlas_chain_stages`;
   anything else is `cron.job`. Either way it logs to `sync_log`.
-- **Add a broker account**: `POST /api/broker-accounts?action=register` with
-  `{name, key_id, secret_key, paper}` and `Authorization: Bearer <CRON_SECRET>`.
-  One call: keys verified against the broker, account number taken from
-  `/v2/account`, rows + Vault secret written atomically, first syncs started.
-  No env vars and no redeploy (VC-1). The old env-pair route still works as a
-  fallback for accounts carrying a `credential_prefix`.
+- **Add a person**: an administrator opens ACCOUNTS (topbar) -> Invite
+  someone, and sends the one-time link it returns (ON-1; no email server is
+  configured). The person sets a password, then connects their own broker.
+- **Add a broker account**: signed in, ACCOUNTS -> Connect an account (or the
+  connect screen a person with no portfolio lands on), which posts to
+  `/api/onboarding?action=connect`. Keys verified against the broker, account
+  number taken from `/v2/account`, rows + Vault secret + ownership written in
+  one transaction, first syncs started. No env vars and no redeploy. The admin
+  route `POST /api/broker-accounts?action=register` (`Bearer <CRON_SECRET>`)
+  still works but registers an account NOBODY owns -- grant it with
+  `atlas_grant_portfolio_access`.
 
 ## Data Trust Layer
 
@@ -7132,9 +7137,9 @@ database -- that would need a baseline dumped from production, not done.
 
 The terminal does not render without a Supabase Auth session
 (`src/components/AuthGate.js`, decisions in `src/lib/authGate.js`). Email and
-password; **public sign-up is OFF** in the Auth config, so accounts are created
-by an administrator (Supabase dashboard: Authentication -> Users -> Add user),
-and the landing page offers sign-in and password reset only. Minimum password
+password; **public sign-up is OFF** in the Auth config, so people are invited
+by an administrator (ON-1, below), and the landing page offers sign-in and
+password reset only. Minimum password
 length is 12, set on the server; the client check only saves a round trip.
 
 **Who sees which portfolio is `portfolio_members`**, written only by
@@ -7287,6 +7292,61 @@ and `x-client-info`, so the browser blocks the call before it is made --
 measured with a real preflight, before and after EF-1. Fixing it turns on a
 feature that calls Finnhub and Anthropic on the user's behalf, so it is a
 decision, not a fold-in.
+
+### Invite-only onboarding (ON-1, 2026-10-02)
+
+A person reaches the terminal in three steps, and nobody can start the first one
+for themselves:
+
+1. **An administrator invites them.** ACCOUNTS -> Invite someone posts to
+   `/api/onboarding?action=invite`, which checks `atlas_is_admin()` with the
+   CALLER's token and asks Auth for an invite link with the service key. The
+   link is shown to the administrator to send: **there is no SMTP server**, and
+   Supabase's built-in mail only reaches the project's own team, so an emailed
+   invite would never arrive. It works once, for an hour (`mailer_otp_exp`).
+   Inviting someone who never accepted issues a fresh link; inviting someone who
+   already has an account returns a set-new-password link instead, since
+   "Forgot your password?" cannot reach them without SMTP either -- **the
+   administrator is the only way back in.**
+2. **The link opens the set-password form.** `passwordSetupKind()` reads
+   `type=invite` as it does `type=recovery`, and the fragment is captured at
+   MODULE LOAD (`INITIAL_HASH`): supabase-js consumes it while it initialises,
+   which can finish before the first effect runs.
+3. **They connect their own broker.** `OnboardingGate` holds the terminal until
+   the person can see a portfolio. A failed read of `vw_portfolios` is a retry
+   screen, **never the connect form** -- someone with three accounts must not
+   be told to connect one because a query was cancelled. Connect verifies the
+   keys with Alpaca and calls `atlas_connect_broker_account(user, ...)`, which
+   registers the account, stores the keys in Vault, sets
+   `broker_accounts.user_id` and grants ownership in ONE transaction: a
+   registered account with no owner is one nobody can see and nobody can
+   re-register.
+
+**The owner is the session, and the account number is the broker's.** The route
+ignores any `user_id` or account number in the body; both are tested. Responses
+carry the last four characters of the account number and never a key.
+
+**`atlas_admins`** is seeded from the owner of the default portfolio and written
+by service_role only. Non-administrators may own `atlas_account_cap()` (3)
+accounts -- a bound on nightly per-account compute, not a product rule --
+checked under an advisory lock so two concurrent connects cannot both pass it.
+
+**`broker_accounts.user_id` referenced the legacy `public.users` table**, which
+has never held a row, so the first attribution failed its foreign key. Found by
+running the contract before applying. It references `auth.users` now (on delete
+set null); `public.users` itself is still there, empty and read by nothing --
+flagged, not dropped.
+
+**The paper/live choice is checked against the key prefix** (PK paper, AK live)
+before the broker is asked, because a mismatched pair is the commonest refused
+connect and the broker's 401 does not say why.
+
+`supabase/tests/on1_onboarding_contract.sql` (6 cases, always raises so nothing
+survives); `onboardingRoute.test.mjs` 13, `onboarding.test.mjs` 8.
+
+**Not built:** removing an account, renaming one, a person leaving, and any
+broker other than Alpaca (`BROKERS` in `src/lib/brokerOnboarding.js` is the
+registry the form reads). Regulatory/KYC data is out of scope.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
