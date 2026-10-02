@@ -7185,14 +7185,18 @@ skips the auth check. Trading acts only on a portfolio the user is a member of
 **no longer the deployment's default account**. The browser attaches the token
 in one fetch wrapper (`installApiAuth`), like the MP-2 portfolio tag.
 
-**2c (PENDING, `supabase/pending/auth2c_no_anon_reads.sql`): anon reads
-nothing.** Must wait until 2b is deployed -- the old routes read with the anon
-key. Dry-run proven: authenticated and service_role keep all 1,585 privileges
-they had, anon ends with none, and default privileges stop new objects granting
-it. Schema USAGE is left alone (anon inherits it through PUBLIC, and USAGE alone
-reaches nothing). Before applying, reset anon's `pg_stat_statements` rows and
-watch for stragglers -- `atlas-status/` and the legacy static pages read with
-the anon key.
+**2c (applied 2026-10-01, `20261001175816`): anon reads nothing.** Applied
+after 2b was live: anon's `pg_stat_statements` was reset at 14:49 UTC and showed
+**0 statements in two hours** while the terminal was in use as `authenticated`.
+Measured before and after: anon 227 SELECT / 94 write / 52 EXECUTE -> **0 / 0 /
+0**; authenticated (228 / 94 / 52) and service_role (249 / 233 / 111) unchanged.
+Default privileges stop objects created later granting anon or PUBLIC. Schema
+USAGE is left alone (anon inherits it through PUBLIC; USAGE alone reaches
+nothing). Probed with the publishable key: views, tables and RPCs answer
+`42501`; the isolation test is still 12/12 and a cron-secret call still 200.
+**A new table or function is not readable by the browser until it is granted to
+`authenticated`** -- check that grant before blaming RLS. Undo is a grant back
+to anon.
 
 **2d (applied): one user cannot read another's book.** The raw book tables
 (`positions`, `transactions`, `account_snapshots`, `portfolio_equity_curve`,
