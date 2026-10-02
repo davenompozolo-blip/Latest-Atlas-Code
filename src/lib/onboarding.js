@@ -92,3 +92,39 @@ export function inviteResultText(result) {
     }
     return 'Send this link to ' + result.email + '. It lets them set a password and connect their broker. ' + life;
 }
+
+// ---------------------------------------------------------------- RA-1
+// "Request access" on the landing page. The same check runs in the browser
+// and in api/access-request.js, so the two cannot disagree about what a
+// valid request is.
+
+export const ACCESS_NAME_MAX = 100;
+export const ACCESS_NOTE_MAX = 1000;
+const ACCESS_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** null when acceptable, otherwise the sentence to show. */
+export function validateAccessRequest({ name, email, note }) {
+    const n = typeof name === 'string' ? name.trim() : '';
+    const em = typeof email === 'string' ? email.trim() : '';
+    const no = typeof note === 'string' ? note.trim() : '';
+    if (!n) return 'Tell us your name.';
+    if (n.length > ACCESS_NAME_MAX) return 'Keep your name under ' + ACCESS_NAME_MAX + ' characters.';
+    if (!em) return 'Enter your email address.';
+    if (!ACCESS_EMAIL_RE.test(em) || em.length > 254) return 'That does not look like an email address.';
+    if (no.length > ACCESS_NOTE_MAX) return 'Keep the note under ' + ACCESS_NOTE_MAX + ' characters.';
+    return null;
+}
+
+/**
+ * What a visitor is told after asking. ONE sentence whether the request was
+ * new, a repeat, or for an address that already has an account -- anything
+ * else would let the form tell a stranger who uses Atlas.
+ */
+export const ACCESS_REQUEST_REPLY =
+    'Thanks. Your request is with an administrator. If it is approved, they will send you a one-time invitation link.';
+
+/** The label for the administrator's Accounts button: the pending count, if any. */
+export function accountsButtonLabel(pending) {
+    const n = Number(pending);
+    return Number.isInteger(n) && n > 0 ? 'ACCOUNTS · ' + n : 'ACCOUNTS';
+}

@@ -73,3 +73,27 @@ test('an invite link opens the set-password form, like a reset link', () => {
     assert.equal(passwordSetupKind(''), null);
     assert.equal(recoveryPending({ hash: '#a=1&type=invite', marker: null, session: null }), true);
 });
+
+// ---------------------------------------------------------------- RA-1
+import { validateAccessRequest, accountsButtonLabel, ACCESS_REQUEST_REPLY } from './onboarding.js';
+
+test('request access: name, email and note bounds', () => {
+    const ok = { name: 'Ada Lovelace', email: 'ada@example.com', note: '' };
+    assert.equal(validateAccessRequest(ok), null);
+    assert.match(validateAccessRequest({ ...ok, name: '   ' }), /name/);
+    assert.match(validateAccessRequest({ ...ok, name: 'x'.repeat(101) }), /100/);
+    assert.match(validateAccessRequest({ ...ok, email: 'nope' }), /email/);
+    assert.match(validateAccessRequest({ ...ok, note: 'x'.repeat(1001) }), /1000/);
+    assert.equal(validateAccessRequest({ ...ok, note: undefined }), null);
+});
+
+test('request access: one reply, and it promises nothing about the address', () => {
+    assert.doesNotMatch(ACCESS_REQUEST_REPLY, /already|exists|account for/i);
+});
+
+test('the Accounts button shows a pending count only when there is one', () => {
+    assert.equal(accountsButtonLabel(0), 'ACCOUNTS');
+    assert.equal(accountsButtonLabel(null), 'ACCOUNTS');
+    assert.equal(accountsButtonLabel(2), 'ACCOUNTS · 2');
+    assert.equal(accountsButtonLabel(1.5), 'ACCOUNTS');
+});

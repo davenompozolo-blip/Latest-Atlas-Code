@@ -25,7 +25,7 @@ import {
 import { AuthBackdrop } from './auth/AuthBackdrop.js';
 import { AtlasWordmark } from './auth/AtlasWordmark.js';
 import { Field, PasswordField, SubmitButton, Shell } from './auth/AuthFormParts.js';
-import { OnboardingGate } from './Onboarding.js';
+import { OnboardingGate, RequestAccessForm } from './Onboarding.js';
 import '../styles/auth-gate.css';
 
 const e = React.createElement;
@@ -149,7 +149,7 @@ function useAuthSession() {
 }
 
 function SignInForm() {
-    const [mode, setMode] = React.useState('sign_in'); // 'sign_in' | 'reset'
+    const [mode, setMode] = React.useState('sign_in'); // 'sign_in' | 'reset' | 'request'
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [busy, setBusy] = React.useState(false);
@@ -182,6 +182,11 @@ function SignInForm() {
         }
     }
 
+    // RA-1: access is by invitation; a visitor can ask for one.
+    if (mode === 'request') {
+        return e(RequestAccessForm, { onBack: () => { setMode('sign_in'); setError(null); setNote(null); } });
+    }
+
     const signIn = mode === 'sign_in';
     const toggle = e('button', {
         type: 'button', className: 'ag-link',
@@ -210,7 +215,17 @@ function SignInForm() {
             }),
             error && e('div', { role: 'alert', className: 'ag-error' }, error),
             note && e('div', { role: 'status', className: 'ag-note' }, note),
-            !signIn && e('div', { className: 'ag-row-center' }, toggle)));
+            // No email server is configured (ON-1), so a reset email reaches
+            // only the project's own team; everyone else needs the admin.
+            !signIn && note && e('div', { className: 'ag-note' },
+                'Nothing arriving? Ask your administrator for a link to set a new password.'),
+            !signIn && e('div', { className: 'ag-row-center' }, toggle),
+            signIn && e('div', { className: 'ag-row-center ob-ask' },
+                e('span', null, 'No account? '),
+                e('button', {
+                    type: 'button', className: 'ag-link',
+                    onClick: () => { setMode('request'); setError(null); setNote(null); },
+                }, 'Request access'))));
 }
 
 function NewPasswordForm({ onDone, kind }) {

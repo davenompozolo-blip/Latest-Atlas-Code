@@ -138,6 +138,24 @@ test('every /api route is exported through withAuth', () => {
     assert.deepEqual(unguardedRoutes(files), []);
 });
 
+// RA-1: the only routes a signed-out visitor may reach. A new public route
+// fails here until it is added on purpose.
+const PUBLIC_ROUTES = ['access-request.js'];
+
+test('only the listed routes are public', () => {
+    const pub = readdirSync(API).filter((f) => f.endsWith('.js'))
+        .filter((f) => /withAuth\(handler,\s*\{[^}]*public:\s*true/.test(readFileSync(join(API, f), 'utf8')));
+    assert.deepEqual(pub.sort(), PUBLIC_ROUTES.slice().sort());
+});
+
+test('a public route runs with no caller and is marked so', async () => {
+    let seen = null;
+    const h = withAuth(async (req) => { seen = req.atlasAuth; }, { public: true });
+    await h({ method: 'POST', headers: {} }, { setHeader() {}, status() { return this; }, json() { return this; } });
+    assert.deepEqual(seen, { ok: true, kind: 'public' });
+    assert.deepEqual(h.__atlasAuth, { public: true });
+});
+
 test('book routes never ask the CDN to cache a response', () => {
     for (const f of ['nexus-bench.js', 'nexus-theme.js', 'nexus-earnings.js', 'nexus-opportunities.js', 'ledger-export.js', 'trading.js', 'screener-market.js']) {
         const src = readFileSync(join(API, f), 'utf8');
