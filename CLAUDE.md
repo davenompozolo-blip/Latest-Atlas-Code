@@ -7214,9 +7214,8 @@ never been graded at all. It now selects by account number. Same shape as
 `price_coverage` counting holdings while the universe froze: a selector written
 before a new kind of row existed silently excludes it.
 
-**Still open:** edge functions run with `verify_jwt` off and pg_cron calls them
-with empty headers, so anyone can trigger a sync. They write broker data, not
-read it out, so this is cost and noise rather than a leak -- its own change.
+**Closed 2026-10-02 (EF-1, below):** edge functions ran with `verify_jwt` off
+and pg_cron called them with empty headers, so anyone could trigger a sync.
 
 ### A gated route that calls another gated route must pass the caller on (2026-10-02)
 
@@ -7243,6 +7242,51 @@ four). `nexus-board` no longer lets the CDN keep a board missing its indices.
 unauthenticated caller; none proved a route still works when its caller IS
 authorised and it calls a neighbour. A lockdown can be correct at every door
 and still break the corridors between them.
+
+### Every edge function checks its caller (EF-1, 2026-10-02)
+
+All 17 deployed functions serve through `serveGuarded({ user }, handler)` in
+`supabase/functions/_shared/edge_auth.js`, never `Deno.serve`. A caller is one
+of three things and nothing else: `Bearer <CRON_SECRET>`, the service key, or --
+only for the five functions the browser calls (`claude_sql_assistant`,
+`compute_ticker_derived`, `synthesize_thesis`, `cortex_pretrade_risk`,
+`generate_cortex_signals`) -- a signed-in user verified against
+`/auth/v1/user`. No credentials, a junk token or the publishable key answers
+401; a check that cannot complete answers 503, never open.
+`edgeFunctionsGuarded.test.mjs` fails a function that calls `Deno.serve` or
+whose `{ user }` policy does not match its callers.
+
+**`verify_jwt` could not do this job.** The project's anon key is itself a
+valid JWT, so the gateway check passes for anyone holding the public key, and
+pg_cron sends no JWT at all. The check has to live in the function.
+
+**The secret never leaves Vault.** Cron jobs 6, 9, 10, 13, 28, 59 and the
+chain's edge branch send `public.atlas_edge_headers()` (postgres only); the
+function asks `atlas_check_cron_secret(token)` (service_role only), which
+compares inside the database, so CRON_SECRET is not an edge secret too. A JWT is
+never sent to the cron check and the secret never to the auth server.
+`api/broker-accounts.js` passes the secret on to the first syncs it starts.
+**A new cron job that calls an edge function must use `atlas_edge_headers()`**
+or it is refused.
+
+**The repo now holds what runs.** Four functions existed only in production
+(`claude_sql_assistant`, `database-access` -- an unused dashboard template --,
+`probe_investing` -- a 410 tombstone --, and `super-worker`, which is
+`enrich_assets` under another slug). Four differed from the repo in code, and
+the repo was replaced with the deployed source so locking them changed nothing
+else: `compute_ticker_derived` and `generate_cortex_signals` (the repo was
+ahead with undeployed changes; they are in git history before this commit),
+`sync-listing-status`, and `sync_funddata_prices` (deployed logs at error
+level, the repo had regressed to `warn`). After the deploy every bundle's
+entry file was diffed against the repo: 17 of 17 identical.
+
+**Flagged, not fixed: two browser functions fail their own CORS preflight.**
+`compute_ticker_derived` and `synthesize_thesis` allow only
+`authorization, content-type`, while `sb.functions.invoke` also sends `apikey`
+and `x-client-info`, so the browser blocks the call before it is made --
+measured with a real preflight, before and after EF-1. Fixing it turns on a
+feature that calls Finnhub and Anthropic on the user's behalf, so it is a
+decision, not a fold-in.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

@@ -22,6 +22,7 @@
 //   ALPHA_VANTAGE_KEY (optional fallback)
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 const FH_BASE             = 'https://finnhub.io/api/v1'
 const THROTTLE_MS         = 1100   // ~55 req/min, under Finnhub 60/min free tier
@@ -149,7 +150,7 @@ async function finnhubFetch<T>(path: string, fhKey: string): Promise<T | null> {
   } catch { return null }
 }
 
-Deno.serve(async (req: Request) => {
+serveGuarded({ user: false }, async (req: Request) => {
   // Budget clock starts at the invocation, not at the enrichment loop: the
   // universe fetch and the already-cached probe spend wall-clock too, and the
   // ceiling that kills this function does not care which part spent it.

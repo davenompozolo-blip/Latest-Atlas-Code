@@ -16,6 +16,7 @@
 // User-Agent per SEC Fair Access guidelines.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 const EDGAR_USER_AGENT = 'ATLAS Terminal research@atlas.app'
 const ANTHROPIC_BASE   = 'https://api.anthropic.com/v1'
@@ -285,7 +286,7 @@ ${mdaText}`
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request) => {
+serveGuarded({ user: true }, async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
 
   const sbUrl    = Deno.env.get('SUPABASE_URL') ?? ''

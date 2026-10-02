@@ -29,6 +29,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
 import { normaliseFill } from '../_shared/alpaca_fill.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 // Alpaca caps activities pages at 100. Guard the loop so a pagination bug
 // cannot spin forever inside a scheduled function.
@@ -373,7 +374,7 @@ async function runTransactionSync(t: BrokerTarget): Promise<SyncResult> {
     }
 }
 
-Deno.serve(async (_req: Request) => {
+serveGuarded({ user: false }, async (_req: Request) => {
     // One account per iteration, each with its own sync_log row, so one
     // account's failure is recorded against it and blocks nothing else.
     let targets: BrokerTarget[]

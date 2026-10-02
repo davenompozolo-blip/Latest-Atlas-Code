@@ -85,8 +85,16 @@ async function startFirstSyncs(portfolioId) {
             ? { period: '6M', timeframe: '1D', portfolio_id: portfolioId }   // first run widens to 'all' itself
             : { time: new Date().toISOString() };
         try {
+            // EF-1: every edge function checks its caller. This route is
+            // itself cron-only, so the secret it was called with is the one
+            // it passes on.
             const r = await fetch(SB_URL + '/functions/v1/' + fn, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + (process.env.CRON_SECRET || '').trim(),
+                },
+                body: JSON.stringify(body),
                 signal: AbortSignal.timeout(FIRST_SYNC_WAIT_MS),
             });
             out[fn] = r.status;

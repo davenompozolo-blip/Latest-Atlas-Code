@@ -51,6 +51,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
 const YAHOO_CHART      = 'https://query1.finance.yahoo.com/v8/finance/chart'
 const UPSERT_CHUNK     = 1_000
@@ -202,7 +203,7 @@ async function closeSyncLog(
   `
 }
 
-Deno.serve(async (req: Request) => {
+serveGuarded({ user: false }, async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST only' }), {
       status: 405, headers: { 'Content-Type': 'application/json' },

@@ -3,20 +3,11 @@
 // Hybrid signal engine for the Cortex module.
 // Stage A: deterministic rules over existing portfolio analytics
 // Stage B: Claude API enriches each signal with title + thesis narrative
-//
-// Modes:
-//   POST {}                  → full regeneration (cron / on-demand)
-//   POST {dry_run: true}     → run all logic, skip DB writes
-//   POST {class_filter: []}  → only regenerate specific signal classes
-//
-// Required secrets (Dashboard → Edge Functions → Secrets):
-//   SUPABASE_DB_URL     (already set for other functions)
-//   ANTHROPIC_API_KEY   (new — set before deploying)
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import postgres from 'https://deno.land/x/postgresjs@v3.4.5/mod.js'
+import { serveGuarded } from '../_shared/edge_auth.js'
 
-// ── CORS ────────────────────────────────────────────────────────────────────
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -24,27 +15,18 @@ const CORS_HEADERS = {
 }
 const JSON_HEADERS = { ...CORS_HEADERS, 'Content-Type': 'application/json' }
 
-// ── Constants (expose for tuning) ──────────────────────────────────────────
 const MODULE_NAME          = 'Cortex'
 const CLAUDE_MODEL         = 'claude-sonnet-4-6'
 const ANTHROPIC_API        = 'https://api.anthropic.com/v1/messages'
 
-// Thresholds
-const THEME_CEILING_PCT    = 25     // % NAV: sector above this → no thesis signal
-const HEADROOM_MIN_PCT     = 2      // min headroom vs ceiling to emit thesis signal
-const GAP_THRESHOLD_PCT    = 1.5    // undershoot vs equal-weight SAA → gap filler fires
-const VAR_SHARE_THRESHOLD  = 0.10   // single name > 10% of portfolio VaR → risk flag
-const HIGH_VOL_THRESHOLD   = 0.35   // annual vol > 35% → high vol risk flag
-const MAX_PER_CLASS        = 3      // cap per signal class per run
-const CANDIDATE_LIMIT      = 4      // max candidates per signal
+const THEME_CEILING_PCT    = 25
+const HEADROOM_MIN_PCT     = 2
+const GAP_THRESHOLD_PCT    = 1.5
+const VAR_SHARE_THRESHOLD  = 0.10
+const HIGH_VOL_THRESHOLD   = 0.35
+const MAX_PER_CLASS        = 3
+const CANDIDATE_LIMIT      = 4
 
-// NOTE: Component VaR, Effective N, and conditional correlation (Risk v2.1)
-// are not yet exposed as queryable views. This function uses simpler marginal
-// VaR (weight × vol) and individual dollar_var_95_daily as proxies.
-// When Risk v2.1 view is available, update the risk flag rules in
-// buildRiskFlagSignals() to use those metrics directly.
-
-// ── Types ──────────────────────────────────────────────────────────────────
 interface Position {
   symbol: string
   sector: string
@@ -79,7 +61,6 @@ interface Candidate {
   sector: string
   subtheme: string
   name?: string
-  // per-candidate enrichment
   suggested_size_pct?: number
   sizing_note?: string
   annual_vol?: number | null
@@ -89,7 +70,7 @@ interface Candidate {
   ev_ebitda?: number | null
   roic?: number | null
   net_margin?: number | null
-  why?: string        // filled by Stage B (per-name rationale / catalyst)
+  why?: string
 }
 
 interface SignalDraft {
@@ -100,16 +81,13 @@ interface SignalDraft {
   setup_json: Record<string, unknown>
   candidates: Candidate[]
   origin_metric: string
-  // filled by Stage B
   title?: string
   thesis_md?: string
 }
 
 type Sql = ReturnType<typeof postgres>
 
-// ── Stage A: Portfolio analytics ───────────────────────────────────────────
 async function buildPortfolioState(sql: Sql): Promise<PortfolioState> {
-  // Per-position risk from existing view
   const riskRows = await sql<{
     symbol: string; name: string; market_value: number; weight: number;
     annual_vol: number; dollar_var_95_daily: number; risk_tier: string
@@ -120,18 +98,13 @@ async function buildPortfolioState(sql: Sql): Promise<PortfolioState> {
     ORDER BY dollar_var_95_daily DESC
   `
 
-  // Sector composition via positions + assets + equity_cache for better sector data
   const sectorRows = await sql<{
     sector: string; weight_pct: number; n_positions: number; symbols: string[]
   }[]>`
     WITH nav AS (SELECT SUM(market_value) AS total FROM positions WHERE quantity > 0),
     sector_agg AS (
       SELECT
-        COALESCE(
-          ec.payload->'Overview'->>'Sector',
-          a.sector,
-          'Other'
-        )                                               AS sector,
+        COALESCE(ec.payload->'Overview'->>'Sector', a.sector, 'Other') AS sector,
         SUM(p.market_value)                             AS sector_mv,
         COUNT(DISTINCT a.symbol)                        AS n_positions,
         ARRAY_AGG(a.symbol ORDER BY p.market_value DESC) AS symbols
@@ -142,11 +115,9 @@ async function buildPortfolioState(sql: Sql): Promise<PortfolioState> {
       WHERE p.quantity > 0
       GROUP BY 1
     )
-    SELECT
-      sector,
+    SELECT sector,
       ROUND((sector_mv / (SELECT total FROM nav) * 100)::numeric, 2) AS weight_pct,
-      n_positions,
-      symbols
+      n_positions, symbols
     FROM sector_agg
     ORDER BY weight_pct DESC
   `
@@ -189,13 +160,6 @@ async function buildPortfolioState(sql: Sql): Promise<PortfolioState> {
   }
 }
 
-// Get candidate tickers for a sector (non-held names with fundamentals and/or
-// recent price data). Candidates are resolved to the COARSE GICS sector taxonomy
-// the gaps/theses are defined in, so a "Consumer Staples" gap only ever surfaces
-// Consumer Staples names — never an off-theme name from a different sector.
-//
-// Finnhub stores granular industries ("Beverages", "Banking", "Semiconductors");
-// FINNHUB_TO_GICS rolls those up so they align with a.sector (already GICS).
 async function fetchCandidates(
   sql: Sql,
   sector: string,
@@ -203,48 +167,46 @@ async function fetchCandidates(
   limit: number,
   opts?: { conviction: 'low' | 'medium' | 'high'; headroomPct: number; sectorWeightPct: number },
 ): Promise<Candidate[]> {
-  // SQL CASE that maps Finnhub's granular industry → coarse GICS sector.
-  // Kept inline (not a DB function) so the engine stays self-contained.
   const gicsCase = sql`
     CASE ec.payload->'overview'->>'Sector'
-      WHEN 'Insurance'                        THEN 'Financials'
-      WHEN 'Banking'                          THEN 'Financials'
-      WHEN 'Financial Services'               THEN 'Financials'
-      WHEN 'Technology'                       THEN 'Technology'
-      WHEN 'Semiconductors'                   THEN 'Technology'
-      WHEN 'Biotechnology'                    THEN 'Healthcare'
-      WHEN 'Health Care'                      THEN 'Healthcare'
-      WHEN 'Pharmaceuticals'                  THEN 'Healthcare'
-      WHEN 'Life Sciences Tools & Services'   THEN 'Healthcare'
-      WHEN 'Electrical Equipment'             THEN 'Industrials'
-      WHEN 'Aerospace & Defense'              THEN 'Industrials'
-      WHEN 'Machinery'                        THEN 'Industrials'
-      WHEN 'Professional Services'            THEN 'Industrials'
-      WHEN 'Commercial Services & Supplies'   THEN 'Industrials'
-      WHEN 'Construction'                     THEN 'Industrials'
-      WHEN 'Building'                          THEN 'Industrials'
+      WHEN 'Insurance' THEN 'Financials'
+      WHEN 'Banking' THEN 'Financials'
+      WHEN 'Financial Services' THEN 'Financials'
+      WHEN 'Technology' THEN 'Technology'
+      WHEN 'Semiconductors' THEN 'Technology'
+      WHEN 'Biotechnology' THEN 'Healthcare'
+      WHEN 'Health Care' THEN 'Healthcare'
+      WHEN 'Pharmaceuticals' THEN 'Healthcare'
+      WHEN 'Life Sciences Tools & Services' THEN 'Healthcare'
+      WHEN 'Electrical Equipment' THEN 'Industrials'
+      WHEN 'Aerospace & Defense' THEN 'Industrials'
+      WHEN 'Machinery' THEN 'Industrials'
+      WHEN 'Professional Services' THEN 'Industrials'
+      WHEN 'Commercial Services & Supplies' THEN 'Industrials'
+      WHEN 'Construction' THEN 'Industrials'
+      WHEN 'Building' THEN 'Industrials'
       WHEN 'Trading Companies & Distributors' THEN 'Industrials'
-      WHEN 'Industrial Conglomerates'         THEN 'Industrials'
-      WHEN 'Transportation Infrastructure'    THEN 'Industrials'
-      WHEN 'Road & Rail'                      THEN 'Industrials'
-      WHEN 'Airlines'                         THEN 'Industrials'
-      WHEN 'Real Estate'                      THEN 'Real Estate'
-      WHEN 'Utilities'                        THEN 'Utilities'
-      WHEN 'Retail'                           THEN 'Consumer Discretionary'
-      WHEN 'Hotels, Restaurants & Leisure'    THEN 'Consumer Discretionary'
-      WHEN 'Auto Components'                  THEN 'Consumer Discretionary'
+      WHEN 'Industrial Conglomerates' THEN 'Industrials'
+      WHEN 'Transportation Infrastructure' THEN 'Industrials'
+      WHEN 'Road & Rail' THEN 'Industrials'
+      WHEN 'Airlines' THEN 'Industrials'
+      WHEN 'Real Estate' THEN 'Real Estate'
+      WHEN 'Utilities' THEN 'Utilities'
+      WHEN 'Retail' THEN 'Consumer Discretionary'
+      WHEN 'Hotels, Restaurants & Leisure' THEN 'Consumer Discretionary'
+      WHEN 'Auto Components' THEN 'Consumer Discretionary'
       WHEN 'Textiles, Apparel & Luxury Goods' THEN 'Consumer Discretionary'
-      WHEN 'Diversified Consumer Services'    THEN 'Consumer Discretionary'
-      WHEN 'Energy'                           THEN 'Energy'
-      WHEN 'Metals & Mining'                  THEN 'Materials'
-      WHEN 'Chemicals'                        THEN 'Materials'
-      WHEN 'Packaging'                        THEN 'Materials'
-      WHEN 'Media'                            THEN 'Communications'
-      WHEN 'Telecommunication'                THEN 'Communications'
-      WHEN 'Communications'                   THEN 'Communications'
-      WHEN 'Beverages'                        THEN 'Consumer Staples'
-      WHEN 'Food Products'                    THEN 'Consumer Staples'
-      WHEN 'Consumer products'                THEN 'Consumer Staples'
+      WHEN 'Diversified Consumer Services' THEN 'Consumer Discretionary'
+      WHEN 'Energy' THEN 'Energy'
+      WHEN 'Metals & Mining' THEN 'Materials'
+      WHEN 'Chemicals' THEN 'Materials'
+      WHEN 'Packaging' THEN 'Materials'
+      WHEN 'Media' THEN 'Communications'
+      WHEN 'Telecommunication' THEN 'Communications'
+      WHEN 'Communications' THEN 'Communications'
+      WHEN 'Beverages' THEN 'Consumer Staples'
+      WHEN 'Food Products' THEN 'Consumer Staples'
+      WHEN 'Consumer products' THEN 'Consumer Staples'
       ELSE NULL
     END`
 
@@ -259,16 +221,15 @@ async function fetchCandidates(
       SELECT
         a.id,
         a.symbol,
-        COALESCE(a.name, a.symbol)                                        AS name,
-        -- GICS-coarse sector: prefer mapped Finnhub, fall back to a.sector
-        COALESCE(${gicsCase}, a.sector, 'Other')                          AS gics_sector,
-        (ec.payload->'metric'->>'roeTTM')::numeric                        AS roe,
-        (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric           AS rev_growth,
-        (ec.payload->'metric'->>'evEbitdaTTM')::numeric                   AS ev_ebitda,
-        (ec.payload->'metric'->>'roiTTM')::numeric                        AS roic,
-        (ec.payload->'metric'->>'netProfitMarginTTM')::numeric            AS net_margin,
-        (ec.payload->>'market_cap_usd')::numeric                          AS market_cap,
-        (ec.symbol IS NOT NULL)                                           AS has_fundamentals,
+        COALESCE(a.name, a.symbol) AS name,
+        COALESCE(${gicsCase}, a.sector, 'Other') AS gics_sector,
+        (ec.payload->'metric'->>'roeTTM')::numeric AS roe,
+        (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric AS rev_growth,
+        (ec.payload->'metric'->>'evEbitdaTTM')::numeric AS ev_ebitda,
+        (ec.payload->'metric'->>'roiTTM')::numeric AS roic,
+        (ec.payload->'metric'->>'netProfitMarginTTM')::numeric AS net_margin,
+        (ec.payload->>'market_cap_usd')::numeric AS market_cap,
+        (ec.symbol IS NOT NULL) AS has_fundamentals,
         (CASE WHEN (ec.payload->'metric'->>'roiTTM')::numeric > 10 THEN 30 ELSE 0 END
           + CASE WHEN (ec.payload->'metric'->>'revenueGrowthTTMYoy')::numeric > 8 THEN 25 ELSE 0 END
           + CASE WHEN (ec.payload->'metric'->>'netProfitMarginTTM')::numeric > 10 THEN 25 ELSE 0 END
@@ -277,7 +238,6 @@ async function fetchCandidates(
       LEFT JOIN equity_cache ec ON ec.symbol = a.symbol
       WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
         AND a.symbol NOT IN (SELECT sym FROM held)
-        -- Coverage: tradeable names that EITHER have price history OR fundamentals
         AND (
           EXISTS (
             SELECT 1 FROM price_history ph
@@ -288,8 +248,7 @@ async function fetchCandidates(
         )
     )
     SELECT u.symbol, u.name, u.gics_sector AS sector_src, u.roe, u.rev_growth, u.ev_ebitda,
-           u.roic, u.net_margin, u.market_cap, u.quality,
-           v.annual_vol
+           u.roic, u.net_margin, u.market_cap, u.quality, v.annual_vol
     FROM universe u
     LEFT JOIN LATERAL (
       SELECT stddev(ret) * sqrt(252) AS annual_vol
@@ -301,7 +260,6 @@ async function fetchCandidates(
       ) z WHERE ret IS NOT NULL
     ) v ON true
     WHERE u.gics_sector = ${sector}
-    -- Prefer names we have fundamentals for, then by quality
     ORDER BY u.has_fundamentals DESC, u.quality DESC NULLS LAST, u.symbol
     LIMIT ${limit}
   `
@@ -339,15 +297,11 @@ async function fetchCandidates(
   })
 }
 
-// ── Sizing engine: Risk-Budgeted Conviction Sizing ─────────────────────────
-// Base allocation is set by conviction tier, scaled down for high-volatility
-// names toward a target portfolio vol, then clamped by SAA headroom, a hard
-// single-add ceiling, a sector-concentration cap, and a minimum economic size.
-const SIZE_TARGET_VOL_ANNUAL = 0.25  // names above this get scaled down
-const SIZE_HARD_CEILING_PCT  = 5     // never add more than this in one move
-const SIZE_FLOOR_PCT         = 0.5   // below this, costs outweigh alpha
-const SIZE_SECTOR_CONC_PCT   = 20    // sector above this → tighten new adds
-const SIZE_SECTOR_CONC_CAP   = 1.5   // cap when sector already concentrated
+const SIZE_TARGET_VOL_ANNUAL = 0.25
+const SIZE_HARD_CEILING_PCT  = 5
+const SIZE_FLOOR_PCT         = 0.5
+const SIZE_SECTOR_CONC_PCT   = 20
+const SIZE_SECTOR_CONC_CAP   = 1.5
 
 function convictionToScore(c: 'low' | 'medium' | 'high'): number {
   return c === 'high' ? 0.8 : c === 'medium' ? 0.55 : 0.3
@@ -357,124 +311,83 @@ function computeSuggestedSize(opts: {
   conviction: 'low' | 'medium' | 'high'
   headroomPct: number
   sectorWeightPct: number
-  positionVol?: number   // annualized; omit when unknown (no vol scaling)
+  positionVol?: number
 }): { size_pct: number; rationale: string } {
   const score = convictionToScore(opts.conviction)
-
-  // 1. Conviction-tiered base allocation
   const base = score >= 0.7 ? 3.0 : score >= 0.4 ? 2.0 : 1.0
-
-  // 2. Volatility scalar (only when we have a vol estimate)
   let volScalar = 1.0
   if (opts.positionVol && opts.positionVol > 0) {
     volScalar = Math.min(1.0, SIZE_TARGET_VOL_ANNUAL / opts.positionVol)
   }
-
   let size = base * volScalar
   const beforeCaps = size
-
-  // 3. SAA headroom + hard single-add ceiling
   const ceiling = Math.min(opts.headroomPct, SIZE_HARD_CEILING_PCT)
   size = Math.min(size, ceiling)
-
-  // 4. Sector-concentration cap
   let sectorCapped = false
   if (opts.sectorWeightPct > SIZE_SECTOR_CONC_PCT) {
     size = Math.min(size, SIZE_SECTOR_CONC_CAP)
     sectorCapped = true
   }
-
-  // 5. Minimum economic size — unless headroom itself is below the floor
   if (ceiling >= SIZE_FLOOR_PCT) {
     size = Math.max(size, SIZE_FLOOR_PCT)
   } else {
     size = ceiling
   }
-
   size = Math.round(size * 100) / 100
-
-  const parts = [`${opts.conviction} conviction → ${base.toFixed(1)}% base`]
-  if (volScalar < 1) parts.push(`vol-scaled ×${volScalar.toFixed(2)}`)
+  const parts = [`${opts.conviction} conviction -> ${base.toFixed(1)}% base`]
+  if (volScalar < 1) parts.push(`vol-scaled x${volScalar.toFixed(2)}`)
   if (beforeCaps > ceiling) parts.push(`capped to ${ceiling.toFixed(1)}% headroom/ceiling`)
-  if (sectorCapped) parts.push(`sector >${SIZE_SECTOR_CONC_PCT}% → tightened to ${SIZE_SECTOR_CONC_CAP}%`)
-
+  if (sectorCapped) parts.push(`sector >${SIZE_SECTOR_CONC_PCT}% -> tightened to ${SIZE_SECTOR_CONC_CAP}%`)
   return { size_pct: size, rationale: parts.join('; ') }
 }
 
-// ── Stage A: Rule engines ──────────────────────────────────────────────────
-async function buildThesisSignals(
-  sql: Sql,
-  state: PortfolioState,
-): Promise<SignalDraft[]> {
+async function buildThesisSignals(sql: Sql, state: PortfolioState): Promise<SignalDraft[]> {
   const signals: SignalDraft[] = []
-
   for (const s of state.sectors) {
     if (signals.length >= MAX_PER_CLASS) break
-
     const headroom = THEME_CEILING_PCT - s.weight_pct
-    if (headroom < HEADROOM_MIN_PCT) continue  // at or near ceiling
-    if (s.weight_pct <= 0) continue             // not currently held
-
-    // Relevance scales with current weight (larger existing thesis = higher relevance)
+    if (headroom < HEADROOM_MIN_PCT) continue
+    if (s.weight_pct <= 0) continue
     const relevance = Math.min(100, Math.round(s.weight_pct * 3 + headroom))
     const conviction: 'low' | 'medium' | 'high' =
       s.weight_pct > 15 ? 'high' : s.weight_pct > 8 ? 'medium' : 'low'
-
     const candOpts = { conviction, headroomPct: headroom, sectorWeightPct: s.weight_pct }
     const candidates = await fetchCandidates(sql, s.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
-    // Coherence over coverage: a thesis with no in-sector names to add is not
-    // actionable — skip it rather than surface off-theme tickers.
     if (candidates.length === 0) continue
-
-    const sizing = computeSuggestedSize({
-      conviction,
-      headroomPct:     headroom,
-      sectorWeightPct: s.weight_pct,
-    })
+    const sizing = computeSuggestedSize({ conviction, headroomPct: headroom, sectorWeightPct: s.weight_pct })
     const suggestedSizePct = sizing.size_pct
-
     signals.push({
       signal_class: 'thesis',
       relevance,
       conviction,
       risk_urgency: 0,
       setup_json: {
-        action:              'buy',
-        theme:               s.sector,
-        theme_weight_from:   s.weight_pct,
-        theme_weight_to:     Math.min(s.weight_pct + suggestedSizePct, THEME_CEILING_PCT),
-        suggested_size_pct:  suggestedSizePct,
-        sizing_rationale:    sizing.rationale,
-        subtheme:            s.sector,
-        headroom_pct:        headroom,
-        saa_ceiling_pct:     THEME_CEILING_PCT,
+        action: 'buy',
+        theme: s.sector,
+        theme_weight_from: s.weight_pct,
+        theme_weight_to: Math.min(s.weight_pct + suggestedSizePct, THEME_CEILING_PCT),
+        suggested_size_pct: suggestedSizePct,
+        sizing_rationale: sizing.rationale,
+        subtheme: s.sector,
+        headroom_pct: headroom,
+        saa_ceiling_pct: THEME_CEILING_PCT,
         n_existing_positions: s.n_positions,
       },
       candidates,
       origin_metric: `thesis_extender:${s.sector}:weight=${s.weight_pct}pct`,
     })
   }
-
   return signals
 }
 
-async function buildGapSignals(
-  sql: Sql,
-  state: PortfolioState,
-): Promise<SignalDraft[]> {
+async function buildGapSignals(sql: Sql, state: PortfolioState): Promise<SignalDraft[]> {
   const signals: SignalDraft[] = []
   const { equal_weight_target_pct } = state
-
-  // Identify sectors with zero weight or significant undershoot
-  // Also detect sectors with >0 holdings but still below target
   const gapSectors = state.sectors
-    .filter(s => {
-      const gap = s.weight_pct - equal_weight_target_pct
-      return gap < -GAP_THRESHOLD_PCT
-    })
+    .filter(s => (s.weight_pct - equal_weight_target_pct) < -GAP_THRESHOLD_PCT)
     .sort((a, b) => (a.weight_pct - equal_weight_target_pct) - (b.weight_pct - equal_weight_target_pct))
 
-  // Also check for completely unrepresented sectors with price history
+  const sectorNames = state.sectors.map(s => s.sector)
   const unrepresentedRows = await sql<{ sector: string }[]>`
     SELECT DISTINCT COALESCE(ec.payload->'Overview'->>'Sector', a.sector, 'Other') AS sector
     FROM assets a
@@ -482,7 +395,7 @@ async function buildGapSignals(
     WHERE a.asset_class IN ('Stock', 'us_equity', 'equity', 'etf')
       AND COALESCE(ec.payload->'Overview'->>'Sector', a.sector) IS NOT NULL
       AND COALESCE(ec.payload->'Overview'->>'Sector', a.sector, '') NOT IN (
-        SELECT UNNEST(${state.sectors.map(s => s.sector)}::text[])
+        SELECT UNNEST(${sectorNames}::text[])
       )
     ORDER BY 1
     LIMIT 5
@@ -495,154 +408,124 @@ async function buildGapSignals(
 
   for (const g of allGapTargets) {
     if (signals.length >= MAX_PER_CLASS) break
-
     const gap = g.current_pct - equal_weight_target_pct
     const absgap = Math.abs(gap)
     const relevance = Math.min(100, Math.round(absgap * 8))
     const conviction: 'low' | 'medium' | 'high' =
       absgap > 8 ? 'high' : absgap > 4 ? 'medium' : 'low'
-
     const candOpts = { conviction, headroomPct: absgap, sectorWeightPct: g.current_pct }
     const candidates = await fetchCandidates(sql, g.sector, state.held_symbols, CANDIDATE_LIMIT, candOpts)
-    // No in-sector names to fill this gap → skip rather than recommend off-theme.
     if (candidates.length === 0) continue
-
-    // For gap fills, the room to deploy is the undershoot vs SAA target.
-    const sizing = computeSuggestedSize({
-      conviction,
-      headroomPct:     absgap,
-      sectorWeightPct: g.current_pct,
-    })
-
+    const sizing = computeSuggestedSize({ conviction, headroomPct: absgap, sectorWeightPct: g.current_pct })
     signals.push({
       signal_class: 'gap',
       relevance,
       conviction,
       risk_urgency: 0,
       setup_json: {
-        action:              'buy',
-        theme:               g.sector,
-        gap_pct:             gap,
-        current_weight_pct:  g.current_pct,
-        saa_target_pct:      equal_weight_target_pct,
-        suggested_size_pct:  sizing.size_pct,
-        sizing_rationale:    sizing.rationale,
-        from_gap:            true,
+        action: 'buy',
+        theme: g.sector,
+        gap_pct: gap,
+        current_weight_pct: g.current_pct,
+        saa_target_pct: equal_weight_target_pct,
+        suggested_size_pct: sizing.size_pct,
+        sizing_rationale: sizing.rationale,
+        from_gap: true,
       },
       candidates,
       origin_metric: `gap_filler:${g.sector}:gap=${gap.toFixed(1)}pct_vs_target=${equal_weight_target_pct.toFixed(1)}pct`,
     })
   }
-
   return signals
 }
 
 function buildRiskFlagSignals(state: PortfolioState): SignalDraft[] {
   const signals: SignalDraft[] = []
   const { portfolio_var, positions } = state
-
-  // Name-level VaR concentration flags
   for (const pos of positions) {
     if (signals.length >= MAX_PER_CLASS) break
-
     const varShare = portfolio_var > 0 ? pos.dollar_var_95 / portfolio_var : 0
     const isHighVol = pos.annual_vol > HIGH_VOL_THRESHOLD
-
     if (varShare < VAR_SHARE_THRESHOLD && !isHighVol) continue
-
     const riskUrgency = Math.min(100, Math.round(varShare * 200))
     const relevance   = riskUrgency
     const conviction: 'low' | 'medium' | 'high' =
       varShare > 0.25 ? 'high' : varShare > 0.18 ? 'medium' : 'low'
-
     signals.push({
-      signal_class:  'risk',
+      signal_class: 'risk',
       relevance,
       conviction,
-      risk_urgency:  riskUrgency,
+      risk_urgency: riskUrgency,
       setup_json: {
-        action:               'reduce',
-        name:                 pos.name,
-        symbol:               pos.symbol,
-        var_share_pct:        (varShare * 100).toFixed(1),
-        var_threshold_pct:    (VAR_SHARE_THRESHOLD * 100).toFixed(1),
-        annual_vol_pct:       (pos.annual_vol * 100).toFixed(1),
-        dollar_var_95:        pos.dollar_var_95.toFixed(0),
-        portfolio_var_total:  portfolio_var.toFixed(0),
+        action: 'reduce',
+        name: pos.name,
+        symbol: pos.symbol,
+        var_share_pct: (varShare * 100).toFixed(1),
+        var_threshold_pct: (VAR_SHARE_THRESHOLD * 100).toFixed(1),
+        annual_vol_pct: (pos.annual_vol * 100).toFixed(1),
+        dollar_var_95: pos.dollar_var_95.toFixed(0),
+        portfolio_var_total: portfolio_var.toFixed(0),
         portfolio_weight_pct: (pos.weight * 100).toFixed(1),
-        risk_tier:            pos.risk_tier,
+        risk_tier: pos.risk_tier,
         suggested_reduction_pct: Math.min(pos.weight * 100 * 0.3, 3).toFixed(1),
-        note_on_metrics: 'Using marginal VaR proxy (weight×vol). Component VaR via covariance matrix available after Risk v2.1 view is deployed.',
       },
       candidates: [{
-        ticker:    pos.symbol,
+        ticker: pos.symbol,
         fit_score: 0,
-        sector:    pos.sector,
-        subtheme:  'Reduce concentration',
-        name:      pos.name,
+        sector: pos.sector,
+        subtheme: 'Reduce concentration',
+        name: pos.name,
       }],
       origin_metric: `risk_flag:${pos.symbol}:var_share=${(varShare * 100).toFixed(1)}pct:vol=${(pos.annual_vol * 100).toFixed(0)}pct`,
     })
   }
-
   return signals
 }
 
-// ── Stage B: Claude narrative ──────────────────────────────────────────────
 interface ClaudeNarrative {
   title: string
   thesis_md: string
-  candidate_notes?: Record<string, string>   // ticker → why-this-name rationale
+  candidate_notes?: Record<string, string>
 }
 
 async function callClaude(prompt: string): Promise<ClaudeNarrative | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) {
-    console.warn('ANTHROPIC_API_KEY not set — skipping narrative enrichment')
+    console.warn('ANTHROPIC_API_KEY not set - skipping narrative enrichment')
     return null
   }
-
   try {
     const resp = await fetch(ANTHROPIC_API, {
       method: 'POST',
       headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model:      CLAUDE_MODEL,
+        model: CLAUDE_MODEL,
         max_tokens: 700,
         system: [
           'You are an institutional portfolio analyst for an international, US-dollar-denominated equity portfolio traded through Alpaca.',
           'All monetary values are in USD. Do not reference the JSE, ZAR, or any South-Africa-specific framing.',
           'Generate concise, data-grounded narratives.',
-          'The "thesis_md" covers portfolio-level positioning. The "candidate_notes" must be SECURITY-SPECIFIC:',
-          'for each ticker, explain in 1-2 sentences why THIS name is attractive — the fundamental edge (growth, margins, ROIC, valuation), and a concrete catalyst or mispricing that could give it legs and drive alpha. Be specific to the company, not generic.',
-          'Output ONLY valid JSON with keys "title" (string, one line), "thesis_md" (string, 2-4 sentences), and "candidate_notes" (object mapping each ticker to its 1-2 sentence rationale).',
+          'The thesis_md covers portfolio-level positioning. The candidate_notes must be SECURITY-SPECIFIC:',
+          'for each ticker, explain in 1-2 sentences why THIS name is attractive - the fundamental edge (growth, margins, ROIC, valuation), and a concrete catalyst or mispricing that could give it legs and drive alpha. Be specific to the company, not generic.',
+          'Output ONLY valid JSON with keys title (string, one line), thesis_md (string, 2-4 sentences), and candidate_notes (object mapping each ticker to its 1-2 sentence rationale).',
           'Only reference tickers supplied in the input. Ground claims in the supplied fundamentals; do not fabricate precise figures. If unsure on a catalyst, frame it as the setup the data implies rather than inventing news.',
         ].join(' '),
         messages: [{ role: 'user', content: prompt }],
       }),
     })
-
     if (!resp.ok) {
       const body = await resp.text()
       console.error(`Claude API error ${resp.status}: ${body.slice(0, 300)}`)
       return null
     }
-
     const data = await resp.json()
-    // Filter content blocks defensively
     const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
     if (!textBlock?.text) return null
-
-    // Strip code fences before parsing
-    const raw = textBlock.text
-      .replace(/^```json\s*/i, '')
-      .replace(/```\s*$/, '')
-      .trim()
-
+    const raw = textBlock.text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
     const parsed = JSON.parse(raw)
     if (typeof parsed.title !== 'string' || typeof parsed.thesis_md !== 'string') return null
     const notes = (parsed.candidate_notes && typeof parsed.candidate_notes === 'object')
@@ -654,14 +537,13 @@ async function callClaude(prompt: string): Promise<ClaudeNarrative | null> {
   }
 }
 
-// Compact one-line fundamentals descriptor for a candidate (for the Claude prompt)
 function candFacts(c: Candidate): string {
   const bits: string[] = []
   if (c.market_cap != null) bits.push(`mktcap $${(c.market_cap / 1e9).toFixed(1)}B`)
   if (c.rev_growth != null) bits.push(`rev growth ${c.rev_growth.toFixed(1)}%`)
   if (c.net_margin != null) bits.push(`net margin ${c.net_margin.toFixed(1)}%`)
-  if (c.roic != null)       bits.push(`ROIC ${c.roic.toFixed(1)}%`)
-  if (c.ev_ebitda != null)  bits.push(`EV/EBITDA ${c.ev_ebitda.toFixed(1)}x`)
+  if (c.roic != null) bits.push(`ROIC ${c.roic.toFixed(1)}%`)
+  if (c.ev_ebitda != null) bits.push(`EV/EBITDA ${c.ev_ebitda.toFixed(1)}x`)
   if (c.annual_vol != null) bits.push(`ann.vol ${(c.annual_vol * 100).toFixed(0)}%`)
   if (c.suggested_size_pct != null) bits.push(`suggested ${c.suggested_size_pct.toFixed(1)}% NAV`)
   return `${c.ticker}${c.name ? ` (${c.name})` : ''}: ${bits.length ? bits.join(', ') : 'fundamentals pending'}`
@@ -669,15 +551,12 @@ function candFacts(c: Candidate): string {
 
 async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
   const enriched: SignalDraft[] = []
-
   for (const d of drafts) {
     const setup = d.setup_json
-    // Build per-candidate fundamentals lines for the prompt
     const candLines = d.candidates
-      .filter(c => d.signal_class !== 'risk')   // risk flags are existing positions, not "why buy" candidates
-      .map(c => `  • ${candFacts(c)}`)
+      .filter(() => d.signal_class !== 'risk')
+      .map(c => `  - ${candFacts(c)}`)
       .join('\n')
-
     let prompt: string
     if (d.signal_class === 'thesis') {
       const s = setup as { theme: string; theme_weight_from: number; suggested_size_pct: number; sizing_rationale?: string }
@@ -688,9 +567,9 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
         `Candidates (ticker, company name, fundamentals):`,
         candLines || '  (none)',
         ``,
-        `Write a "thesis_md" (2-4 sentences) covering portfolio-level rationale for extending the ${s.theme} theme.`,
-        `Write "candidate_notes" — for EACH ticker above give 1-2 sentences: why this specific company, what fundamental edge it has (growth/margin/ROIC/valuation), and what catalyst or setup could generate alpha. Be company-specific, not generic.`,
-        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {"TICK": "...", ...}}`,
+        `Write a thesis_md (2-4 sentences) covering portfolio-level rationale for extending the ${s.theme} theme.`,
+        `Write candidate_notes - for EACH ticker above give 1-2 sentences: why this specific company, what fundamental edge it has (growth/margin/ROIC/valuation), and what catalyst or setup could generate alpha. Be company-specific, not generic.`,
+        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {"TICK": "..."}}`,
       ].join('\n')
     } else if (d.signal_class === 'gap') {
       const s = setup as { theme: string; gap_pct: number; saa_target_pct: number; suggested_size_pct: number; sizing_rationale?: string }
@@ -702,9 +581,9 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
         `Candidates (ticker, company name, fundamentals):`,
         candLines || '  (none)',
         ``,
-        `Write "thesis_md" (2-4 sentences): why closing the ${s.theme} underweight improves portfolio construction.`,
-        `Write "candidate_notes" — for EACH ticker above give 1-2 sentences: why this specific company, what fundamental edge it has, and what catalyst or mispricing setup makes it the right entry to close this gap. Be company-specific.`,
-        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {"TICK": "...", ...}}`,
+        `Write thesis_md (2-4 sentences): why closing the ${s.theme} underweight improves portfolio construction.`,
+        `Write candidate_notes - for EACH ticker above give 1-2 sentences: why this specific company, what fundamental edge it has, and what catalyst or mispricing setup makes it the right entry to close this gap. Be company-specific.`,
+        `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {"TICK": "..."}}`,
       ].join('\n')
     } else {
       const s = setup as { symbol: string; name: string; var_share_pct: string; annual_vol_pct: string; suggested_reduction_pct: string }
@@ -716,16 +595,11 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
         `Output JSON only: {"title": "...", "thesis_md": "...", "candidate_notes": {}}`,
       ].join('\n')
     }
-
     const narrative = await callClaude(prompt)
-
-    // Wire per-candidate rationale back onto each candidate's `why` field
     const enrichedCandidates: Candidate[] = d.candidates.map(c => ({
       ...c,
       why: narrative?.candidate_notes?.[c.ticker] ?? c.why,
     }))
-
-    // Clean human-readable fallbacks (never surface the internal origin_metric).
     const theme = (setup.theme as string) || (setup.name as string) || d.candidates[0]?.sector || 'Portfolio'
     const fallbackTitle =
       d.signal_class === 'thesis' ? `Thesis Extender: ${theme}`
@@ -737,73 +611,50 @@ async function enrichWithClaude(drafts: SignalDraft[]): Promise<SignalDraft[]> {
         : d.signal_class === 'gap'
           ? `${theme} is underweight versus its SAA target. The candidates below are in-sector names to close the gap, sized by conviction and volatility.`
           : `${theme} is carrying an outsized share of portfolio risk. Consider trimming toward target to reduce concentration.`
-
     enriched.push({
       ...d,
       candidates: enrichedCandidates,
-      title:     narrative?.title     ?? fallbackTitle,
+      title: narrative?.title ?? fallbackTitle,
       thesis_md: narrative?.thesis_md ?? fallbackThesis,
     })
   }
-
   return enriched
 }
 
-// ── HTTP entry point ───────────────────────────────────────────────────────
-Deno.serve(async (req: Request) => {
+serveGuarded({ user: true }, async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS })
   }
-
   const payload    = await req.json().catch(() => ({}))
   const dryRun     = payload.dry_run === true
   const classFilter: string[] | undefined = payload.class_filter
-
   const sql = postgres(Deno.env.get('SUPABASE_DB_URL')!)
-
   try {
-    console.log(`[${MODULE_NAME}] Signal generation starting — dry_run=${dryRun}`)
-
+    console.log(`[${MODULE_NAME}] Signal generation starting - dry_run=${dryRun}`)
     const state = await buildPortfolioState(sql)
-    console.log(`[${MODULE_NAME}] Portfolio: ${state.positions.length} positions, ${state.n_sectors} sectors, NAV=${state.total_nav.toFixed(0)}`)
-
+    console.log(`[${MODULE_NAME}] Portfolio: ${state.positions.length} positions, ${state.n_sectors} sectors`)
     const allDrafts: SignalDraft[] = []
-
     if (!classFilter || classFilter.includes('thesis')) {
       const thesis = await buildThesisSignals(sql, state)
       allDrafts.push(...thesis)
-      console.log(`[${MODULE_NAME}] Thesis signals: ${thesis.length}`)
     }
-
     if (!classFilter || classFilter.includes('gap')) {
       const gap = await buildGapSignals(sql, state)
       allDrafts.push(...gap)
-      console.log(`[${MODULE_NAME}] Gap signals: ${gap.length}`)
     }
-
     if (!classFilter || classFilter.includes('risk')) {
       const risk = buildRiskFlagSignals(state)
       allDrafts.push(...risk)
-      console.log(`[${MODULE_NAME}] Risk signals: ${risk.length}`)
     }
-
     if (allDrafts.length === 0) {
-      console.log(`[${MODULE_NAME}] No signal candidates generated — portfolio within normal bounds`)
-      return new Response(JSON.stringify({ ok: true, signals_generated: 0, inserted: 0, dry_run: dryRun }), {
-        headers: JSON_HEADERS,
-      })
+      return new Response(JSON.stringify({ ok: true, signals_generated: 0, inserted: 0, dry_run: dryRun }), { headers: JSON_HEADERS })
     }
-
-    // Stage B: Claude enrichment
     const signals = await enrichWithClaude(allDrafts)
-
     if (!dryRun) {
-      // Clear non-muted signals and replace with fresh batch
       await sql`DELETE FROM cortex_signals WHERE is_muted = false`
-
       const generatedAt = new Date().toISOString()
       for (const s of signals) {
         await sql`
@@ -817,36 +668,26 @@ Deno.serve(async (req: Request) => {
              ${s.origin_metric}, ${generatedAt}, false)
         `
       }
-      console.log(`[${MODULE_NAME}] Wrote ${signals.length} signals to cortex_signals`)
-    } else {
-      console.log(`[${MODULE_NAME}] dry_run=true — skipping DB write`)
+      console.log(`[${MODULE_NAME}] Wrote ${signals.length} signals`)
     }
-
     return new Response(
       JSON.stringify({
-        ok:                true,
+        ok: true,
         signals_generated: signals.length,
-        inserted:          dryRun ? 0 : signals.length,
-        dry_run:           dryRun,
+        inserted: dryRun ? 0 : signals.length,
+        dry_run: dryRun,
         breakdown: {
           thesis: signals.filter(s => s.signal_class === 'thesis').length,
-          gap:    signals.filter(s => s.signal_class === 'gap').length,
-          risk:   signals.filter(s => s.signal_class === 'risk').length,
+          gap: signals.filter(s => s.signal_class === 'gap').length,
+          risk: signals.filter(s => s.signal_class === 'risk').length,
         },
-        previews: signals.map(s => ({
-          class:  s.signal_class,
-          title:  s.title,
-          origin: s.origin_metric,
-        })),
+        previews: signals.map(s => ({ class: s.signal_class, title: s.title, origin: s.origin_metric })),
       }),
       { headers: JSON_HEADERS },
     )
   } catch (err) {
     console.error(`[${MODULE_NAME}] Error:`, err)
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: JSON_HEADERS },
-    )
+    return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers: JSON_HEADERS })
   } finally {
     await sql.end()
   }
