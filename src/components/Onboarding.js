@@ -1,8 +1,7 @@
 // ON-1: invite-only onboarding, the browser half.
 //
-//   OnboardingGate   signed in with no portfolio -> connect a broker account
-//                    before the terminal renders. A failed read of the account
-//                    list is a retry screen, never the connect form.
+//   (the gate that decides which onboarding screen shows is WelcomeGate, in
+//    Welcome.js, since ONB-2)
 //   ConnectBrokerForm  broker (Alpaca for now), name, paper/live, key pair.
 //                    Posts to /api/onboarding?action=connect; the keys are
 //                    verified against the broker server-side, stored in Vault
@@ -19,14 +18,11 @@ import React from 'react';
 import { supabase } from '../lib/supabase.js';
 import { writeStoredPortfolio } from '../lib/activePortfolio.js';
 import {
-    onboardingState, validateConnectForm, onboardingErrorMessage, accountCapLine,
+    validateConnectForm, onboardingErrorMessage, accountCapLine,
     canConnectMore, inviteResultText, validateAccessRequest, accountsButtonLabel,
     ACCESS_REQUEST_REPLY, ACCESS_NOTE_MAX, ACCESS_NAME_MAX, requesterName,
-    ONBOARD_LOADING, ONBOARD_FAILED, ONBOARD_NEEDS_ACCOUNT,
 } from '../lib/onboarding.js';
 import { BROKERS } from '../lib/brokerOnboarding.js';
-import { AuthBackdrop } from './auth/AuthBackdrop.js';
-import { AtlasWordmark } from './auth/AtlasWordmark.js';
 import { Field, PasswordField, SubmitButton, Shell } from './auth/AuthFormParts.js';
 import '../styles/onboarding.css';
 
@@ -159,43 +155,7 @@ function Connected({ result, action, actionLabel }) {
 }
 
 /* ---------------------------------------------------------- the gate */
-
-export function OnboardingGate({ children, onSignOut }) {
-    const [st, setSt] = React.useState({ loading: true, error: null, portfolios: null, access: null });
-    const [attempt, setAttempt] = React.useState(0);
-    const [connected, setConnected] = React.useState(null);
-
-    React.useEffect(() => {
-        let live = true;
-        setSt((s) => ({ ...s, loading: true }));
-        readAccess().then((r) => { if (live) setSt({ loading: false, ...r }); });
-        return () => { live = false; };
-    }, [attempt]);
-
-    const state = onboardingState(st);
-    if (state === ONBOARD_LOADING) {
-        return e('main', { className: 'ag-page ag-page--loading', 'aria-busy': 'true' },
-            e(AuthBackdrop, null), e(AtlasWordmark, { className: 'ag-loading-mark' }));
-    }
-    if (state === ONBOARD_FAILED) {
-        return e(Shell, { title: 'Your accounts did not load', subtitle: 'Atlas could not read which accounts you have. Nothing is wrong with them.' },
-            e('div', { className: 'ag-form' },
-                e('button', { type: 'button', className: 'ag-submit', onClick: () => setAttempt((n) => n + 1) }, 'Try again'),
-                e('div', { className: 'ag-row-center' },
-                    e('button', { type: 'button', className: 'ag-link', onClick: onSignOut }, 'Sign out'))));
-    }
-    if (state === ONBOARD_NEEDS_ACCOUNT) {
-        if (connected) {
-            return e(Shell, { title: 'You’re set up', subtitle: null },
-                e(Connected, { result: connected, action: reloadPage, actionLabel: 'Open the terminal' }));
-        }
-        return e(Shell, { title: 'Connect your broker', subtitle: 'Atlas reads your book from your broker. Start with one account; you can add more later.' },
-            e(ConnectBrokerForm, { onConnected: setConnected }),
-            e('div', { className: 'ag-row-center' },
-                e('button', { type: 'button', className: 'ag-link', onClick: onSignOut }, 'Sign out')));
-    }
-    return children;
-}
+// ONB-2: the gate is WelcomeGate (Welcome.js), driven by atlas_my_onboarding.
 
 /* ------------------------------------------------------ the topbar panel */
 

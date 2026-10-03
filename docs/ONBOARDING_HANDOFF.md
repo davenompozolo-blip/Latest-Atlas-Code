@@ -147,6 +147,11 @@ shows 2 approved rows; as the second account, `select atlas_my_onboarding()` ret
 
 ### 4.3 ONB-2 — code sign-in, guard and onboarding screens
 
+> **Status, 2026-10-03.** Built, not yet merged: `src/components/auth/CodeSignIn.js`,
+> `src/components/Welcome.js` (`WelcomeGate`), `src/lib/onboarding/nextStep.js`. The
+> terminal has no router, so steps map to screens rather than URLs. Blocked on §3: sign-ups
+> are disabled, the OTP length is 8, and neither template carries `{{ .Token }}`.
+
 File: `src/lib/onboarding/nextStep.ts` (written). It calls `atlas_my_onboarding()` and maps
 `next_step` to a route; the database makes the decision.
 

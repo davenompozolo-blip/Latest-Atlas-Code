@@ -7546,6 +7546,41 @@ Backfill: both existing users approved. The fourth account's next step is
 `supabase/tests/onb1_onboarding_state_contract.sql`: 12 checks, including that a
 pending account cannot attach a broker and a non-administrator cannot approve.
 
+### The way in is a code; the gate is the database (ONB-2, 2026-10-03)
+
+The landing page asks for an email and sends a one-time code
+(`signInWithOtp`, `shouldCreateUser: true`), then `verifyOtp`
+(`src/components/auth/CodeSignIn.js`). Every address gets the same sentence.
+Signed in, `WelcomeGate` (`src/components/Welcome.js`) asks
+`atlas_my_onboarding()` for the step and renders ONLY that screen: details,
+waiting, connect broker, first sync, revoked, or the terminal on `ready`. A
+failed read is a retry screen, never the terminal. The terminal has no router,
+so a step maps to a screen, not a URL; `src/lib/onboarding/nextStep.js` is the
+handoff's `nextStep.ts` ported to JS.
+
+**`/api/onboarding?action=connect` checks `atlas_is_approved()` with the
+CALLER's token before the broker is asked anything**; an answer it cannot read
+is a 503, never a yes. The `broker_accounts` trigger (ONB-1) is the backstop,
+and its 42501 now reads as `not_approved`, not a 500.
+
+The password form stays for accounts that have one (`?password=1`, or the link
+under the code form) until ONB-4. Request access is no longer linked from the
+landing page; its route is still live.
+
+**Code sign-in does not work until the Auth config changes**, read 2026-10-03:
+`disable_signup` is **true** (a new address is refused: "New sign-ups are not
+open yet"), `mailer_otp_length` is **8** (the form accepts 6-10 digits, so
+either works), neither Magic Link nor Confirm signup carries `{{ .Token }}`
+(people get a link, which still signs them in), and SMTP still points at the
+website. The screens were rendered with the network stubbed; the live send and
+verify are not proven.
+
+**A pending person is invisible to the administrator until ONB-3.** ACCOUNTS ->
+Requests lists `access_requests`, not `atlas_accounts`, so approving someone
+who signed in with a code takes `atlas_admin_set_status` until the pipeline
+ships. ACCOUNTS -> Invite still works: an Auth-invited user is approved
+(`invited_at`, ONB-1).
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
