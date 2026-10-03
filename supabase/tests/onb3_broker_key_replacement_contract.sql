@@ -1,6 +1,6 @@
 -- ONB-3: an owner lists their broker accounts and replaces an account's keys.
 -- Runs inside one block that always raises, so nothing it writes survives --
--- including the Vault update in the happy path. Expect ONB3_ALL_PASSED.
+-- including the Vault updates and the prefix set in case 9. Expect ONB3_ALL_PASSED.
 do $$
 declare
     v_owner uuid;
@@ -70,7 +70,8 @@ begin
     v_ok := false;
     begin
         perform public.atlas_replace_broker_credentials(v_owner, v_pf, v_num, '  ', 'secret-test');
-    exception when others then v_ok := true;
+    exception when raise_exception then
+        if sqlerrm like '%key id and the secret key are required%' then v_ok := true; else raise; end if;
     end;
     if not v_ok then raise exception 'case 6: a blank key id was stored'; end if;
 
@@ -88,6 +89,25 @@ begin
        and details::text not like '%secret-replaced%' and details::text not like '%PKTESTREPLACED%'
        and started_at > now() - interval '1 minute';
     if v_n <> 1 then raise exception 'case 7: expected one clean log row, got %', v_n; end if;
+    -- The account was Vault-held before the write, so the log says so.
+    select count(*) into v_n from public.sync_log
+     where function_name = 'broker_keys_replaced' and portfolio_id = v_pf
+       and details ->> 'previously_held' = 'vault'
+       and started_at > now() - interval '1 minute';
+    if v_n <> 1 then raise exception 'case 7: previously_held should read vault'; end if;
+
+    -- 9. An account carrying BOTH an env prefix and a Vault secret reads the
+    --    Vault first, so the log says 'vault', never the env pair.
+    update public.broker_accounts set credential_prefix = 'ONB3_TEST_PREFIX' where id = v_ba;
+    perform public.atlas_replace_broker_credentials(v_owner, v_pf, v_num, 'PKTESTAGAIN', 'secret-again');
+    select count(*) into v_n from public.sync_log
+     where function_name = 'broker_keys_replaced' and portfolio_id = v_pf
+       and details ->> 'previously_held' = 'vault'
+       and started_at > now() - interval '1 minute';
+    if v_n <> 2 then raise exception 'case 9: a Vault-held account with a prefix was logged as %',
+        (select details ->> 'previously_held' from public.sync_log
+          where function_name = 'broker_keys_replaced' and portfolio_id = v_pf
+          order by id desc limit 1); end if;
 
     -- 8. The browser cannot call the writer at all.
     if has_function_privilege('authenticated', 'public.atlas_replace_broker_credentials(uuid,uuid,text,text,text)', 'execute') then
