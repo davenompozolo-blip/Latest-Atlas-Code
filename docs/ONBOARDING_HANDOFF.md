@@ -91,35 +91,32 @@ not a link.
 
 Each package is one PR. Do not start the next until the previous one's acceptance passes.
 
-### 4.1 ONB-0 — close anonymous reads (blocking, ship first)
+### 4.1 ONB-0 — signed-in isolation (shipped 2026-10-03)
 
-File: `supabase/migrations/20261003005000_close_anon_portfolio_reads.sql` (written, not applied).
+**Superseded as written.** The draft migration this section described
+(`20261003005000_close_anon_portfolio_reads.sql`) was never applied. Measured
+first: `anon` holds no grants (AUTH-2c), and the 43 views in Appendix A return
+nothing to a user without a portfolio, because they read `vw_active_*`.
 
-Problems it fixes:
-- `atlas_member_portfolios()` / `atlas_owner_portfolios()` return **all** portfolios when
-  there is no user. The anon key is in the SPA, so anyone reads every user's `positions`,
-  `transactions`, `account_snapshots`, `portfolio_equity_curve`, `sync_log`.
-- `atlas_active_portfolio()` lets an anonymous caller choose any portfolio via the
-  `x-atlas-portfolio` header (`decisions_anon_read` depends on it).
-- `broker_accounts` and `portfolios` have `using (true)` read policies for anon.
+What shipped is `supabase/migrations/20261003005749_onb0_signed_in_isolation.sql`.
+The rule it enforces:
 
-New rule: signed-in → own memberships; anon JWT → the `is_default` demo portfolio only;
-no JWT (cron, psql, service role) → all, so backend jobs and `atlas_account_sync_health`
-keep working.
+- signed-in user → the portfolios they are a member of (administrators also
+  read `portfolios` / `broker_accounts` for the admin screens);
+- anonymous JWT → **no portfolio at all**. There is no signed-out demo; the
+  terminal does not render without a session;
+- no JWT (pg_cron, psql, the per-account refreshes) → every portfolio, as before.
 
-**Then the views (part of ONB-0, separate commit).** 43 views run as their owner
-(`security_invoker` off), are granted to `authenticated`, read portfolio tables, and do not
-reference `atlas_active_portfolio`, `atlas_member_portfolios` or `auth.uid()`. They bypass
-RLS, so a new signed-in user can read other portfolios through them. List in Appendix A.
-For each: if it reads a table that has a member-based RLS policy, set
-`alter view … set (security_invoker = true)`; otherwise add
-`where portfolio_id in (select atlas_member_portfolios())`. Materialized views (`mv_*`)
-can't be invoker; revoke `select` from `authenticated` and serve them through a filtered
-view. Check each page that uses one still renders for the owner.
+It also closes the signed-in leaks that were actually found: `portfolios`
+(account number, equity, cash in `metadata`), `cortex_signals`, `insight_*`,
+`materialized_insights`, `atlas_validation_log`. ONB-0b revokes
+`trade_universe_members.book_state` / `held_weight_pct` once the Trade page's
+named-column reads are deployed.
 
-Acceptance: the verify block at the bottom of the migration passes; signed out, the landing
-/demo still renders; signed in as the second account, every terminal page shows nothing
-from the owner's portfolios.
+Acceptance: `supabase/tests/onb0_signed_in_isolation_contract.sql` raises
+`ONB0_ALL_PASSED` (it needs ONB-0b for its `held_weight_pct` assertion); signed
+in as the second account, every terminal page shows nothing from the owner's
+portfolios.
 
 ### 4.2 ONB-1 — onboarding state in the database
 

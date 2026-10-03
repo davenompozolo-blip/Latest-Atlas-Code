@@ -2,6 +2,10 @@
 -- book; the owner, administrators and headerless jobs are unaffected.
 -- Run under psql. Always ends in an exception, so nothing it does survives.
 --
+-- The held_weight_pct assertion in case 3 holds only once ONB-0b (the
+-- column revoke on trade_universe_members) is applied; until then this test
+-- fails there, which is the remaining exposure stated rather than hidden.
+--
 -- Needs two auth users: an administrator who is a member of the default
 -- portfolio, and a user with no membership (picked automatically).
 do $$

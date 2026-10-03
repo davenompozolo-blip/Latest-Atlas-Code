@@ -24,7 +24,10 @@ function walk(dir, out = []) {
 /** Each `from('trade_universe_members')` call and the select that follows it. */
 export function memberReads(src) {
     const reads = [];
-    const re = /from\(\s*['"]trade_universe_members['"]\s*\)\s*\.select\(\s*([^)]*)\)/g;
+    // The select may come after other builder calls (.eq, .order, ...), so
+    // match lazily up to the first .select( after the from(); [^;] keeps the
+    // match inside one statement.
+    const re = /from\(\s*['"]trade_universe_members['"]\s*\)[^;]*?\.select\(\s*([^)]*)\)/g;
     let m;
     while ((m = re.exec(src))) reads.push(m[1].trim());
     return reads;
@@ -32,6 +35,12 @@ export function memberReads(src) {
 
 test('detector finds the pre-fix shape', () => {
     assert.deepEqual(memberReads("sb.from('trade_universe_members').select('*')"), ["'*'"]);
+});
+
+test('detector finds a select that follows a filter', () => {
+    assert.deepEqual(
+        memberReads("sb.from('trade_universe_members').eq('eligible', true).select('*')"),
+        ["'*'"]);
 });
 
 test('MEMBER_COLUMNS withholds the default account book columns', () => {
