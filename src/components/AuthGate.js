@@ -25,7 +25,8 @@ import {
 import { AuthBackdrop } from './auth/AuthBackdrop.js';
 import { AtlasWordmark } from './auth/AtlasWordmark.js';
 import { Field, PasswordField, SubmitButton, Shell } from './auth/AuthFormParts.js';
-import { OnboardingGate, RequestAccessForm } from './Onboarding.js';
+import { WelcomeGate } from './Welcome.js';
+import { CodeSignInForm } from './auth/CodeSignIn.js';
 import '../styles/auth-gate.css';
 
 const e = React.createElement;
@@ -148,8 +149,8 @@ function useAuthSession() {
     return [st, setSt];
 }
 
-function SignInForm() {
-    const [mode, setMode] = React.useState('sign_in'); // 'sign_in' | 'reset' | 'request'
+function SignInForm({ onUseCode }) {
+    const [mode, setMode] = React.useState('sign_in'); // 'sign_in' | 'reset'
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [busy, setBusy] = React.useState(false);
@@ -182,10 +183,6 @@ function SignInForm() {
         }
     }
 
-    // RA-1: access is by invitation; a visitor can ask for one.
-    if (mode === 'request') {
-        return e(RequestAccessForm, { onBack: () => { setMode('sign_in'); setError(null); setNote(null); } });
-    }
 
     const signIn = mode === 'sign_in';
     const toggle = e('button', {
@@ -220,12 +217,9 @@ function SignInForm() {
             !signIn && note && e('div', { className: 'ag-note' },
                 'Nothing arriving? Ask your administrator for a link to set a new password.'),
             !signIn && e('div', { className: 'ag-row-center' }, toggle),
-            signIn && e('div', { className: 'ag-row-center ob-ask' },
-                e('span', null, 'No account? '),
-                e('button', {
-                    type: 'button', className: 'ag-link',
-                    onClick: () => { setMode('request'); setError(null); setNote(null); },
-                }, 'Request access'))));
+            signIn && onUseCode && e('div', { className: 'ag-row-center' },
+                e('button', { type: 'button', className: 'ag-link', onClick: onUseCode },
+                    'Sign in with an email code instead'))));
 }
 
 function NewPasswordForm({ onDone, kind }) {
@@ -269,6 +263,19 @@ function NewPasswordForm({ onDone, kind }) {
             error && e('div', { role: 'alert', className: 'ag-error' }, error)));
 }
 
+// ONB-2: a one-time email code is the way in. The password form stays for
+// accounts that already have a password (?password=1, or the link under the
+// code form) until ONB-4 removes it.
+function wantsPassword() {
+    try { return new URLSearchParams(globalThis.location.search).get('password') === '1'; } catch (_) { return false; }
+}
+
+function SignInScreen() {
+    const [password, setPassword] = React.useState(wantsPassword);
+    if (password) return e(SignInForm, { onUseCode: () => setPassword(false) });
+    return e(CodeSignInForm, { onUsePassword: () => setPassword(true) });
+}
+
 export function AuthGate({ children }) {
     const [st, setSt] = useAuthSession();
     const gate = gateState({ configured: !!supabase, loading: st.loading, session: st.session, recovery: st.recovery });
@@ -286,8 +293,10 @@ export function AuthGate({ children }) {
     }
     // ON-1: signed in is not set up. A person with no portfolio connects a
     // broker account before the terminal renders.
-    if (gate === GATE_SIGNED_IN) return e(OnboardingGate, { onSignOut: () => { signOut(); } }, children);
-    return e(SignInForm, null);
+    // ONB-2: signed in is not let in. The database names the step (details,
+    // approval, broker, first sync) and WelcomeGate renders only that screen.
+    if (gate === GATE_SIGNED_IN) return e(WelcomeGate, { onSignOut: () => { signOut(); } }, children);
+    return e(SignInScreen, null);
 }
 
 /** Topbar control: who is signed in, and the way out. */

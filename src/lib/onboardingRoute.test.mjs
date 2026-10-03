@@ -26,6 +26,8 @@ function reset() {
         smtp: false,       // RA-2: false = Auth's built-in mailer, which refuses outside addresses
         linkFails: false,
         decideFails: false,
+        approved: { 'u-admin': true, 'u-member': true },
+        approvalFails: false,
     };
 }
 reset();
@@ -45,6 +47,10 @@ globalThis.fetch = async (url, init = {}) => {
         return json([{ is_admin: ADMINS.has(uid), owned_portfolios: state.owned[uid], account_cap: ADMINS.has(uid) ? null : 3 }]);
     }
     if (u === SB + '/rest/v1/rpc/atlas_is_admin') return json(ADMINS.has(USERS[tok]));
+    if (u === SB + '/rest/v1/rpc/atlas_is_approved') {
+        if (state.approvalFails) return json({ message: 'canceling statement due to statement timeout' }, 500);
+        return json(!!state.approved[USERS[tok]]);
+    }
     if (u === SB + '/rest/v1/rpc/atlas_connect_broker_account') {
         if (tok !== 'service-role-test') return json({ message: 'permission denied' }, 401);
         if (state.connect) return json(state.connect.body, state.connect.status);
@@ -323,4 +329,32 @@ test('decide: a pre-RA-2 request with no surname sends only the name it has', as
     state.requests[RID] = { name: 'Grace Hopper', surname: null, email: 'g@example.com', status: 'pending' };
     await post('decide', { id: RID, decision: 'approve' }, 'tok-admin');
     assert.deepEqual(hits(/\/auth\/v1\/invite/)[0].body.data, { first_name: 'Grace Hopper' });
+});
+
+test('ONB-2 connect: an unapproved caller is refused before the broker is asked', async () => {
+    reset();
+    state.approved['u-member'] = false;
+    const r = await post('connect', GOOD, 'tok-member');
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, 'not_approved');
+    assert.equal(hits(/alpaca|atlas_connect|atlas_my_access/).length, 0);
+    // asked with the caller's own token, never the service key
+    const ask = hits(/atlas_is_approved/)[0];
+    assert.equal(ask.h.authorization, 'Bearer tok-member');
+});
+
+test('ONB-2 connect: an approval check that does not answer is a 503, never a yes', async () => {
+    reset();
+    state.approvalFails = true;
+    const r = await post('connect', GOOD, 'tok-member');
+    assert.equal(r.status, 503);
+    assert.equal(hits(/alpaca|atlas_connect/).length, 0);
+});
+
+test('ONB-2 connect: the database trigger refusing an unapproved owner reads as not approved', async () => {
+    reset();
+    state.connect = { status: 403, body: { code: '42501', message: 'account is not approved' } };
+    const r = await post('connect', GOOD, 'tok-member');
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, 'not_approved');
 });

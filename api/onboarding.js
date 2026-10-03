@@ -61,11 +61,27 @@ async function myAccess(url, userHeaders) {
     return r.body[0];
 }
 
+// true / false, or null when the answer could not be read (never treated as yes).
+async function isApproved(url, userHeaders) {
+    const r = await call(url + '/rest/v1/rpc/atlas_is_approved', {
+        method: 'POST', headers: { ...userHeaders, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!r.ok || typeof r.body !== 'boolean') return null;
+    return r.body;
+}
+
 async function connect(req, res, env) {
     const parsed = parseConnectInput(req.body);
     if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
     const { name, keyId, secretKey, paper } = parsed.value;
     const user = req.atlasAuth.user;
+
+    // ONB-2: approval is checked with the CALLER's token, before the broker is
+    // asked anything. The broker_accounts trigger refuses an unapproved owner
+    // too; that is the backstop, this is the gate.
+    const approved = await isApproved(env.url, env.userHeaders);
+    if (approved === null) return res.status(503).json({ error: 'approval_unavailable', detail: 'Could not confirm your account is approved. Try again.' });
+    if (!approved) return res.status(403).json({ error: 'not_approved', detail: 'Your account is waiting for approval. You can connect a broker once it is approved.' });
 
     // The cap is enforced in the database; asking first only spares the broker
     // a call that cannot lead anywhere.
@@ -89,6 +105,9 @@ async function connect(req, res, env) {
         const code = r.body && r.body.code;
         if (code === '23505') {
             return res.status(409).json({ error: 'already_registered', detail: 'That broker account is already connected to Atlas.' });
+        }
+        if (code === '42501') {
+            return res.status(403).json({ error: 'not_approved', detail: 'Your account is waiting for approval. You can connect a broker once it is approved.' });
         }
         if (code === '23514') {
             return res.status(409).json({ error: 'account_limit', detail: 'You have reached your account limit.' });
