@@ -278,6 +278,11 @@ function RequestsPanel({ onChanged }) {
             if (r.body && (r.body.action_link || r.body.delivered === 'email')) setIssued(r.body);
             load();
             if (onChanged) onChanged();
+        } catch (e2) {
+            // A rejected call (network, aborted fetch) must not leave the row
+            // looking as if nothing was attempted.
+            console.error('[Onboarding] decide threw:', e2 && e2.message ? e2.message : e2);
+            setError('That change was not saved: Atlas could not reach the server. Try again.');
         } finally {
             setBusyId(null);
         }
@@ -523,6 +528,11 @@ function PeoplePanel({ onChanged }) {
             }
             load();
             if (onChanged) onChanged();
+        } catch (e2) {
+            // A rejected call (network, aborted fetch) must not leave the row
+            // looking as if nothing was attempted.
+            console.error('[Onboarding] atlas_admin_set_status threw:', e2 && e2.message ? e2.message : e2);
+            setError('That change was not saved: Atlas could not reach the server. Try again.');
         } finally {
             setBusyId(null);
         }
