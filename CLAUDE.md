@@ -7481,9 +7481,12 @@ read **as the second auth user**, who owns nothing:
 - `portfolios` (`using (true)`): every row, with `metadata` carrying the
   owner's account number, equity and cash.
 - `trade_universe_members.book_state` / `held_weight_pct`: the default
-  account's holdings and weights. Column-revoked in ONB-0b, after the Trade
-  page stopped selecting `*` (`MEMBER_COLUMNS`; `select=*` on a partially
-  granted table is refused, which would have taken the page down for everyone).
+  account's holdings and weights. Column-revoked in ONB-0b
+  (`20261003095022`), applied only once the deployed bundle was confirmed to
+  select named columns (`MEMBER_COLUMNS`): `select=*` on a partially granted
+  table is refused, so revoking first would have taken the Trade page down for
+  everyone. **Order a column revoke after the client that stops reading it is
+  live, and check the deployed bundle, not the branch.**
 - `cortex_signals`, `insight_*`, `materialized_insights`,
   `atlas_validation_log`: built from the default book. Administrators only.
 
