@@ -7508,6 +7508,32 @@ count rows in every relation `authenticated` may select, as a user with no
 membership; anything non-empty is either reference data or a leak, and it
 takes reading a row to tell which.
 
+### Onboarding is a status on the account row (ONB-1, 2026-10-03)
+
+`atlas_accounts` holds one row per auth user -- `pending | approved | revoked`
+and a timestamp per stage -- and `atlas_my_onboarding()` is the one place that
+decides where a signed-in person goes next (`details`, `awaiting_approval`,
+`connect_broker`, `first_sync`, `ready`, `revoked`). The browser reads only its
+own row and writes nothing; every write is a SECURITY DEFINER function or a
+trigger. `atlas_allowlist` is an invite: whoever first signs in with that
+email is approved, with no link to expire. Full plan: `docs/ONBOARDING_HANDOFF.md`.
+
+**The data stamps the stages, not the app.** A trigger on `auth.users` creates
+the row and stamps first sign-in; `broker_accounts` stamps
+`broker_connected_at` and **refuses an unapproved owner, whichever route
+inserts**; `account_snapshots` stamps `first_sync_ok_at`. The two that run
+inside other work (every five-minute sync, every connect) catch their own
+errors: onboarding bookkeeping must never roll back a sync.
+
+**An Auth-invited login is approved** (`invited_at` stamped at creation), so
+ACCOUNTS -> Invite someone keeps working until the code sign-in (ONB-2/3)
+replaces it; without that the new broker gate would refuse every invitee.
+
+Backfill: both existing users approved. The fourth account's next step is
+`details` -- its request predates the surname field -- then `connect_broker`.
+`supabase/tests/onb1_onboarding_state_contract.sql`: 9 checks, including that a
+pending account cannot attach a broker and a non-administrator cannot approve.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
