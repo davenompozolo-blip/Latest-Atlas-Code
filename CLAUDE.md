@@ -7481,9 +7481,12 @@ read **as the second auth user**, who owns nothing:
 - `portfolios` (`using (true)`): every row, with `metadata` carrying the
   owner's account number, equity and cash.
 - `trade_universe_members.book_state` / `held_weight_pct`: the default
-  account's holdings and weights. Column-revoked in ONB-0b, after the Trade
-  page stopped selecting `*` (`MEMBER_COLUMNS`; `select=*` on a partially
-  granted table is refused, which would have taken the page down for everyone).
+  account's holdings and weights. Column-revoked in ONB-0b
+  (`20261003095022`), applied only once the deployed bundle was confirmed to
+  select named columns (`MEMBER_COLUMNS`): `select=*` on a partially granted
+  table is refused, so revoking first would have taken the Trade page down for
+  everyone. **Order a column revoke after the client that stops reading it is
+  live, and check the deployed bundle, not the branch.**
 - `cortex_signals`, `insight_*`, `materialized_insights`,
   `atlas_validation_log`: built from the default book. Administrators only.
 
@@ -7504,6 +7507,44 @@ per-account refreshes) still sees every portfolio.
 count rows in every relation `authenticated` may select, as a user with no
 membership; anything non-empty is either reference data or a leak, and it
 takes reading a row to tell which.
+
+### Onboarding is a status on the account row (ONB-1, 2026-10-03)
+
+`atlas_accounts` holds one row per auth user -- `pending | approved | revoked`
+and a timestamp per stage -- and `atlas_my_onboarding()` is the one place that
+decides where a signed-in person goes next (`details`, `awaiting_approval`,
+`connect_broker`, `first_sync`, `ready`, `revoked`). The browser reads only its
+own row and writes nothing; every write is a SECURITY DEFINER function or a
+trigger. `atlas_allowlist` is an invite: whoever first signs in with that
+email is approved, with no link to expire. Full plan: `docs/ONBOARDING_HANDOFF.md`.
+
+**The data stamps the stages, not the app.** A trigger on `auth.users` creates
+the row and stamps first sign-in; `broker_accounts` stamps
+`broker_connected_at` and **refuses an unapproved owner, whichever route
+inserts**; `account_snapshots` stamps `first_sync_ok_at`. The two that run
+inside other work (every five-minute sync, every connect) catch their own
+errors: onboarding bookkeeping must never roll back a sync.
+
+**An Auth-invited login is approved** (`invited_at` stamped at creation), so
+ACCOUNTS -> Invite someone keeps working until the code sign-in (ONB-2/3)
+replaces it; without that the new broker gate would refuse every invitee.
+
+**A gate on INSERT misses a row whose owner is set later (ONB-1b,
+`20261003101203`).** `atlas_connect_broker_account` registers the broker row
+with `user_id` NULL and UPDATEs the owner afterwards, so the approval gate and
+the `broker_connected_at` stamp, both insert-only, never saw a real connect.
+Both fire on `update of user_id` now; the gate no-ops when the owner does not
+change. **Check how the real path writes a row before gating on one event.**
+The self-heal in `atlas_my_onboarding()` always wrote `pending`, so an invited
+user whose sign-up trigger failed would have waited for approval; it and the
+trigger now share `atlas_ensure_account(uid)`. Both found by CodeRabbit on
+#861; the contract's `<>` checks passed on a missing row (NULL), and are
+`is distinct from` now.
+
+Backfill: both existing users approved. The fourth account's next step is
+`details` -- its request predates the surname field -- then `connect_broker`.
+`supabase/tests/onb1_onboarding_state_contract.sql`: 12 checks, including that a
+pending account cannot attach a broker and a non-administrator cannot approve.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
