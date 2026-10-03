@@ -35,7 +35,7 @@
 .ob-seg-hint { font-size: 12px; font-weight: 400; color: var(--nx-text2); }
 
 .ob-hint {
-  margin: -8px 0 18px;
+  margin: -8px 0 18px;              /* tucks under the field above it */
   font-size: 13px;
   line-height: 1.5;
   color: var(--nx-text2);
@@ -49,6 +49,14 @@
   color: var(--nx-green);
 }
 .ob-done .ob-hint { margin: 10px 0 22px; }
+/* A hint after a button, an error or a whole form has no field to tuck
+   under: the negative margin pulled it into the button's glow. */
+.ag-submit + .ob-hint, .ag-error + .ob-hint, .ag-form + .ob-hint { margin-top: 16px; }
+/* A link inside hint text, not the browser's default blue on a dark card. */
+.ob-hint a, .ag-note a { color: var(--nx-accent); text-underline-offset: 2px; }
+.ob-hint a:hover, .ag-note a:hover { filter: brightness(1.15); }
+/* Nor does the first line of a card with no subtitle: it rode up into the title. */
+.ag-form > .ob-hint:first-child { margin-top: 0; }
 
 /* ------------------------------------------------------- topbar + panel */
 
@@ -182,3 +190,35 @@
   .ob-req-act { flex-direction: row; }
 }
 .ag-form > .ob-done { margin: 14px 0 6px; }
+
+/* ------------------------------------------- ONB-3: My accounts, People */
+
+.ob-panel { max-width: 560px; }
+.ob-tabs { flex-wrap: wrap; row-gap: 0; }
+
+.ob-acct { display: grid; gap: 0; }
+.ob-rekey {
+  margin-top: -1px;
+  padding: 16px 14px 6px;
+  border: 1px solid var(--nx-border);
+  border-top: none;
+  border-radius: 0 0 var(--nx-r-lg) var(--nx-r-lg);
+  background: var(--nx-bg2);
+}
+.ob-acct:has(.ob-rekey) > .ob-req { border-radius: var(--nx-r-lg) var(--nx-r-lg) 0 0; }
+
+.ob-tone-ok   { color: var(--nx-green); }
+.ob-tone-warn { color: var(--nx-amber); }
+.ob-tone-bad  { color: var(--nx-red); }
+.ob-tone-muted { color: var(--nx-text2); }
+
+.ob-group { display: grid; gap: 8px; }
+.ob-group-head {
+  display: flex; justify-content: space-between; align-items: center;
+  width: 100%; padding: 6px 2px; min-height: 36px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--nx-text2); font-family: var(--nx-fb); font-size: 12px; font-weight: 600;
+  letter-spacing: .6px; text-transform: uppercase;
+}
+.ob-group-head:hover { color: var(--nx-text); }
+.ob-group-head:focus-visible { outline: 2px solid var(--nx-accent); outline-offset: 2px; border-radius: var(--nx-r-sm); }

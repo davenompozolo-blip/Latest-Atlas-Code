@@ -126,8 +126,12 @@ When operating Atlas via remote control, use these session roles:
   anything else is `cron.job`. Either way it logs to `sync_log`.
 - **Add a person**: an administrator opens ACCOUNTS (topbar) -> Invite
   someone (or Requests -> Approve, for someone who asked on the landing page),
-  and sends the one-time link it returns (ON-1, RA-1; no email server is
-  configured). The person sets a password, then connects their own broker.
+  and sends the one-time link it returns (ON-1, RA-1; email is not delivering
+  yet). The link lasts 10 minutes. The person sets a password, then connects
+  their own broker. Someone who signs up with an email code appears under
+  ACCOUNTS -> People to approve.
+- **Replace an account's broker keys**: its owner, ACCOUNTS -> My accounts ->
+  Replace keys (ONB-3). Only a pair for the same broker account is accepted.
 - **Add a broker account**: signed in, ACCOUNTS -> Connect an account (or the
   connect screen a person with no portfolio lands on), which posts to
   `/api/onboarding?action=connect`. Keys verified against the broker, account
@@ -7580,6 +7584,47 @@ Requests lists `access_requests`, not `atlas_accounts`, so approving someone
 who signed in with a code takes `atlas_admin_set_status` until the pipeline
 ships. ACCOUNTS -> Invite still works: an Auth-invited user is approved
 (`invited_at`, ONB-1).
+
+### Password first; keys can be replaced; people are listed (ONB-2b, ONB-3, 2026-10-03)
+
+The fourth account was onboarded through an administrator's set-password link
+(ACCOUNTS -> Invite someone -> "Give me the link instead"). Its first invite
+links had landed on Vercel's login page (RA-2), so it **never had a password**:
+the auth log shows two link logins and no `user_updated` event, which is why
+"invalid credentials" was correct.
+
+**The landing page is the password form again** (ONB-2b). The email code is the
+second way in and the only way to START an account: the link under the password
+form, or `?code=1`. Code sign-in still waits on the Resend domain (`550 domain
+is not verified` in the auth log) and on sign-ups being enabled.
+
+**ACCOUNTS -> My accounts** (everyone) lists the caller's owned accounts through
+`atlas_my_broker_accounts()` -- last four of the account number, where the keys
+are held, the last positions sync -- and **Replace keys**, which posts to
+`/api/onboarding?action=replace_keys`. The new pair is checked on the ACCOUNT's
+environment (never the body's) and `atlas_replace_broker_credentials` refuses
+it unless `/v2/account` reports the registered account number: the identity
+gate, applied before the write rather than discovered by the next sync. An
+env-held pair (Primary, Secondary) moves into Vault when replaced. Each
+replacement writes a `sync_log` row (`broker_keys_replaced`) naming who, never
+the key. `supabase/tests/onb3_broker_key_replacement_contract.sql` 8/8.
+
+**ACCOUNTS -> People** (administrators) lists `atlas_admin_accounts()` grouped
+waiting / active / never finished / revoked, with Approve, Revoke (asks first;
+deletes their sessions) and Restore through `atlas_admin_set_status`. The
+ACCOUNTS badge counts access requests plus people waiting.
+
+**An invite link now lasts 10 minutes**, not an hour: `mailer_otp_exp` was
+lowered to 600 for codes and links share it. Send a link when the person is
+ready to click it.
+
+**A negative top margin is only safe under a field.** `.ob-hint` tucks up
+`-8px` under the field above it; placed after the connect button it rode into
+the button's glow. The render check counts overlapping text boxes inside the
+card on every onboarding screen, and was 0 for all eight after the fix.
+
+**Not done:** approval and invite emails (`notify-account-event`, ONB-5) wait on
+the Resend domain; the Requests tab and `access_requests` stay until ONB-4.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

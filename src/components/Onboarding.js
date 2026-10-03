@@ -23,6 +23,10 @@ import {
     ACCESS_REQUEST_REPLY, ACCESS_NOTE_MAX, ACCESS_NAME_MAX, requesterName,
 } from '../lib/onboarding.js';
 import { BROKERS } from '../lib/brokerOnboarding.js';
+import {
+    validateReplaceKeys, keysHeldLabel, syncLine, accountLine,
+    groupPeople, actionsFor, waitingCount, personName, personWhen, stageInfo,
+} from '../lib/accountsAdmin.js';
 import { Field, PasswordField, SubmitButton, Shell } from './auth/AuthFormParts.js';
 import '../styles/onboarding.css';
 
@@ -383,6 +387,184 @@ export function RequestAccessForm({ onBack }) {
             back));
 }
 
+/* ------------------------------------------- ONB-3: My accounts */
+
+async function readMyBrokerAccounts() {
+    if (!supabase) return { rows: null, error: 'no Supabase client' };
+    const { data, error } = await supabase.rpc('atlas_my_broker_accounts');
+    if (error) {
+        console.error('[Onboarding] atlas_my_broker_accounts:', error.message || error);
+        return { rows: null, error: error.message || String(error) };
+    }
+    return { rows: data || [], error: null };
+}
+
+/** New keys for an account already connected. The environment is the
+ *  account's: a paper account takes paper keys. */
+function ReplaceKeysForm({ row, onDone, onCancel }) {
+    const [keyId, setKeyId] = React.useState('');
+    const [secretKey, setSecretKey] = React.useState('');
+    const [busy, setBusy] = React.useState(false);
+    const [error, setError] = React.useState(null);
+    const paper = row.is_paper !== false;
+
+    async function onSubmit(ev) {
+        ev.preventDefault();
+        setError(null);
+        const invalid = validateReplaceKeys({ keyId, secretKey, paper });
+        if (invalid) { setError(invalid); return; }
+        setBusy(true);
+        try {
+            const r = await postOnboarding('replace_keys', { portfolio_id: row.portfolio_id, key_id: keyId.trim(), secret_key: secretKey.trim() });
+            if (!r.ok) { setError(onboardingErrorMessage(r.status, r.body)); return; }
+            setKeyId(''); setSecretKey('');
+            onDone(r.body);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return e('form', { onSubmit, noValidate: true, className: 'ag-form ob-compact ob-rekey' },
+        e(Field, {
+            id: 'ob-rekey-key-' + row.portfolio_id, label: 'New API key ID', icon: 'lock', value: keyId,
+            placeholder: paper ? 'PK…' : 'AK…', autoComplete: 'off', autoCapitalize: 'none', spellCheck: false,
+            onChange: (ev) => setKeyId(ev.target.value),
+        }),
+        e(PasswordField, {
+            id: 'ob-rekey-secret-' + row.portfolio_id, label: 'New secret key', value: secretKey,
+            placeholder: 'The new secret key', autoComplete: 'off', onChange: (ev) => setSecretKey(ev.target.value),
+        }),
+        e('p', { className: 'ob-hint' },
+            'Generate a new pair in the Alpaca dashboard first. Atlas checks it belongs to this same account before saving it; the old pair stops being used straight away.'),
+        e(SubmitButton, { busy, busyLabel: 'Checking with Alpaca…', label: 'Replace keys' }),
+        error && e('div', { role: 'alert', className: 'ag-error' }, error),
+        e('div', { className: 'ag-row-center' },
+            e('button', { type: 'button', className: 'ag-link', onClick: onCancel }, 'Cancel')));
+}
+
+function MyAccountsPanel() {
+    const [st, setSt] = React.useState({ loading: true, rows: null, error: null });
+    const [open, setOpen] = React.useState(null);
+    const [done, setDone] = React.useState(null);
+    const load = React.useCallback(() => {
+        setSt((s) => ({ ...s, loading: true }));
+        readMyBrokerAccounts().then((r) => setSt({ loading: false, ...r }));
+    }, []);
+    React.useEffect(() => { load(); }, [load]);
+
+    if (st.loading && !st.rows) return e('p', { className: 'ob-hint' }, 'Loading your accounts…');
+    if (st.error) {
+        return e('div', null,
+            e('p', { className: 'ag-error' }, 'Your accounts did not load. Nothing has changed on them.'),
+            e('button', { type: 'button', className: 'ob-copy', onClick: load }, 'Try again'));
+    }
+    if (st.rows.length === 0) return e('p', { className: 'ob-hint' }, 'You have no broker accounts connected yet.');
+    return e('div', { className: 'ob-requests' },
+        done && e('div', { className: 'ob-link', role: 'status' },
+            e('p', null, 'Keys replaced for the account ending ' + (done.account_last4 || '') + '. A sync on the new keys has started.')),
+        st.rows.map((row) => {
+            const sync = syncLine(row);
+            return e('div', { key: row.portfolio_id, className: 'ob-acct' },
+                e('div', { className: 'ob-req' },
+                    e('div', { className: 'ob-req-who' },
+                        e('div', { className: 'ob-req-name' }, row.portfolio_name || 'Broker account'),
+                        e('div', { className: 'ob-req-email' }, accountLine(row)),
+                        e('div', { className: 'ob-req-note' }, keysHeldLabel(row.keys_held)),
+                        e('div', { className: 'ob-req-when ob-tone-' + sync.tone }, sync.text)),
+                    open !== row.portfolio_id && e('div', { className: 'ob-req-act' },
+                        e('button', {
+                            type: 'button', className: 'ob-copy',
+                            onClick: () => { setOpen(row.portfolio_id); setDone(null); },
+                        }, 'Replace keys'))),
+                open === row.portfolio_id && e(ReplaceKeysForm, {
+                    row, onCancel: () => setOpen(null),
+                    onDone: (body) => { setOpen(null); setDone(body); load(); },
+                }));
+        }));
+}
+
+/* ------------------------------------------------- ONB-3: People */
+
+async function readPeople() {
+    if (!supabase) return { rows: null, error: 'no Supabase client' };
+    const { data, error } = await supabase.rpc('atlas_admin_accounts');
+    if (error) {
+        console.error('[Onboarding] atlas_admin_accounts:', error.message || error);
+        return { rows: null, error: error.message || String(error) };
+    }
+    return { rows: data || [], error: null };
+}
+
+/** Everyone who has signed in, by stage; approve, revoke, restore. */
+function PeoplePanel({ onChanged }) {
+    const [st, setSt] = React.useState({ loading: true, rows: null, error: null });
+    const [selfId, setSelfId] = React.useState(null);
+    const [busyId, setBusyId] = React.useState(null);
+    const [error, setError] = React.useState(null);
+    const [shown, setShown] = React.useState({});
+    const load = React.useCallback(() => {
+        setSt((s) => ({ ...s, loading: true }));
+        readPeople().then((r) => setSt({ loading: false, ...r }));
+    }, []);
+    React.useEffect(() => {
+        load();
+        if (supabase) supabase.auth.getUser().then(({ data }) => setSelfId((data && data.user && data.user.id) || null));
+    }, [load]);
+
+    async function act(row, a) {
+        if (a.confirm && !globalThis.confirm(a.confirm)) return;
+        setError(null); setBusyId(row.user_id);
+        try {
+            const { error: err } = await supabase.rpc('atlas_admin_set_status', { p_user_id: row.user_id, p_status: a.to });
+            if (err) {
+                console.error('[Onboarding] atlas_admin_set_status:', err.message || err);
+                setError('That change was not saved: ' + (err.message || 'the database refused it') + '.');
+                return;
+            }
+            load();
+            if (onChanged) onChanged();
+        } finally {
+            setBusyId(null);
+        }
+    }
+
+    if (st.loading && !st.rows) return e('p', { className: 'ob-hint' }, 'Loading people…');
+    if (st.error) {
+        return e('div', null,
+            e('p', { className: 'ag-error' }, 'The list of people did not load. Nobody’s access has changed.'),
+            e('button', { type: 'button', className: 'ob-copy', onClick: load }, 'Try again'));
+    }
+    const groups = groupPeople(st.rows);
+    if (groups.length === 0) return e('p', { className: 'ob-hint' }, 'Nobody has signed in yet.');
+    return e('div', { className: 'ob-requests' },
+        error && e('div', { role: 'alert', className: 'ag-error' }, error),
+        groups.map((g) => {
+            const open = shown[g.id] === undefined ? !g.collapsed : shown[g.id];
+            return e('section', { key: g.id, className: 'ob-group' },
+                e('button', {
+                    type: 'button', className: 'ob-group-head', 'aria-expanded': open,
+                    onClick: () => setShown((x) => ({ ...x, [g.id]: !open })),
+                }, g.title + ' · ' + g.rows.length, e('span', { 'aria-hidden': 'true' }, open ? '−' : '+')),
+                open && g.rows.map((row) => {
+                    const info = stageInfo(row.stage);
+                    const when = personWhen(row);
+                    return e('div', { key: row.user_id, className: 'ob-req' },
+                        e('div', { className: 'ob-req-who' },
+                            e('div', { className: 'ob-req-name' }, personName(row)),
+                            personName(row) !== row.email && e('div', { className: 'ob-req-email' }, row.email),
+                            e('div', { className: 'ob-req-note ob-tone-' + info.tone }, info.label
+                                + (row.portfolio_count ? ' · ' + row.portfolio_count + ' account' + (row.portfolio_count === 1 ? '' : 's') : '')),
+                            when && e('div', { className: 'ob-req-when' }, when)),
+                        e('div', { className: 'ob-req-act' },
+                            actionsFor(row, selfId).map((a) => e('button', {
+                                key: a.to, type: 'button', disabled: busyId === row.user_id,
+                                className: a.to === 'revoked' ? 'ob-decline' : 'ob-copy',
+                                onClick: () => act(row, a),
+                            }, busyId === row.user_id ? 'Working…' : a.label))));
+                }));
+        }));
+}
+
 function AccountsPanel({ onClose, onRequestsChanged }) {
     const [access, setAccess] = React.useState(undefined);   // undefined loading, null unknown
     const [tab, setTab] = React.useState('connect');
@@ -403,7 +585,11 @@ function AccountsPanel({ onClose, onRequestsChanged }) {
     const isAdmin = !!(access && access.is_admin);
     const capLine = accountCapLine(access);
     let body;
-    if (tab === 'invite' && isAdmin) {
+    if (tab === 'mine') {
+        body = e(MyAccountsPanel, null);
+    } else if (tab === 'people' && isAdmin) {
+        body = e(PeoplePanel, { onChanged: onRequestsChanged });
+    } else if (tab === 'invite' && isAdmin) {
         body = e(InviteForm, null);
     } else if (tab === 'requests' && isAdmin) {
         body = e(RequestsPanel, { onChanged: onRequestsChanged });
@@ -423,8 +609,10 @@ function AccountsPanel({ onClose, onRequestsChanged }) {
             e('div', { className: 'ob-panel-head' },
                 e('h2', { id: 'ob-panel-title' }, 'Accounts'),
                 e('button', { type: 'button', className: 'ob-x', 'aria-label': 'Close', onClick: onClose }, '×')),
-            isAdmin && e('div', { className: 'ob-tabs', role: 'tablist' },
-                [['connect', 'Connect an account'], ['invite', 'Invite someone'], ['requests', 'Requests']].map(([t, label]) => e('button', {
+            e('div', { className: 'ob-tabs', role: 'tablist' },
+                (isAdmin
+                    ? [['connect', 'Connect'], ['mine', 'My accounts'], ['people', 'People'], ['invite', 'Invite'], ['requests', 'Requests']]
+                    : [['connect', 'Connect'], ['mine', 'My accounts']]).map(([t, label]) => e('button', {
                     key: t, type: 'button', role: 'tab', 'aria-selected': tab === t,
                     className: 'ob-tab' + (tab === t ? ' is-on' : ''), onClick: () => setTab(t),
                 }, label))),
@@ -440,17 +628,23 @@ export function AccountsButton() {
     // rows to anyone else, so a non-admin's count is simply 0.
     const refreshPending = React.useCallback(() => {
         if (!supabase) return;
-        supabase.from('access_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending')
-            .then(({ count, error }) => {
-                if (error) { console.error('[Onboarding] pending requests:', error.message || error); return; }
-                setPending(count || 0);
-            });
+        // ONB-3: plus the people who signed in and are waiting for approval.
+        // atlas_admin_accounts refuses a non-administrator (42501): that is 0,
+        // not an error worth logging.
+        Promise.all([
+            supabase.from('access_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+            supabase.rpc('atlas_admin_accounts'),
+        ]).then(([req, ppl]) => {
+            if (req.error) console.error('[Onboarding] pending requests:', req.error.message || req.error);
+            if (ppl.error && ppl.error.code !== '42501') console.error('[Onboarding] waiting people:', ppl.error.message || ppl.error);
+            setPending((req.error ? 0 : (req.count || 0)) + (ppl.error ? 0 : waitingCount(ppl.data)));
+        });
     }, []);
     React.useEffect(() => { refreshPending(); }, [refreshPending]);
     return e(React.Fragment, null,
         e('button', {
             type: 'button', onClick: () => setOpen(true),
-            title: pending ? pending + ' request' + (pending === 1 ? '' : 's') + ' for access waiting' : 'Connect a broker account or invite someone',
+            title: pending ? pending + (pending === 1 ? ' person is' : ' people are') + ' waiting for you to approve access' : 'Your broker accounts, and people (administrators)',
             className: 'ob-topbar-btn' + (pending ? ' has-pending' : ''),
         }, accountsButtonLabel(pending)),
         open && e(AccountsPanel, { onClose: () => setOpen(false), onRequestsChanged: refreshPending }));

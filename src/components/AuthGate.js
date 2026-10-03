@@ -219,7 +219,7 @@ function SignInForm({ onUseCode }) {
             !signIn && e('div', { className: 'ag-row-center' }, toggle),
             signIn && onUseCode && e('div', { className: 'ag-row-center' },
                 e('button', { type: 'button', className: 'ag-link', onClick: onUseCode },
-                    'Sign in with an email code instead'))));
+                    'New here, or no password? Use an email code'))));
 }
 
 function NewPasswordForm({ onDone, kind }) {
@@ -263,17 +263,18 @@ function NewPasswordForm({ onDone, kind }) {
             error && e('div', { role: 'alert', className: 'ag-error' }, error)));
 }
 
-// ONB-2: a one-time email code is the way in. The password form stays for
-// accounts that already have a password (?password=1, or the link under the
-// code form) until ONB-4 removes it.
-function wantsPassword() {
-    try { return new URLSearchParams(globalThis.location.search).get('password') === '1'; } catch (_) { return false; }
+// ONB-2b: the password form is the landing page. An email code is the second
+// way in, and the only way to start an account (sign-up has no password):
+// the link under the password form, or ?code=1 for a link that should open
+// on it. The code form links back.
+function wantsCode() {
+    try { return new URLSearchParams(globalThis.location.search).get('code') === '1'; } catch (_) { return false; }
 }
 
 function SignInScreen() {
-    const [password, setPassword] = React.useState(wantsPassword);
-    if (password) return e(SignInForm, { onUseCode: () => setPassword(false) });
-    return e(CodeSignInForm, { onUsePassword: () => setPassword(true) });
+    const [code, setCode] = React.useState(wantsCode);
+    if (code) return e(CodeSignInForm, { onUsePassword: () => setCode(false) });
+    return e(SignInForm, { onUseCode: () => setCode(true) });
 }
 
 export function AuthGate({ children }) {

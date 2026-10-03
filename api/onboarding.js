@@ -7,6 +7,14 @@
 //   POST /api/onboarding?action=invite   { "email": "...", "link": false }   administrators only
 //   POST /api/onboarding?action=decide   { "id": "...", "decision": "approve"|"decline" }
 //                                        administrators only (RA-1 access requests)
+//   POST /api/onboarding?action=replace_keys
+//        { "portfolio_id": "...", "key_id": "...", "secret_key": "..." }
+//
+// replace_keys (ONB-3): the OWNER of a connected account swaps its key pair --
+// after a key is exposed, or rotated at the broker. The new keys are checked
+// with the broker on the account's own environment, and must report the SAME
+// account number that was registered; the account keeps its portfolio,
+// history and owner. A pair for a different account is refused, never stored.
 //
 // connect: a signed-in person connects THEIR OWN broker account. The keys are
 // verified against the broker, the account number is taken from the broker's
@@ -28,12 +36,13 @@
 
 import { withAuth, supabaseEnv, supabaseHeaders } from '../src/lib/apiAuth.js';
 import {
-    parseConnectInput, parseInviteInput, verifyAlpacaKeys, keysRejectedDetail,
+    parseConnectInput, parseInviteInput, parseReplaceKeysInput, verifyAlpacaKeys, keysRejectedDetail,
     startFirstSyncs, last4, inviteRedirect, AUTH_TIMEOUT_MS,
 } from '../src/lib/brokerOnboarding.js';
 
-// Supabase Auth's mailer_otp_exp: how long an invite link works.
-export const INVITE_LINK_TTL_SECONDS = 3600;
+// Supabase Auth's mailer_otp_exp: how long an invite link works. Lowered from
+// 3600 to 600 on 2026-10-03, with the email-code expiry it shares.
+export const INVITE_LINK_TTL_SECONDS = 600;
 
 // Never throws: a timeout or transport failure comes back as ok:false, status null.
 async function call(url, init) {
@@ -120,6 +129,53 @@ async function connect(req, res, env) {
     return res.status(201).json({
         portfolio_id: portfolioId, name, account_last4: last4(acct.accountNumber), paper, first_syncs: syncs,
     });
+}
+
+// The caller's own accounts, read with THEIR token: an account they do not own
+// is simply absent. Answers the row, null when not theirs, undefined when the
+// list could not be read (never treated as "not theirs").
+async function ownedAccount(url, userHeaders, portfolioId) {
+    const r = await call(url + '/rest/v1/rpc/atlas_my_broker_accounts', {
+        method: 'POST', headers: { ...userHeaders, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!r.ok || !Array.isArray(r.body)) return undefined;
+    return r.body.find((row) => row && row.portfolio_id === portfolioId) || null;
+}
+
+async function replaceKeys(req, res, env) {
+    const parsed = parseReplaceKeysInput(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
+    const { portfolioId, keyId, secretKey } = parsed.value;
+    const user = req.atlasAuth.user;
+
+    const acct = await ownedAccount(env.url, env.userHeaders, portfolioId);
+    if (acct === undefined) return res.status(503).json({ error: 'access_unavailable', detail: 'Could not read your accounts. Try again.' });
+    if (acct === null) return res.status(403).json({ error: 'not_owner', detail: 'Only the account\u2019s owner can replace its keys.' });
+    const paper = acct.is_paper !== false;
+
+    const checked = await verifyAlpacaKeys(keyId, secretKey, paper);
+    if (!checked.ok) return res.status(422).json({ error: 'credentials_rejected', detail: keysRejectedDetail(paper, checked.status) });
+
+    const r = await call(env.url + '/rest/v1/rpc/atlas_replace_broker_credentials', {
+        method: 'POST', headers: serviceHeaders(env.serviceKey),
+        body: JSON.stringify({
+            p_user_id: user.id, p_portfolio_id: portfolioId, p_account_number: checked.accountNumber,
+            p_key_id: keyId, p_secret_key: secretKey,
+        }),
+    });
+    if (!r.ok) {
+        const code = r.body && r.body.code;
+        if (code === '22023') {
+            return res.status(409).json({ error: 'different_account', detail: 'Those keys belong to a different Alpaca account (ending ' + last4(checked.accountNumber) + '). Nothing was changed.' });
+        }
+        if (code === '42501') return res.status(403).json({ error: 'not_owner', detail: 'Only the account\u2019s owner can replace its keys.' });
+        console.error('onboarding: replace_keys failed:', r.status, (r.body && r.body.message) || '');
+        return res.status(r.status ? 500 : 504).json({ error: 'replace_failed', detail: 'The keys could not be saved. The old keys are still in place; try again.' });
+    }
+    // The next five-minute sync reads the new pair; start one now so the
+    // account is confirmed on them straight away.
+    const syncs = await startFirstSyncs(env.url, portfolioId, process.env.CRON_SECRET);
+    return res.status(200).json({ portfolio_id: portfolioId, account_last4: r.body, paper, first_syncs: syncs });
 }
 
 function alreadyRegistered(r) {
@@ -286,7 +342,8 @@ async function handler(req, res) {
     if (action === 'connect') return connect(req, res, env);
     if (action === 'invite') return invite(req, res, env);
     if (action === 'decide') return decide(req, res, env);
-    return res.status(400).json({ error: 'action must be connect, invite or decide' });
+    if (action === 'replace_keys') return replaceKeys(req, res, env);
+    return res.status(400).json({ error: 'action must be connect, invite, decide or replace_keys' });
 }
 
 // A signed-in person only. The cron secret has no business here: an account
