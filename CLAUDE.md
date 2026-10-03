@@ -7529,9 +7529,21 @@ errors: onboarding bookkeeping must never roll back a sync.
 ACCOUNTS -> Invite someone keeps working until the code sign-in (ONB-2/3)
 replaces it; without that the new broker gate would refuse every invitee.
 
+**A gate on INSERT misses a row whose owner is set later (ONB-1b,
+`20261003101203`).** `atlas_connect_broker_account` registers the broker row
+with `user_id` NULL and UPDATEs the owner afterwards, so the approval gate and
+the `broker_connected_at` stamp, both insert-only, never saw a real connect.
+Both fire on `update of user_id` now; the gate no-ops when the owner does not
+change. **Check how the real path writes a row before gating on one event.**
+The self-heal in `atlas_my_onboarding()` always wrote `pending`, so an invited
+user whose sign-up trigger failed would have waited for approval; it and the
+trigger now share `atlas_ensure_account(uid)`. Both found by CodeRabbit on
+#861; the contract's `<>` checks passed on a missing row (NULL), and are
+`is distinct from` now.
+
 Backfill: both existing users approved. The fourth account's next step is
 `details` -- its request predates the surname field -- then `connect_broker`.
-`supabase/tests/onb1_onboarding_state_contract.sql`: 9 checks, including that a
+`supabase/tests/onb1_onboarding_state_contract.sql`: 12 checks, including that a
 pending account cannot attach a broker and a non-administrator cannot approve.
 
 ### Sync Status UI
