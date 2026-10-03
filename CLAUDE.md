@@ -7465,6 +7465,46 @@ RA-2 holds the full name there and has no surname, and `requesterName()` reads
 it as it is. The submit function takes `p_surname` as a defaulted trailing
 argument, so the route that was live while the migration applied kept working.
 
+### Measure isolation by reading as the other user (ONB-0, 2026-10-03)
+
+The onboarding handoff listed two blockers: anon can read every portfolio, and
+43 owner-run views leak the owner's book. **Measured, neither held.** `anon`
+holds no table, view or function grant (AUTH-2c), and every one of the 43
+views returns nothing to a user with no portfolio: they read `vw_active_*`,
+which filters by membership one layer down. The list came from a regex over
+view text, and a view that inherits its filter shows no filter in its own
+text.
+
+What did leak, found by selecting from all 213 relations `authenticated` may
+read **as the second auth user**, who owns nothing:
+
+- `portfolios` (`using (true)`): every row, with `metadata` carrying the
+  owner's account number, equity and cash.
+- `trade_universe_members.book_state` / `held_weight_pct`: the default
+  account's holdings and weights. Column-revoked in ONB-0b, after the Trade
+  page stopped selecting `*` (`MEMBER_COLUMNS`; `select=*` on a partially
+  granted table is refused, which would have taken the page down for everyone).
+- `cortex_signals`, `insight_*`, `materialized_insights`,
+  `atlas_validation_log`: built from the default book. Administrators only.
+
+**Removing a `using (true)` policy exposed four dead ones.** `portfolios`
+carried `*_for_org_members` policies calling `private.is_org_member`, which
+`authenticated` cannot execute. The `true` policy had kept them unreached;
+without it every read of `portfolios` failed. No row has an organisation, so
+they are dropped, along with the browser's INSERT/UPDATE/DELETE on
+`portfolios` -- which only that permission error had been stopping.
+
+The anonymous branches of `atlas_member_portfolios()`,
+`atlas_owner_portfolios()` and `atlas_active_portfolio()` now answer nothing.
+There is no signed-out demo; a caller with no JWT at all (pg_cron, psql, the
+per-account refreshes) still sees every portfolio.
+
+**The test is the reading, not the grep:**
+`supabase/tests/onb0_signed_in_isolation_contract.sql`. To audit again,
+count rows in every relation `authenticated` may select, as a user with no
+membership; anything non-empty is either reference data or a leak, and it
+takes reading a row to tell which.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

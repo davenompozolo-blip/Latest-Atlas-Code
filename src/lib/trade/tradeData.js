@@ -13,6 +13,16 @@ import { sb } from '../supabase.js';
 import { performanceSnapshot } from './performance.js';
 import { overlayActiveBook, heldSymbols } from './bookOverlay.js';
 
+// Every trade_universe_members column the browser may read. book_state and
+// held_weight_pct are the DEFAULT account's and are withheld (ONB-0b); the
+// active account's values come from overlayActiveBook.
+export const MEMBER_COLUMNS = [
+    'universe_id', 'as_of_date', 'symbol', 'eligible', 'exclusion_code', 'exclusion_detail',
+    'gate_stage', 'rank', 'composite', 'net', 'alignment', 'dispersion', 'sector', 'geography',
+    'market_cap_usd', 'market_cap_bucket', 'adv_usd', 'spread_bps', 'momentum_pct', 'vol_pct',
+    'liquidity_pct', 'iv_rank', 'options_listed', 'days_to_earnings', 'borrow_status', 'metrics',
+].join(',');
+
 const UNIVERSE_CODE = 'us_core';
 
 // How many excluded names the drawer carries. Enough to browse, not so many
@@ -67,26 +77,27 @@ export async function loadUniverse({ asOf = null } = {}) {
     // sample with held names first — its headline count comes from the snapshot.
     // The active account's live book. The stored book_state / held_weight_pct
     // describe the DEFAULT portfolio (trade-sync runs with no request context),
-    // so they are overlaid from this -- see bookOverlay.js.
+    // so they are overlaid from this -- see bookOverlay.js. They are also NOT
+    // readable by the browser (ONB-0b): naming the columns is required, since
+    // select=* on a partially granted table is refused outright.
     const book = await loadBook();
     const heldSyms = heldSymbols(book);
 
     const [snap, eligibleRes, excludedRes, rules, heldExcludedRes] = await Promise.all([
         sb.from('trade_universe_snapshots').select('*').eq('universe_id', universeId).eq('as_of_date', date).single(),
-        sb.from('trade_universe_members').select('*')
+        sb.from('trade_universe_members').select(MEMBER_COLUMNS)
             .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', true)
             .order('rank', { ascending: true }).limit(1000),
-        sb.from('trade_universe_members').select('*')
+        sb.from('trade_universe_members').select(MEMBER_COLUMNS)
             .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', false)
-            .order('held_weight_pct', { ascending: false, nullsFirst: false })
             .order('symbol', { ascending: true })
             .limit(EXCLUDED_SAMPLE),
         sb.from('trade_universe_rules').select('*').eq('universe_id', universeId).eq('is_active', true).order('sort_order'),
-        // The sample above is ordered by the STORED weight, which is the default
-        // account's -- so on any other account its own ineligible holdings could
-        // fall outside the 250. Fetch them by name; bounded by the book size.
+        // The sample above is alphabetical, so the active account's own
+        // ineligible holdings could fall outside it. Fetch them by name;
+        // bounded by the book size.
         heldSyms.length
-            ? sb.from('trade_universe_members').select('*')
+            ? sb.from('trade_universe_members').select(MEMBER_COLUMNS)
                 .eq('universe_id', universeId).eq('as_of_date', date).eq('eligible', false)
                 .in('symbol', heldSyms)
             : Promise.resolve({ data: [], error: null }),
@@ -154,8 +165,6 @@ function normaliseMember(m) {
         ivRank: numOrNull(m.iv_rank),
         optionsListed: m.options_listed,
         daysToEarnings: m.days_to_earnings,
-        bookState: m.book_state,
-        heldWeightPct: numOrNull(m.held_weight_pct),
         metrics: m.metrics || {},
     };
 }
