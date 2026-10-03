@@ -129,12 +129,22 @@ export function last4(accountNumber) {
     return s.length > 4 ? s.slice(-4) : s;
 }
 
-// Where an invite link may send the person: this deployment's own origin when
-// it is one of ours, otherwise nothing (Supabase Auth then uses its site_url).
-// Supabase also checks redirect_to against its allow-list; this only avoids
-// asking for a destination nobody configured.
-const ORIGIN_RE = /^(https:\/\/[a-z0-9-]+\.vercel\.app|http:\/\/localhost:\d{2,5})$/i;
+// Where an invite or set-new-password link sends the person. ALWAYS a public
+// address: the administrator's own origin when it is one of the public ones,
+// otherwise the canonical site. Never null, because Supabase's fallback is its
+// configured site_url, and on 2026-10-02 that was a deployment-protected
+// *-davenompozolo-blips-projects.vercel.app address -- every invite opened
+// Vercel's login page instead of Atlas. Those team URLs are protected, so they
+// are refused here even when the administrator is on one. Supabase still
+// checks the result against its redirect allow-list, which must list these.
+export const PUBLIC_SITE_URL = 'https://atlasterminal.online/';
+const PUBLIC_ORIGINS = new Set([
+    'https://atlasterminal.online',
+    'https://www.atlasterminal.online',
+    'https://latest-atlas-code-o19a.vercel.app',
+]);
+const LOCAL_RE = /^http:\/\/localhost:\d{2,5}$/i;
 export function inviteRedirect(req) {
-    const o = req && req.headers ? String(req.headers.origin || '') : '';
-    return ORIGIN_RE.test(o) ? o + '/' : null;
+    const o = req && req.headers ? String(req.headers.origin || '').toLowerCase() : '';
+    return PUBLIC_ORIGINS.has(o) || LOCAL_RE.test(o) ? o + '/' : PUBLIC_SITE_URL;
 }

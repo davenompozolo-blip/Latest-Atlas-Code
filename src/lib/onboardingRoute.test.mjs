@@ -22,7 +22,8 @@ function reset() {
         brokerAccount: { 'PKGOOD': 'PA0000ABCD99' },    // key id -> account number
         connect: null,                                   // override: { status, body }
         existingEmails: new Set(),
-        requests: { 'aaaaaaaa-0000-4000-8000-000000000001': { email: 'asker@example.com', status: 'pending' } },
+        requests: { 'aaaaaaaa-0000-4000-8000-000000000001': { name: 'Ada', surname: 'Lovelace', email: 'asker@example.com', status: 'pending' } },
+        smtp: false,       // RA-2: false = Auth's built-in mailer, which refuses outside addresses
         linkFails: false,
         decideFails: false,
     };
@@ -64,6 +65,14 @@ globalThis.fetch = async (url, init = {}) => {
         if (state.decideFails) return json({ code: 'XX000', message: 'boom' }, 500);
         state.requests[body.p_id].status = body.p_status;
         return json(state.requests[body.p_id].email);
+    }
+    if (u.startsWith(SB + '/auth/v1/invite') || u.startsWith(SB + '/auth/v1/recover')) {
+        if (tok !== 'service-role-test') return json({ msg: 'not admin' }, 401);
+        if (!state.smtp) return json({ code: 500, error_code: 'unexpected_failure', msg: 'Error sending invite email' }, 500);
+        if (u.startsWith(SB + '/auth/v1/invite') && state.existingEmails.has(body.email)) {
+            return json({ code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }, 422);
+        }
+        return json({ id: 'new-user', email: body.email });
     }
     if (u === SB + '/auth/v1/admin/generate_link') {
         if (tok !== 'service-role-test') return json({ msg: 'not admin' }, 401);
@@ -176,20 +185,27 @@ test('invite: a person who is not an administrator is refused and no link is mad
 
 test('invite: an administrator gets a one-time invite link, made with the service key', async () => {
     reset();
-    const r = await post('invite', { email: ' New@Example.com ' }, 'tok-admin', { origin: 'https://latest-atlas-code-abc.vercel.app' });
+    const r = await post('invite', { email: ' New@Example.com ' }, 'tok-admin', { origin: 'https://atlasterminal.online' });
     assert.equal(r.status, 201);
     assert.equal(r.body.kind, 'invite');
     assert.match(r.body.action_link, /type=invite/);
     const g = hits(/generate_link/)[0];
     assert.equal(g.body.email, 'new@example.com');
-    assert.equal(g.body.redirect_to, 'https://latest-atlas-code-abc.vercel.app/');
+    assert.equal(g.body.redirect_to, 'https://atlasterminal.online/');
     assert.equal(g.h.authorization, 'Bearer service-role-test');
 });
 
-test('invite: a foreign origin is not passed as the redirect', async () => {
+test('invite: a link always lands on a PUBLIC address -- never a foreign one, never a Vercel-protected one', async () => {
+    // 2026-10-02: an empty redirect fell back to Supabase's site_url, a
+    // deployment-protected team URL, and every invite opened Vercel's login.
+    for (const origin of ['https://evil.example', 'https://latest-atlas-code-o19a-davenompozolo-blips-projects.vercel.app', '']) {
+        reset();
+        await post('invite', { email: 'new@example.com' }, 'tok-admin', origin ? { origin } : {});
+        assert.equal(hits(/generate_link/)[0].body.redirect_to, 'https://atlasterminal.online/', origin);
+    }
     reset();
-    await post('invite', { email: 'new@example.com' }, 'tok-admin', { origin: 'https://evil.example' });
-    assert.equal(hits(/generate_link/)[0].body.redirect_to, undefined);
+    await post('invite', { email: 'new@example.com' }, 'tok-admin', { origin: 'https://latest-atlas-code-o19a.vercel.app' });
+    assert.equal(hits(/generate_link/)[0].body.redirect_to, 'https://latest-atlas-code-o19a.vercel.app/');
 });
 
 test('invite: someone who already has an account gets a set-new-password link instead', async () => {
@@ -248,4 +264,63 @@ test('decide: decline makes no link; a decided request cannot be decided again; 
     assert.equal((await post('decide', { id: RID, decision: 'approve' }, 'tok-admin')).status, 409);
     assert.equal((await post('decide', { id: 'not-a-uuid', decision: 'approve' }, 'tok-admin')).status, 400);
     assert.equal((await post('decide', { id: RID, decision: 'maybe' }, 'tok-admin')).status, 400);
+});
+
+// ---------------------------------------------------------------- RA-2
+
+test('invite: with a mail server the invitation is EMAILED, no link is minted and none is returned', async () => {
+    reset(); state.smtp = true;
+    const r = await post('invite', { email: 'new@example.com' }, 'tok-admin', { origin: 'https://atlasterminal.online' });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.delivered, 'email');
+    assert.equal(r.body.kind, 'invite');
+    assert.equal(r.body.action_link, undefined);
+    assert.equal(hits(/generate_link/).length, 0);
+    const inv = hits(/\/auth\/v1\/invite/)[0];
+    assert.equal(inv.h.authorization, 'Bearer service-role-test');
+    assert.equal(new URL(inv.url).searchParams.get('redirect_to'), 'https://atlasterminal.online/');
+});
+
+test('invite: an existing account is emailed a set-new-password link through recover', async () => {
+    reset(); state.smtp = true; state.existingEmails.add('old@example.com');
+    const r = await post('invite', { email: 'old@example.com' }, 'tok-admin');
+    assert.equal(r.status, 201);
+    assert.deepEqual([r.body.delivered, r.body.kind], ['email', 'recovery']);
+    assert.equal(hits(/\/auth\/v1\/recover/).length, 1);
+});
+
+test('invite: when Auth cannot send mail the administrator gets the link, and is told why', async () => {
+    reset();
+    const r = await post('invite', { email: 'new@example.com' }, 'tok-admin');
+    assert.equal(r.status, 201);
+    assert.equal(r.body.delivered, 'link');
+    assert.match(r.body.action_link, /type=invite/);
+    assert.equal(r.body.email_error, 'unexpected_failure');
+});
+
+test('invite: link:true never emails', async () => {
+    reset(); state.smtp = true;
+    const r = await post('invite', { email: 'new@example.com', link: true }, 'tok-admin');
+    assert.equal(r.body.delivered, 'link');
+    assert.equal(hits(/\/auth\/v1\/invite/).length, 0);
+    assert.equal(r.body.email_error, undefined);
+});
+
+test('decide: approve emails the invitation with the requester\'s names, then marks the request', async () => {
+    reset(); state.smtp = true;
+    const r = await post('decide', { id: RID, decision: 'approve' }, 'tok-admin');
+    assert.equal(r.status, 201);
+    assert.equal(r.body.delivered, 'email');
+    const inv = hits(/\/auth\/v1\/invite/)[0];
+    assert.deepEqual(inv.body, { email: 'asker@example.com', data: { first_name: 'Ada', surname: 'Lovelace' } });
+    const order = calls.map((c) => c.url).filter((u) => /\/auth\/v1\/invite|decide_access/.test(u));
+    assert.deepEqual(order.map((u) => /invite/.test(u) ? 'invite' : 'mark'), ['invite', 'mark']);
+    assert.equal(state.requests[RID].status, 'approved');
+});
+
+test('decide: a pre-RA-2 request with no surname sends only the name it has', async () => {
+    reset(); state.smtp = true;
+    state.requests[RID] = { name: 'Grace Hopper', surname: null, email: 'g@example.com', status: 'pending' };
+    await post('decide', { id: RID, decision: 'approve' }, 'tok-admin');
+    assert.deepEqual(hits(/\/auth\/v1\/invite/)[0].body.data, { first_name: 'Grace Hopper' });
 });
