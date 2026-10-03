@@ -21,7 +21,7 @@ import { writeStoredPortfolio } from '../lib/activePortfolio.js';
 import {
     onboardingState, validateConnectForm, onboardingErrorMessage, accountCapLine,
     canConnectMore, inviteResultText, validateAccessRequest, accountsButtonLabel,
-    ACCESS_REQUEST_REPLY, ACCESS_NOTE_MAX,
+    ACCESS_REQUEST_REPLY, ACCESS_NOTE_MAX, ACCESS_NAME_MAX, requesterName,
     ONBOARD_LOADING, ONBOARD_FAILED, ONBOARD_NEEDS_ACCOUNT,
 } from '../lib/onboarding.js';
 import { BROKERS } from '../lib/brokerOnboarding.js';
@@ -204,15 +204,15 @@ function InviteForm() {
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState(null);
     const [result, setResult] = React.useState(null);
-    const [copied, setCopied] = React.useState(false);
+    const [wantLink, setWantLink] = React.useState(false);
 
     async function onSubmit(ev) {
         ev.preventDefault();
-        setError(null); setResult(null); setCopied(false);
+        setError(null); setResult(null);
         if (!email.trim()) { setError('Enter an email address.'); return; }
         setBusy(true);
         try {
-            const r = await postOnboarding('invite', { email: email.trim() });
+            const r = await postOnboarding('invite', { email: email.trim(), link: wantLink });
             if (!r.ok) { setError(onboardingErrorMessage(r.status, r.body)); return; }
             setResult(r.body);
         } finally {
@@ -226,9 +226,14 @@ function InviteForm() {
             placeholder: 'name@domain.com', autoComplete: 'off', autoCapitalize: 'none', spellCheck: false,
             onChange: (ev) => setEmail(ev.target.value),
         }),
+        e('label', { className: 'ob-check' },
+            e('input', { type: 'checkbox', checked: wantLink, onChange: (ev) => setWantLink(ev.target.checked) }),
+            e('span', null, 'Give me the link instead of emailing it')),
         e('p', { className: 'ob-hint' },
-            'Atlas has no email server, so it gives you the link to send yourself. Anyone holding the link can set the password, so send it privately.'),
-        e(SubmitButton, { busy, busyLabel: 'Creating link…', label: 'Create invite link' }),
+            wantLink
+                ? 'Anyone holding the link can set the password, so send it privately.'
+                : 'Atlas emails the invitation. If the email cannot be sent you get the link to pass on instead.'),
+        e(SubmitButton, { busy, busyLabel: 'Inviting\u2026', label: wantLink ? 'Create invite link' : 'Send invitation' }),
         error && e('div', { role: 'alert', className: 'ag-error' }, error),
         result && e(LinkResult, { result }));
 }
@@ -244,6 +249,13 @@ function LinkResult({ result }) {
         } catch (_) {
             setFailed(true);
         }
+    }
+    // RA-2: an emailed invitation has no link to show -- the only copy is in
+    // the person's inbox.
+    if (!result.action_link) {
+        return e('div', { className: 'ob-link', role: 'status' },
+            e('p', null, inviteResultText(result)),
+            result.warning && e('p', { className: 'ag-error' }, result.warning));
     }
     return e('div', { className: 'ob-link', role: 'status' },
         e('p', null, inviteResultText(result)),
@@ -261,7 +273,7 @@ function LinkResult({ result }) {
 async function readPendingRequests() {
     if (!supabase) return { rows: null, error: 'no Supabase client' };
     const { data, error } = await supabase.from('access_requests')
-        .select('id,name,email,note,created_at')
+        .select('id,name,surname,email,note,created_at')
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
@@ -297,7 +309,9 @@ function RequestsPanel({ onChanged }) {
         try {
             const r = await postOnboarding('decide', { id: row.id, decision });
             if (!r.ok && r.status !== 207) { setError(onboardingErrorMessage(r.status, r.body)); return; }
-            if (r.body && r.body.action_link) setIssued(r.body);
+            // An approval answers with either a link to pass on or word that
+            // the invitation was emailed (RA-2); either is worth showing.
+            if (r.body && (r.body.action_link || r.body.delivered === 'email')) setIssued(r.body);
             load();
             if (onChanged) onChanged();
         } finally {
@@ -318,7 +332,7 @@ function RequestsPanel({ onChanged }) {
             ? e('p', { className: 'ob-hint' }, 'No one is waiting. Requests from the sign-in page appear here.')
             : st.rows.map((row) => e('div', { key: row.id, className: 'ob-req' },
                 e('div', { className: 'ob-req-who' },
-                    e('div', { className: 'ob-req-name' }, row.name),
+                    e('div', { className: 'ob-req-name' }, requesterName(row)),
                     e('div', { className: 'ob-req-email' }, row.email),
                     row.note && e('div', { className: 'ob-req-note' }, row.note),
                     e('div', { className: 'ob-req-when' }, 'Asked ' + whenAsked(row.created_at))),
@@ -335,7 +349,8 @@ function RequestsPanel({ onChanged }) {
 
 /** The landing page's request form (RA-1). Anonymous: no session exists yet. */
 export function RequestAccessForm({ onBack }) {
-    const [name, setName] = React.useState('');
+    const [firstName, setFirstName] = React.useState('');
+    const [surname, setSurname] = React.useState('');
     const [email, setEmail] = React.useState('');
     const [note, setNote] = React.useState('');
     const [website, setWebsite] = React.useState('');   // honeypot: hidden from people
@@ -346,7 +361,7 @@ export function RequestAccessForm({ onBack }) {
     async function onSubmit(ev) {
         ev.preventDefault();
         setError(null);
-        const invalid = validateAccessRequest({ name, email, note });
+        const invalid = validateAccessRequest({ firstName, surname, email, note });
         if (invalid) { setError(invalid); return; }
         setBusy(true);
         try {
@@ -354,7 +369,7 @@ export function RequestAccessForm({ onBack }) {
             try {
                 r = await fetch('/api/access-request', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name.trim(), email: email.trim(), note: note.trim(), website }),
+                    body: JSON.stringify({ first_name: firstName.trim(), surname: surname.trim(), email: email.trim(), note: note.trim(), website }),
                 });
             } catch (_) {
                 setError('Could not reach Atlas. Check your connection and try again.');
@@ -376,10 +391,15 @@ export function RequestAccessForm({ onBack }) {
     }
     return e(Shell, { title: 'Request access', subtitle: 'Atlas is invitation-only. Tell us who you are and an administrator will be in touch.' },
         e('form', { onSubmit, noValidate: true, className: 'ag-form' },
-            e(Field, {
-                id: 'ra-name', label: 'Your name', value: name, placeholder: 'First and last name',
-                autoComplete: 'name', maxLength: 100, onChange: (ev) => setName(ev.target.value),
-            }),
+            e('div', { className: 'ob-name-row' },
+                e(Field, {
+                    id: 'ra-first', label: 'First name', value: firstName,
+                    autoComplete: 'given-name', maxLength: ACCESS_NAME_MAX, onChange: (ev) => setFirstName(ev.target.value),
+                }),
+                e(Field, {
+                    id: 'ra-surname', label: 'Surname', value: surname,
+                    autoComplete: 'family-name', maxLength: ACCESS_NAME_MAX, onChange: (ev) => setSurname(ev.target.value),
+                })),
             e(Field, {
                 id: 'ra-email', label: 'Email address', icon: 'mail', type: 'email', value: email,
                 placeholder: 'you@domain.com', autoComplete: 'email', inputMode: 'email',

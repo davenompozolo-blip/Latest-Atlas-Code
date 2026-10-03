@@ -1,7 +1,8 @@
 // ============================================================
 // Vercel Serverless Function: "Request access" (RA-1).
 //
-//   POST /api/access-request   { "name": "...", "email": "...", "note": "...", "website": "" }
+//   POST /api/access-request   { "first_name": "...", "surname": "...", "email": "...",
+//                                "note": "...", "website": "" }
 //
 // The ONE route a signed-out visitor can reach. It never reads on anyone's
 // behalf: it records a request with the service key through
@@ -51,7 +52,7 @@ async function handler(req, res) {
         return res.status(202).json({ ok: true, message: ACCESS_REQUEST_REPLY });
     }
 
-    const invalid = validateAccessRequest({ name: b.name, email: b.email, note: b.note });
+    const invalid = validateAccessRequest({ firstName: b.first_name, surname: b.surname, email: b.email, note: b.note });
     if (invalid) return res.status(400).json({ error: 'invalid_input', detail: invalid });
 
     const pepper = process.env.ACCESS_REQUEST_PEPPER || serviceKey;
@@ -61,7 +62,8 @@ async function handler(req, res) {
             method: 'POST',
             headers: { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                p_name: String(b.name).trim(),
+                p_name: String(b.first_name).trim(),
+                p_surname: String(b.surname).trim(),
                 p_email: String(b.email).trim(),
                 p_note: typeof b.note === 'string' ? b.note.trim() : null,
                 p_ip_hash: ipHash(clientIp(req), pepper),

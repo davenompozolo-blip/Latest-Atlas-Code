@@ -30,7 +30,7 @@ async function post(body, headers = { 'x-forwarded-for': '203.0.113.7, 10.0.0.1'
     await handler({ method, body, headers }, res);
     return { status, body: out };
 }
-const GOOD = { name: 'Ada Lovelace', email: 'ada@example.com', note: 'Friend of the admin' };
+const GOOD = { first_name: 'Ada', surname: 'Lovelace', email: 'ada@example.com', note: 'Friend of the admin' };
 
 test('a request is recorded with the service key and a HASHED ip, never the raw one', async () => {
     reset();
@@ -40,6 +40,7 @@ test('a request is recorded with the service key and a HASHED ip, never the raw 
     const c = calls[0];
     assert.equal(c.headers.Authorization, 'Bearer service-role-test');
     assert.equal(c.body.p_ip_hash, ipHash('203.0.113.7', 'pepper-test'));
+    assert.deepEqual([c.body.p_name, c.body.p_surname], ['Ada', 'Lovelace']);
     assert.ok(!JSON.stringify(c.body).includes('203.0.113.7'));
 });
 
@@ -67,7 +68,7 @@ test('a filled honeypot records nothing and still answers like a success', async
 
 test('bad input is refused before the database is asked', async () => {
     reset();
-    for (const b of [{ ...GOOD, name: '' }, { ...GOOD, email: 'nope' }, { ...GOOD, note: 'x'.repeat(1001) }, {}]) {
+    for (const b of [{ ...GOOD, first_name: '' }, { ...GOOD, surname: '' }, { ...GOOD, email: 'nope' }, { ...GOOD, note: 'x'.repeat(1001) }, {}]) {
         assert.equal((await post(b)).status, 400);
     }
     assert.equal(calls.length, 0);

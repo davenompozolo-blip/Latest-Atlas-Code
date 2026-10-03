@@ -7427,6 +7427,44 @@ field drops naive bots with the same success reply.
 returns. The reset-password page now says the same: nothing arriving means ask
 an administrator.
 
+### Invite links landed on Vercel's login page (RA-2, 2026-10-03)
+
+The fourth account's invite was approved, the link opened and confirmed the
+email, and the browser then landed on **Vercel's login page**. Supabase sends a
+verified link to `redirect_to` only if that address is on its allow-list, and
+otherwise to its `site_url`. The allow-list held only the team URLs
+(`*-davenompozolo-blips-projects.vercel.app`), and `site_url` was one of them.
+Those URLs sit behind Vercel's deployment protection, and the public addresses
+(`atlasterminal.online`, `latest-atlas-code-o19a.vercel.app`) were on neither
+list. **Every invite and every password reset had this fault**; none had been
+used by anyone outside the Vercel team until now.
+
+Two halves, and both are needed:
+- **Supabase Auth -> URL Configuration** (dashboard): Site URL
+  `https://atlasterminal.online`, with the public addresses and `/**` on the
+  Redirect URLs list.
+- **`inviteRedirect()`** never returns null now. It uses the administrator's
+  origin only when that is a known public address, and otherwise
+  `PUBLIC_SITE_URL`. It refuses the protected team URLs even when the
+  administrator is on one.
+
+**A sign-in flow tested only by its owner is not tested.** The owner is a
+Vercel team member, so a protected URL opens for them.
+
+**Invitations are emailed now, with a link as the fallback.** `/auth/v1/invite`
+(or `/recover`, for an existing account) sends the email when Auth can send
+mail. When it cannot, the administrator gets the link and the reason
+(`email_error`). The built-in mailer reaches only the project's team, at about
+2 an hour, so until custom SMTP is configured the fallback is the normal path.
+"Give me the link instead" skips the email.
+
+The request form asks for **first name and surname** (`access_requests.surname`,
+`20261002213043`). The names travel into the new account's `user_metadata`.
+`name` keeps its column and now holds the first name. A request made before
+RA-2 holds the full name there and has no surname, and `requesterName()` reads
+it as it is. The submit function takes `p_surname` as a defaulted trailing
+argument, so the route that was live while the migration applied kept working.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

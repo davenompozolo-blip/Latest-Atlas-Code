@@ -82,15 +82,28 @@ export function canConnectMore(access) {
     return (Number(access.owned_portfolios) || 0) < Number(access.account_cap);
 }
 
-/** What the administrator is told about a link the invite route returned. */
+/**
+ * What the administrator is told about an invitation the route issued. RA-2:
+ * it is EMAILED when Auth can send mail, and otherwise comes back as a link to
+ * pass on -- so the sentence has to say which, or an administrator waits for
+ * an email that was never sent.
+ */
 export function inviteResultText(result) {
-    if (!result || !result.action_link) return null;
+    if (!result) return null;
     const mins = Math.round((Number(result.expires_in_seconds) || 3600) / 60);
     const life = 'It works once and expires in ' + mins + ' minutes.';
-    if (result.kind === 'recovery') {
-        return result.email + ' already has an Atlas account. This link lets them set a new password. ' + life;
+    if (result.delivered === 'email') {
+        if (result.kind === 'recovery') {
+            return result.email + ' already has an Atlas account, so they were emailed a link to set a new password. ' + life;
+        }
+        return 'Invitation emailed to ' + result.email + '. The link in it lets them set a password and connect their broker. ' + life;
     }
-    return 'Send this link to ' + result.email + '. It lets them set a password and connect their broker. ' + life;
+    if (!result.action_link) return null;
+    const why = result.email_error ? 'The email could not be sent, so pass this link on yourself. ' : '';
+    if (result.kind === 'recovery') {
+        return why + result.email + ' already has an Atlas account. This link lets them set a new password. ' + life;
+    }
+    return why + 'Send this link to ' + result.email + '. It lets them set a password and connect their broker. ' + life;
 }
 
 // ---------------------------------------------------------------- RA-1
@@ -102,13 +115,16 @@ export const ACCESS_NAME_MAX = 100;
 export const ACCESS_NOTE_MAX = 1000;
 const ACCESS_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** null when acceptable, otherwise the sentence to show. */
-export function validateAccessRequest({ name, email, note }) {
-    const n = typeof name === 'string' ? name.trim() : '';
+/** null when acceptable, otherwise the sentence to show. RA-2: first name and surname are separate. */
+export function validateAccessRequest({ firstName, surname, email, note }) {
+    const fn = typeof firstName === 'string' ? firstName.trim() : '';
+    const sn = typeof surname === 'string' ? surname.trim() : '';
     const em = typeof email === 'string' ? email.trim() : '';
     const no = typeof note === 'string' ? note.trim() : '';
-    if (!n) return 'Tell us your name.';
-    if (n.length > ACCESS_NAME_MAX) return 'Keep your name under ' + ACCESS_NAME_MAX + ' characters.';
+    if (!fn) return 'Tell us your first name.';
+    if (fn.length > ACCESS_NAME_MAX) return 'Keep your first name under ' + ACCESS_NAME_MAX + ' characters.';
+    if (!sn) return 'Tell us your surname.';
+    if (sn.length > ACCESS_NAME_MAX) return 'Keep your surname under ' + ACCESS_NAME_MAX + ' characters.';
     if (!em) return 'Enter your email address.';
     if (!ACCESS_EMAIL_RE.test(em) || em.length > 254) return 'That does not look like an email address.';
     if (no.length > ACCESS_NOTE_MAX) return 'Keep the note under ' + ACCESS_NOTE_MAX + ' characters.';
@@ -121,7 +137,18 @@ export function validateAccessRequest({ name, email, note }) {
  * else would let the form tell a stranger who uses Atlas.
  */
 export const ACCESS_REQUEST_REPLY =
-    'Thanks. Your request is with an administrator. If it is approved, they will send you a one-time invitation link.';
+    'Thanks. Your request is with an administrator. If it is approved, you will receive a one-time invitation link.';
+
+/**
+ * A request's display name. RA-2 split it: `name` is the first name and
+ * `surname` is separate. A request made before RA-2 holds the whole name in
+ * `name` and no surname, so it reads correctly as it is.
+ */
+export function requesterName(row) {
+    const first = row && typeof row.name === 'string' ? row.name.trim() : '';
+    const last = row && typeof row.surname === 'string' ? row.surname.trim() : '';
+    return [first, last].filter(Boolean).join(' ');
+}
 
 /** The label for the administrator's Accounts button: the pending count, if any. */
 export function accountsButtonLabel(pending) {

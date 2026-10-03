@@ -66,6 +66,22 @@ test('the invite result says who it is for, what it does and when it dies', () =
     assert.match(inviteResultText({ email: 'a@b.co', kind: 'recovery', action_link: 'x' }), /already has an Atlas account/);
 });
 
+test('RA-2: an emailed invitation says it was emailed, and a fallback link says why it is a link', () => {
+    const sent = inviteResultText({ email: 'a@b.co', kind: 'invite', delivered: 'email', expires_in_seconds: 3600 });
+    assert.match(sent, /emailed to a@b\.co/); assert.doesNotMatch(sent, /Send this link/);
+    assert.match(inviteResultText({ email: 'a@b.co', kind: 'recovery', delivered: 'email' }), /emailed a link to set a new password/);
+    assert.match(inviteResultText({ email: 'a@b.co', kind: 'invite', delivered: 'link', action_link: 'x', email_error: 'smtp' }),
+        /^The email could not be sent/);
+    assert.doesNotMatch(inviteResultText({ email: 'a@b.co', kind: 'invite', delivered: 'link', action_link: 'x' }), /could not be sent/);
+});
+
+test('RA-2: a request\'s name joins first name and surname; a pre-RA-2 row reads as it was', () => {
+    assert.equal(requesterName({ name: 'Ada', surname: 'Lovelace' }), 'Ada Lovelace');
+    assert.equal(requesterName({ name: 'Grace Hopper', surname: null }), 'Grace Hopper');
+    assert.equal(requesterName({ name: ' Alan ', surname: '  ' }), 'Alan');
+    assert.equal(requesterName(null), '');
+});
+
 test('an invite link opens the set-password form, like a reset link', () => {
     assert.equal(passwordSetupKind('#access_token=x&type=invite'), 'invite');
     assert.equal(passwordSetupKind('#access_token=x&type=recovery'), 'recovery');
@@ -75,13 +91,16 @@ test('an invite link opens the set-password form, like a reset link', () => {
 });
 
 // ---------------------------------------------------------------- RA-1
-import { validateAccessRequest, accountsButtonLabel, ACCESS_REQUEST_REPLY } from './onboarding.js';
+import { validateAccessRequest, accountsButtonLabel, ACCESS_REQUEST_REPLY, requesterName } from './onboarding.js';
 
-test('request access: name, email and note bounds', () => {
-    const ok = { name: 'Ada Lovelace', email: 'ada@example.com', note: '' };
+test('request access: first name, surname, email and note bounds', () => {
+    const ok = { firstName: 'Ada', surname: 'Lovelace', email: 'ada@example.com', note: '' };
     assert.equal(validateAccessRequest(ok), null);
-    assert.match(validateAccessRequest({ ...ok, name: '   ' }), /name/);
-    assert.match(validateAccessRequest({ ...ok, name: 'x'.repeat(101) }), /100/);
+    assert.match(validateAccessRequest({ ...ok, firstName: '   ' }), /first name/);
+    assert.match(validateAccessRequest({ ...ok, firstName: 'x'.repeat(101) }), /100/);
+    assert.match(validateAccessRequest({ ...ok, surname: '' }), /surname/);
+    assert.match(validateAccessRequest({ ...ok, surname: undefined }), /surname/);
+    assert.match(validateAccessRequest({ ...ok, surname: 'x'.repeat(101) }), /100/);
     assert.match(validateAccessRequest({ ...ok, email: 'nope' }), /email/);
     assert.match(validateAccessRequest({ ...ok, note: 'x'.repeat(1001) }), /1000/);
     assert.equal(validateAccessRequest({ ...ok, note: undefined }), null);

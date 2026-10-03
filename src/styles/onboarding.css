@@ -138,6 +138,14 @@
 /* ------------------------------------------------ RA-1: access requests */
 
 .ob-ask { margin-top: 14px; gap: 4px; align-items: center; font-size: 14px; color: var(--nx-text2); }
+/* RA-2: "link instead of email" on the invite form. 44px row for touch. */
+.ob-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; color: var(--nx-text2); cursor: pointer; }
+.ob-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--nx-accent); }
+
+/* RA-2: first name and surname side by side; stacked on a phone. */
+.ob-name-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ob-name-row > * { min-width: 0; }
+@media (max-width: 420px) { .ob-name-row { grid-template-columns: 1fr; gap: 0; } }
 .ob-textarea { height: auto; min-height: 84px; padding: 12px 16px; resize: vertical; line-height: 1.5; }
 
 /* Honeypot: off-screen, not display:none (some bots skip hidden inputs). */
