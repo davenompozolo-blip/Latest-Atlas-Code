@@ -49,6 +49,24 @@ export function parseConnectInput(body) {
 }
 
 /** Validate an invite request body: { ok, value: { email } } or { ok: false, error }. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ONB-3: validate a replace-keys request body. The paper/live choice is NOT
+ * taken from the body: it belongs to the registered account, and the route
+ * reads it from there. Never echoes a key.
+ */
+export function parseReplaceKeysInput(body) {
+    const b = body && typeof body === 'object' ? body : {};
+    const portfolioId = str(b.portfolio_id);
+    const keyId = str(b.key_id);
+    const secretKey = str(b.secret_key);
+    if (!UUID_RE.test(portfolioId)) return { ok: false, error: 'Choose which account the keys are for.' };
+    if (!keyId || !secretKey) return { ok: false, error: 'Both the API key ID and the secret key are required.' };
+    if (/\s/.test(keyId) || /\s/.test(secretKey)) return { ok: false, error: 'A key cannot contain spaces.' };
+    return { ok: true, value: { portfolioId, keyId, secretKey } };
+}
+
 export function parseInviteInput(body) {
     const email = str(body && body.email).toLowerCase();
     if (!email) return { ok: false, error: 'Enter an email address.' };

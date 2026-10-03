@@ -161,7 +161,7 @@ export function CodeSignInForm({ onUsePassword }) {
                     }, 'Use a different email'))));
     }
 
-    return e(Shell, { title: 'Sign in to Atlas', subtitle: 'Enter your email and we’ll send you a code. New here? The same code starts your account.' },
+    return e(Shell, { title: 'Sign in with a code', subtitle: 'Enter your email and we’ll send you a one-time code. New here? The same code starts your account.' },
         e('form', { onSubmit: onSubmitEmail, noValidate: true, className: 'ag-form' },
             e(Field, {
                 id: 'atlas-email', label: 'Email address', icon: 'mail', type: 'email', value: email,

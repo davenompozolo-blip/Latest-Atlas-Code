@@ -28,6 +28,15 @@ function reset() {
         decideFails: false,
         approved: { 'u-admin': true, 'u-member': true },
         approvalFails: false,
+        // ONB-3: what atlas_my_broker_accounts answers per user, and the
+        // account number each portfolio is registered to.
+        myAccounts: {
+            'u-member': [{ portfolio_id: 'bbbbbbbb-0000-4000-8000-000000000001', is_paper: true, account_last4: 'CD99' }],
+            'u-admin': [],
+        },
+        registered: { 'bbbbbbbb-0000-4000-8000-000000000001': 'PA0000ABCD99' },
+        replaced: null,
+        listFails: false,
     };
 }
 reset();
@@ -55,6 +64,18 @@ globalThis.fetch = async (url, init = {}) => {
         if (tok !== 'service-role-test') return json({ message: 'permission denied' }, 401);
         if (state.connect) return json(state.connect.body, state.connect.status);
         return json('new-portfolio-id');
+    }
+    if (u === SB + '/rest/v1/rpc/atlas_my_broker_accounts') {
+        if (state.listFails) return json({ message: 'timeout' }, 500);
+        return json(state.myAccounts[USERS[tok]] || []);
+    }
+    if (u === SB + '/rest/v1/rpc/atlas_replace_broker_credentials') {
+        if (tok !== 'service-role-test') return json({ message: 'permission denied' }, 401);
+        if (state.registered[body.p_portfolio_id] !== body.p_account_number) {
+            return json({ code: '22023', message: 'these keys belong to a different broker account' }, 400);
+        }
+        state.replaced = body;
+        return json(body.p_account_number.slice(-4));
     }
     if (/alpaca\.markets\/v2\/account$/.test(u)) {
         const n = state.brokerAccount[h['apca-api-key-id']];
@@ -357,4 +378,66 @@ test('ONB-2 connect: the database trigger refusing an unapproved owner reads as 
     const r = await post('connect', GOOD, 'tok-member');
     assert.equal(r.status, 403);
     assert.equal(r.body.error, 'not_approved');
+});
+
+/* ------------------------------------------------ ONB-3: replace keys */
+
+const PF = 'bbbbbbbb-0000-4000-8000-000000000001';
+const NEWKEYS = { portfolio_id: PF, key_id: 'PKGOOD', secret_key: 'NEW-S3CRET' };
+
+test('replace_keys: the owner swaps the pair; the account number is the broker\'s, checked by the database', async () => {
+    reset();
+    const r = await post('replace_keys', NEWKEYS, 'tok-member');
+    assert.equal(r.status, 200);
+    assert.equal(state.replaced.p_user_id, 'u-member');
+    assert.equal(state.replaced.p_account_number, 'PA0000ABCD99');
+    assert.equal(hits(/atlas_replace_broker_credentials/)[0].h.authorization, 'Bearer service-role-test');
+    assert.equal(r.body.account_last4, 'CD99');
+    const text = JSON.stringify(r.body);
+    assert.ok(!text.includes('NEW-S3CRET') && !text.includes('PA0000ABCD99'), text);
+    assert.equal(hits(/\/functions\/v1\//).length, 3);   // re-sync on the new keys
+});
+
+test('replace_keys: someone who does not own the account is refused before the broker is asked', async () => {
+    reset();
+    const r = await post('replace_keys', NEWKEYS, 'tok-admin');
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, 'not_owner');
+    assert.equal(hits(/alpaca|atlas_replace/).length, 0);
+});
+
+test('replace_keys: keys for a DIFFERENT Alpaca account are refused and nothing is stored', async () => {
+    reset();
+    state.brokerAccount.PKOTHER = 'PA0000ZZZZ11';
+    const r = await post('replace_keys', { ...NEWKEYS, key_id: 'PKOTHER' }, 'tok-member');
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error, 'different_account');
+    assert.equal(state.replaced, null);
+    assert.equal(hits(/\/functions\/v1\//).length, 0);
+});
+
+test('replace_keys: the environment is the account\'s, not the body\'s', async () => {
+    reset();
+    await post('replace_keys', { ...NEWKEYS, paper: false }, 'tok-member');
+    const a = hits(/alpaca\.markets\/v2\/account$/)[0];
+    assert.ok(a.url.startsWith('https://paper-api.alpaca.markets'), a.url);
+});
+
+test('replace_keys: rejected keys and an unreadable account list are refused without a write', async () => {
+    reset();
+    const bad = await post('replace_keys', { ...NEWKEYS, key_id: 'PKNOPE' }, 'tok-member');
+    assert.equal(bad.status, 422);
+    reset();
+    state.listFails = true;
+    const down = await post('replace_keys', NEWKEYS, 'tok-member');
+    assert.equal(down.status, 503);
+    assert.equal(hits(/alpaca|atlas_replace/).length, 0);
+    assert.equal(state.replaced, null);
+});
+
+test('replace_keys: a malformed body never reaches the broker', async () => {
+    reset();
+    assert.equal((await post('replace_keys', { ...NEWKEYS, portfolio_id: 'nope' }, 'tok-member')).status, 400);
+    assert.equal((await post('replace_keys', { ...NEWKEYS, secret_key: '' }, 'tok-member')).status, 400);
+    assert.equal(hits(/alpaca/).length, 0);
 });
