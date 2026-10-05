@@ -7626,6 +7626,37 @@ card on every onboarding screen, and was 0 for all eight after the fix.
 **Not done:** approval and invite emails (`notify-account-event`, ONB-5) wait on
 the Resend domain; the Requests tab and `access_requests` stay until ONB-4.
 
+### The Free plan restricts the whole project at 500 MB (ST-1, 2026-10-05)
+
+On 2026-10-03 about 22:30 UTC every request through Supabase's gateway began
+answering **402** -- sign-in, PostgREST, edge functions, the 5-minute positions
+sync -- while jobs inside the database kept running. The sign-in form showed
+"Something went wrong". Cause: the organisation is on the **Free plan (500 MB
+database)** and the database was **2,662 MB**. 1,485 MB of it was
+`universe_correlations` keeping every nightly matrix (39 snapshots, ~38 MB a
+night) while every reader takes the latest. **A history nothing reads is a
+quota you are spending.**
+
+Shrunk to **407 MB** with the owner's approval. Deleted only what nothing
+reads or what rebuilds itself; `company_reported_lines` (all), the
+`v0-uncalibrated` theme backfill and fund-price history were exported first to
+the branch `backup/storage-2026-10-05` (restore SQL in its README). The bank /
+insurer framework on the Financials tab reads "not loaded" until reloaded --
+reloading it costs ~88 MB, so only do it with headroom.
+
+`atlas_prune_storage()` (cron 02:30 UTC, logs to `sync_log`) holds each history
+to its readers: 1 correlation snapshot, 30 days of holding vol, 5 nights of
+universe members, 14 dates of signals/assessments (never a row a trigger
+references or a person overrode), account snapshots older than 14 days thinned
+to the last per NY session, 30 days of `sync_log`, 7 days of
+`cron.job_run_details`, one `fund_prices_raw` row per fund. **A new table that
+grows nightly needs a line in that function**, or it will cross the cap again.
+
+Deleting rows does not shrink the files: `VACUUM FULL <table>` does, and it
+works through the management API one statement at a time. Supabase's own figure
+is updated daily, and a usage restriction lifts at the next billing cycle or by
+a support ticket (supabase.help), not the moment usage drops.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
