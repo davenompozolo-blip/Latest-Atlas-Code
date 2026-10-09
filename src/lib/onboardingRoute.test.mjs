@@ -37,7 +37,12 @@ function reset() {
         registered: { 'bbbbbbbb-0000-4000-8000-000000000001': 'PA0000ABCD99' },
         replaced: null,
         listFails: false,
+        // ONB-5: people by user id, and what Resend accepted.
+        people: { 'cccccccc-0000-4000-8000-000000000001': { status: 'pending', email: 'person@example.com', first_name: 'Grace' } },
+        sent: [],
+        resendFails: false,
     };
+    delete process.env.RESEND_API_KEY;
 }
 reset();
 
@@ -108,6 +113,26 @@ globalThis.fetch = async (url, init = {}) => {
             return json({ code: 422, error_code: 'email_exists', msg: 'A user with this email address has already been registered' }, 422);
         }
         return json({ action_link: SB + '/auth/v1/verify?token=t&type=' + body.type, email: body.email });
+    }
+    if (u === SB + '/rest/v1/rpc/atlas_admin_set_status') {
+        // The database decides: the CALLER's token, never the service key.
+        if (!ADMINS.has(USERS[tok])) return json({ code: '42501', message: 'administrators only' }, 403);
+        const p = state.people[body.p_user_id];
+        if (!p) return json({ code: 'P0002', message: 'no account' }, 404);
+        const old = p.status;
+        p.status = body.p_status;
+        return json(old + ' -> ' + body.p_status);
+    }
+    if (u.startsWith(SB + '/rest/v1/atlas_accounts?')) {
+        if (tok !== 'service-role-test') return json({ message: 'permission denied' }, 401);
+        const id = /user_id=eq\.([0-9a-f-]+)/.exec(u)[1];
+        const p = state.people[id];
+        return json(p ? [{ email: p.email, first_name: p.first_name }] : []);
+    }
+    if (u === 'https://api.resend.com/emails') {
+        if (state.resendFails) return json({ name: 'validation_error', message: 'domain not verified' }, 403);
+        state.sent.push(body);
+        return json({ id: 'msg-' + state.sent.length });
     }
     if (u.startsWith(SB + '/functions/v1/')) return json({ ok: true });
     throw new Error('unexpected fetch ' + u);
@@ -440,4 +465,75 @@ test('replace_keys: a malformed body never reaches the broker', async () => {
     assert.equal((await post('replace_keys', { ...NEWKEYS, portfolio_id: 'nope' }, 'tok-member')).status, 400);
     assert.equal((await post('replace_keys', { ...NEWKEYS, secret_key: '' }, 'tok-member')).status, 400);
     assert.equal(hits(/alpaca/).length, 0);
+});
+
+// ── ONB-5: access changes email the person ──────────────────────
+const PID = 'cccccccc-0000-4000-8000-000000000001';
+
+test('set_status: a non-administrator is refused by the DATABASE and no email is sent', async () => {
+    reset();
+    process.env.RESEND_API_KEY = 're_test';
+    const r = await post('set_status', { user_id: PID, status: 'approved' }, 'tok-member');
+    assert.equal(r.status, 403);
+    assert.equal(state.people[PID].status, 'pending');
+    assert.equal(state.sent.length, 0);
+    // The change was made with the caller's token, not the service key.
+    assert.equal(hits(/atlas_admin_set_status/)[0].h.authorization, 'Bearer tok-member');
+});
+
+test('set_status: approving emails the person "you\'re in", AFTER the change is saved', async () => {
+    reset();
+    process.env.RESEND_API_KEY = 're_test';
+    const r = await post('set_status', { user_id: PID, status: 'approved' }, 'tok-admin');
+    assert.equal(r.status, 200);
+    assert.deepEqual([r.body.status, r.body.from, r.body.notified], ['approved', 'pending', 'email']);
+    const order = calls.map((c) => c.url).filter((u) => /set_status|resend/.test(u));
+    assert.match(order[0], /atlas_admin_set_status/);
+    assert.match(order[1], /resend/);
+    assert.equal(state.sent[0].to, 'person@example.com');
+    assert.match(state.sent[0].subject, /approved/);
+    // The key never leaves in a response.
+    assert.ok(!JSON.stringify(r.body).includes('re_test'));
+});
+
+test('set_status: revoking and restoring each say so; setting back to pending sends nothing', async () => {
+    reset();
+    process.env.RESEND_API_KEY = 're_test';
+    state.people[PID].status = 'approved';
+    await post('set_status', { user_id: PID, status: 'revoked' }, 'tok-admin');
+    assert.match(state.sent[0].subject, /removed/);
+    const back = await post('set_status', { user_id: PID, status: 'approved' }, 'tok-admin');
+    assert.equal(back.body.from, 'revoked');
+    assert.match(state.sent[1].subject, /restored/);
+    const p = await post('set_status', { user_id: PID, status: 'pending' }, 'tok-admin');
+    assert.equal(p.body.notified, 'none');
+    assert.equal(state.sent.length, 2);
+});
+
+test('set_status: with no RESEND_API_KEY the change is saved and the answer says nobody was told', async () => {
+    reset();
+    const r = await post('set_status', { user_id: PID, status: 'approved' }, 'tok-admin');
+    assert.equal(r.status, 200);
+    assert.equal(state.people[PID].status, 'approved');
+    assert.equal(r.body.notified, 'not_configured');
+    assert.equal(hits(/resend/).length, 0);
+});
+
+test('set_status: a refused email never undoes the change, and is reported', async () => {
+    reset();
+    process.env.RESEND_API_KEY = 're_test';
+    state.resendFails = true;
+    const r = await post('set_status', { user_id: PID, status: 'approved' }, 'tok-admin');
+    assert.equal(r.status, 200);
+    assert.equal(state.people[PID].status, 'approved');
+    assert.deepEqual([r.body.notified, r.body.notify_error], ['failed', 'validation_error']);
+});
+
+test('set_status: bad input is refused before anything is called; an unknown person is a 404', async () => {
+    reset();
+    assert.equal((await post('set_status', { user_id: 'nope', status: 'approved' }, 'tok-admin')).status, 400);
+    assert.equal((await post('set_status', { user_id: PID, status: 'admin' }, 'tok-admin')).status, 400);
+    assert.equal(hits(/set_status/).length, 0);
+    const missing = await post('set_status', { user_id: 'cccccccc-0000-4000-8000-000000000009', status: 'approved' }, 'tok-admin');
+    assert.equal(missing.status, 404);
 });

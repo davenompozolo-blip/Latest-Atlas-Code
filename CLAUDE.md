@@ -7674,6 +7674,28 @@ low and was quoted as 413 when the dashboard said 449. `atlas_storage_headroom()
 reports it, and `storage_headroom` in `atlas_run_validation()` warns at 460 MB
 and goes critical at 480 MB (`supabase/tests/st3_storage_headroom_contract.sql`).
 
+### Account emails go through Resend's API, not Auth (ONB-5, 2026-10-09)
+
+Auth's Resend SMTP sends only Auth's own templates (invite, code, reset), so
+it cannot tell someone they were approved. ACCOUNTS -> People now posts to
+`/api/onboarding?action=set_status`, which calls `atlas_admin_set_status`
+with the ADMINISTRATOR's token (the database still decides who may) and,
+once the change is saved, emails the person through Resend's HTTP API
+(`src/lib/accountEmail.js`). Approve says "you're in", restore and revoke
+say so, and set back to pending sends nothing. A failed email never undoes
+the change, and the panel says when nobody was told.
+
+Cron job 61 `notify_admins_waiting` (every 5 min) emails every administrator
+when someone is pending with their details complete, via
+`/api/account-notify`. It stamps `admin_notified_at` only after Resend
+accepts the email, so a failed send is retried and never lost. It dispatches
+only when someone is waiting, and after a failure at most hourly.
+
+**Needs `RESEND_API_KEY` on the Vercel deployment.** Without it a change
+still saves and reads "no email was sent" (`notified: not_configured`), and
+the admin notice waits. No message carries a sign-in link: the way in is
+the site.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel

@@ -7,6 +7,8 @@
 //   POST /api/onboarding?action=invite   { "email": "...", "link": false }   administrators only
 //   POST /api/onboarding?action=decide   { "id": "...", "decision": "approve"|"decline" }
 //                                        administrators only (RA-1 access requests)
+//   POST /api/onboarding?action=set_status { "user_id": "...", "status": "approved"|"revoked"|"pending" }
+//                                        administrators only (ONB-3 People; ONB-5 emails the person)
 //   POST /api/onboarding?action=replace_keys
 //        { "portfolio_id": "...", "key_id": "...", "secret_key": "..." }
 //
@@ -39,6 +41,7 @@ import {
     parseConnectInput, parseInviteInput, parseReplaceKeysInput, verifyAlpacaKeys, keysRejectedDetail,
     startFirstSyncs, last4, inviteRedirect, AUTH_TIMEOUT_MS,
 } from '../src/lib/brokerOnboarding.js';
+import { statusChangeMessage, sendEmail } from '../src/lib/accountEmail.js';
 
 // Supabase Auth's mailer_otp_exp: how long an invite link works. Lowered from
 // 3600 to 600 on 2026-10-03, with the email-code expiry it shares.
@@ -328,6 +331,62 @@ async function decide(req, res, env) {
     return res.status(201).json({ email: reqRow.email, decision, ...issued });
 }
 
+// ONB-5: an administrator approves, revokes or restores a person, and the
+// person is told by email. The change itself is atlas_admin_set_status called
+// with the ADMINISTRATOR's token, so the database decides who may make it
+// (administrators only, never on yourself, never on another administrator).
+// The email is sent only after the change is saved, and a failed email never
+// undoes it: the answer says whether the person was told.
+const SET_STATUS_VALUES = new Set(['approved', 'revoked', 'pending']);
+
+async function setStatus(req, res, env) {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const userId = typeof b.user_id === 'string' ? b.user_id.trim() : '';
+    const status = typeof b.status === 'string' ? b.status : '';
+    if (!UUID_RE.test(userId) || !SET_STATUS_VALUES.has(status)) {
+        return res.status(400).json({ error: 'invalid_input', detail: 'A person and approved, revoked or pending are required.' });
+    }
+    const r = await call(env.url + '/rest/v1/rpc/atlas_admin_set_status', {
+        method: 'POST', headers: { ...env.userHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_user_id: userId, p_status: status }),
+    });
+    if (!r.ok) {
+        const code = (r.body && r.body.code) || '';
+        const message = (r.body && r.body.message) || '';
+        if (code === '42501') return res.status(403).json({ error: 'refused', detail: message || 'Only an administrator can change access.' });
+        if (code === 'P0002') return res.status(404).json({ error: 'not_found', detail: 'That person no longer has an account.' });
+        console.error('onboarding: set_status failed:', r.status, code);
+        return res.status(r.status === null ? 503 : 502).json({ error: 'set_status_failed', detail: 'That change was not saved. Try again.' });
+    }
+    // 'pending -> approved'
+    const m = /^(\w+) -> (\w+)$/.exec(String(r.body || ''));
+    const from = m ? m[1] : null;
+
+    const who = await call(env.url + '/rest/v1/atlas_accounts?select=email,first_name&user_id=eq.' + userId, {
+        headers: serviceHeaders(env.serviceKey),
+    });
+    const person = who.ok && Array.isArray(who.body) ? who.body[0] : null;
+    const msg = person && from ? statusChangeMessage({ from, to: status, email: person.email, first: person.first_name }) : null;
+    let notified = 'none';
+    let notifyError;
+    if (msg) {
+        const sent = await sendEmail(msg, { apiKey: process.env.RESEND_API_KEY });
+        if (sent.sent) notified = 'email';
+        else {
+            notified = sent.reason === 'not_configured' ? 'not_configured' : 'failed';
+            if (notified === 'failed') notifyError = sent.reason;
+            console.error('onboarding: status email not sent:', sent.reason);
+        }
+    } else if (!person && from !== status) {
+        console.error('onboarding: set_status saved but the account could not be read for the email:', who.status);
+        notified = 'failed';
+        notifyError = 'account_unreadable';
+    }
+    const out = { status, from, notified };
+    if (notifyError) out.notify_error = notifyError;
+    return res.status(200).json(out);
+}
+
 async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -343,7 +402,8 @@ async function handler(req, res) {
     if (action === 'invite') return invite(req, res, env);
     if (action === 'decide') return decide(req, res, env);
     if (action === 'replace_keys') return replaceKeys(req, res, env);
-    return res.status(400).json({ error: 'action must be connect, invite, decide or replace_keys' });
+    if (action === 'set_status') return setStatus(req, res, env);
+    return res.status(400).json({ error: 'action must be connect, invite, decide, replace_keys or set_status' });
 }
 
 // A signed-in person only. The cron secret has no business here: an account
