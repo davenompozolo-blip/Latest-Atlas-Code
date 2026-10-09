@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const EQUITY = readFileSync(
-    fileURLToPath(new URL('../../api/equity.js', import.meta.url)), 'utf8');
+    fileURLToPath(new URL('../../server/api/equity.js', import.meta.url)), 'utf8');
 
 function stripComments(src) {
     return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');

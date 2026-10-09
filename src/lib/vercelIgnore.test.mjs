@@ -35,7 +35,7 @@ test('the detector reads unanchored directory rules and nothing else', () => {
 test('no .vercelignore rule hides a file under src/ or api/', () => {
     const rules = unanchoredDirRules(readFileSync(join(ROOT, '.vercelignore'), 'utf8'));
     assert.ok(rules.length > 0, 'expected to find directory rules; a vacuous scan passes trivially');
-    const files = [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'api'))];
+    const files = [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'server', 'api')), ...walk(join(ROOT, 'api'))];
     const hidden = [];
     for (const f of files) {
         const parts = f.split('/').slice(0, -1);

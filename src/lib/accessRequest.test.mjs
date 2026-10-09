@@ -21,7 +21,7 @@ globalThis.fetch = async (url, init = {}) => {
     throw new Error('unexpected fetch ' + url);
 };
 
-const { default: handler, ipHash, clientIp } = await import('../../api/access-request.js');
+const { default: handler, ipHash, clientIp } = await import('../../server/api/access-request.js');
 const { ACCESS_REQUEST_REPLY } = await import('./onboarding.js');
 
 async function post(body, headers = { 'x-forwarded-for': '203.0.113.7, 10.0.0.1' }, method = 'POST') {

@@ -113,7 +113,7 @@ test('withAuth refuses before the handler runs, and marks the refusal uncacheabl
 
 // ── Every route is wrapped ───────────────────────────────────────────────────
 
-const API = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'api');
+const API = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'server', 'api');
 
 export function unguardedRoutes(files) {
     const bad = [];

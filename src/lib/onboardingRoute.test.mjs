@@ -138,7 +138,7 @@ globalThis.fetch = async (url, init = {}) => {
     throw new Error('unexpected fetch ' + u);
 };
 
-const { default: handler } = await import('../../api/onboarding.js');
+const { default: handler } = await import('../../server/api/onboarding.js');
 
 async function post(action, body, token, headers = {}) {
     let status = null, out = null;

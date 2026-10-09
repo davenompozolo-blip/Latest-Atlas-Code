@@ -95,7 +95,7 @@ globalThis.fetch = async (url, init = {}) => {
     }
     throw new Error('unexpected fetch ' + u);
 };
-const { default: notify } = await import('../../api/account-notify.js');
+const { default: notify } = await import('../../server/api/account-notify.js');
 async function run(token = 'cron-secret-test') {
     let status = null, out = null;
     const res = { setHeader() {}, status(s) { status = s; return this; }, json(b) { out = b; return this; } };

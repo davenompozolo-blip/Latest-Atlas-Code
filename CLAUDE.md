@@ -29,7 +29,8 @@ src/                          → the terminal (React 18 + Vite, deployed to Ver
   lib/supabase.js             → THE Supabase client (pages/config.js re-exports it)
   components/                 → shared UI (TickerSearch, SyncStatus, ...)
   styles/                     → globals.css (ramp tokens) + nexus-theme.css (--nx-*)
-api/*.js                      → Vercel Node functions: broker (trading.js), market
+api/[atlasRoute].js           → the ONE Vercel function: dispatches /api/<name>
+server/api/*.js               → the route handlers: broker (trading.js), market
                                 data (equity, macro, movers, news), Nexus feeds
                                 (nexus-*), cron-driven writers (sync-*, *-snapshot)
 supabase/migrations/          → the database: tables, views, matviews, SQL jobs
@@ -117,9 +118,12 @@ When operating Atlas via remote control, use these session roles:
 
 - **Add a page**: component in `src/pages/`, add it to `TABS` in `app.js` and
   to `NEXUS_NAV` in `nexus-page.js`.
-- **Add an API route**: a file in `api/`; give it a `maxDuration` in
-  `vercel.json` if it runs long. If it reads the book, accept `?portfolio=`
-  and forward it (see `api/nexus-bench.js`).
+- **Add an API route**: a file in `server/api/` and a line in the `ROUTES`
+  table of `api/[atlasRoute].js` (`apiDispatch.test.mjs` fails without it).
+  **Never add a file to `api/`**: the Hobby plan allows 12 functions per
+  deployment and a 13th fails every deploy (VD-1). Every route runs under the
+  dispatcher's one `maxDuration` (300 s). If it reads the book, accept
+  `?portfolio=` and forward it (see `server/api/nexus-bench.js`).
 - **Change a calculation**: prefer the view that owns it; prove equivalence with
   `EXCEPT ALL` both ways and time it against the 3s anon cap.
 - **Add a scheduled job**: a nightly one is a stage in `atlas_chain_stages`;
@@ -7695,6 +7699,29 @@ only when someone is waiting, and after a failure at most hourly.
 still saves and reads "no email was sent" (`notified: not_configured`), and
 the admin notice waits. No message carries a sign-in link: the way in is
 the site.
+
+### Production froze when the team fell to Hobby (VD-1, 2026-10-09)
+
+The production deploy of #866 failed with
+`exceeded_serverless_functions_per_deployment`: *"No more than 12 Serverless
+Functions can be added to a Deployment on the Hobby plan."* `api/` had held 35
+routes since long before, and #865 had deployed fine on 2026-10-05. So the team
+had moved to Hobby in between. **A failed production deploy changes nothing on
+the site**: atlasterminal.online kept serving #865, so #866's empty-book fix
+never went live, and nothing on the page said so. The GitHub status said it,
+on all six Vercel projects.
+
+All routes now run as one function. The handlers are in `server/api/`, and
+`api/[atlasRoute].js` dispatches to them from a literal table: each `import()`
+names its file, so the bundler traces it, and an unknown name is a 404. No path
+is ever built from the request. URLs, query strings, the cron chain and the
+internal calls are unchanged, and each route keeps its own `withAuth` policy.
+All routes now share one 300 s `maxDuration`, which is the Hobby maximum.
+`apiDispatch.test.mjs` pins `api/` to the dispatcher alone and checks that the
+table matches `server/api/`.
+
+**After a merge, check the production deployment, not just the PR checks.** A
+red Vercel status on `main` means production is serving an older build.
 
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header

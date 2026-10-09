@@ -83,7 +83,7 @@ globalThis.fetch = async (url, init = {}) => {
     throw new Error('unexpected fetch ' + u);
 };
 
-const { default: handler } = await import('../../api/trading.js');
+const { default: handler } = await import('../../server/api/trading.js');
 
 async function call(method, query, body, token = USER_TOKEN) {
     let status = null, out = null;

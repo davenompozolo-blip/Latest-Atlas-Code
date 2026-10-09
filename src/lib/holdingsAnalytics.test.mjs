@@ -136,7 +136,7 @@ import { join, relative } from 'node:path';
 const SRC = new URL('..', import.meta.url).pathname;          // src/
 // api/ too: the Vercel routes read the same view and api/nexus-bench.js was
 // defaulting conviction to 0 where no src/ scan could see it (C-1).
-const API = new URL('../../api/', import.meta.url).pathname;
+const API = new URL('../../server/api/', import.meta.url).pathname;
 const SELF = 'lib/holdingsAnalytics.js';
 
 function jsFiles(dir, out = []) {
