@@ -7657,6 +7657,23 @@ works through the management API one statement at a time. Supabase's own figure
 is updated daily, and a usage restriction lifts at the next billing cycle or by
 a support ticket (supabase.help), not the moment usage drops.
 
+### Nightly jobs refilled the quota within two hours (ST-2, ST-3, 2026-10-09)
+
+The restriction lifted at ~22:00 UTC and the database was back to 541 MB
+(decimal) by 22:30. Two writers were the cause, both blocked during the outage:
+`refresh_holding_vol_trailing(400)` re-wrote 400 days for ~1,900 symbols every
+night (65 MB) for the 02:30 prune to delete, and `refresh_universe_correlations`
+replaced only today's snapshot, so the previous ~35 MB copy sat beside it until
+the prune. The vol job now reads 400 days and WRITES 35; the correlation writer
+clears every snapshot for its window in its own transaction. 441.5 MB after.
+**A prune that runs after the writer cannot cap the peak** -- the writer has to
+stop producing what the prune deletes.
+
+**Measure in decimal MB.** The quota is 500,000,000 bytes; `/1048576` reads ~5%
+low and was quoted as 413 when the dashboard said 449. `atlas_storage_headroom()`
+reports it, and `storage_headroom` in `atlas_run_validation()` warns at 460 MB
+and goes critical at 480 MB (`supabase/tests/st3_storage_headroom_contract.sql`).
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
