@@ -155,3 +155,18 @@ export function accountsButtonLabel(pending) {
     const n = Number(pending);
     return Number.isInteger(n) && n > 0 ? 'ACCOUNTS · ' + n : 'ACCOUNTS';
 }
+
+/**
+ * ONB-5: what the People panel says after an access change. The change and
+ * the email are separate facts -- a saved change whose email did not go out
+ * must say so, or the administrator assumes the person was told.
+ */
+export function statusChangeText(result) {
+    const r = result || {};
+    const did = { approved: r.from === 'revoked' ? 'Access restored' : 'Approved', revoked: 'Access removed', pending: 'Set back to waiting' }[r.status];
+    if (!did) return null;
+    if (r.notified === 'email') return did + '. They have been emailed.';
+    if (r.notified === 'not_configured') return did + '. No email was sent: email is not set up on this deployment (RESEND_API_KEY). Tell them yourself.';
+    if (r.notified === 'failed') return did + '. The email to them did not go out. Tell them yourself.';
+    return did + '.';
+}

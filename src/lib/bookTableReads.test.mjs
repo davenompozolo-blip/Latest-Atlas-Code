@@ -19,7 +19,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
-const SCAN = ['src', 'api'];
+const SCAN = ['src', 'api', 'server'];
 const BOOK = ['positions', 'account_snapshots', 'transactions', 'portfolio_equity_curve'];
 
 // MP-2: matviews refreshed by cron with no request context, so they always

@@ -1,0 +1,411 @@
+// ============================================================
+// Vercel Serverless Function: invite-only onboarding (ON-1).
+//
+//   POST /api/onboarding?action=connect
+//        { "broker": "alpaca", "name": "...", "key_id": "...",
+//          "secret_key": "...", "paper": true }
+//   POST /api/onboarding?action=invite   { "email": "...", "link": false }   administrators only
+//   POST /api/onboarding?action=decide   { "id": "...", "decision": "approve"|"decline" }
+//                                        administrators only (RA-1 access requests)
+//   POST /api/onboarding?action=set_status { "user_id": "...", "status": "approved"|"revoked"|"pending" }
+//                                        administrators only (ONB-3 People; ONB-5 emails the person)
+//   POST /api/onboarding?action=replace_keys
+//        { "portfolio_id": "...", "key_id": "...", "secret_key": "..." }
+//
+// replace_keys (ONB-3): the OWNER of a connected account swaps its key pair --
+// after a key is exposed, or rotated at the broker. The new keys are checked
+// with the broker on the account's own environment, and must report the SAME
+// account number that was registered; the account keeps its portfolio,
+// history and owner. A pair for a different account is refused, never stored.
+//
+// connect: a signed-in person connects THEIR OWN broker account. The keys are
+// verified against the broker, the account number is taken from the broker's
+// answer, and atlas_connect_broker_account registers the account, stores the
+// keys in Vault, attributes it to the caller and makes them its owner -- one
+// transaction. The first syncs are then started.
+//
+// invite: an administrator (atlas_admins) invites a person: a one-time link to
+// set their password (or, for someone who already has an account, a link to
+// set a new one). RA-2: the invitation is EMAILED by Supabase Auth when it can
+// send mail (a custom SMTP server is configured); when it cannot -- the
+// built-in mailer only reaches the project's own team, and is limited to a
+// couple of messages an hour -- the link comes back to the administrator to
+// pass on, with the reason. `link: true` asks for the link without emailing.
+// Public sign-up stays disabled.
+//
+// No response ever carries a key, and a request body is never logged.
+// ============================================================
+
+import { withAuth, supabaseEnv, supabaseHeaders } from '../../src/lib/apiAuth.js';
+import {
+    parseConnectInput, parseInviteInput, parseReplaceKeysInput, verifyAlpacaKeys, keysRejectedDetail,
+    startFirstSyncs, last4, inviteRedirect, AUTH_TIMEOUT_MS,
+} from '../../src/lib/brokerOnboarding.js';
+import { statusChangeMessage, sendEmail } from '../../src/lib/accountEmail.js';
+
+// Supabase Auth's mailer_otp_exp: how long an invite link works. Lowered from
+// 3600 to 600 on 2026-10-03, with the email-code expiry it shares.
+export const INVITE_LINK_TTL_SECONDS = 600;
+
+// Never throws: a timeout or transport failure comes back as ok:false, status null.
+async function call(url, init) {
+    let r, text;
+    try {
+        r = await fetch(url, { ...init, signal: AbortSignal.timeout(AUTH_TIMEOUT_MS) });
+        text = await r.text();
+    } catch (e) {
+        return { ok: false, status: null, body: { message: String((e && e.message) || e) } };
+    }
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+    return { ok: r.ok, status: r.status, body };
+}
+
+function serviceHeaders(serviceKey) {
+    return { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey, 'Content-Type': 'application/json' };
+}
+
+async function myAccess(url, userHeaders) {
+    const r = await call(url + '/rest/v1/rpc/atlas_my_access', {
+        method: 'POST', headers: { ...userHeaders, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!r.ok || !Array.isArray(r.body) || !r.body[0]) return null;
+    return r.body[0];
+}
+
+// true / false, or null when the answer could not be read (never treated as yes).
+async function isApproved(url, userHeaders) {
+    const r = await call(url + '/rest/v1/rpc/atlas_is_approved', {
+        method: 'POST', headers: { ...userHeaders, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!r.ok || typeof r.body !== 'boolean') return null;
+    return r.body;
+}
+
+async function connect(req, res, env) {
+    const parsed = parseConnectInput(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
+    const { name, keyId, secretKey, paper } = parsed.value;
+    const user = req.atlasAuth.user;
+
+    // ONB-2: approval is checked with the CALLER's token, before the broker is
+    // asked anything. The broker_accounts trigger refuses an unapproved owner
+    // too; that is the backstop, this is the gate.
+    const approved = await isApproved(env.url, env.userHeaders);
+    if (approved === null) return res.status(503).json({ error: 'approval_unavailable', detail: 'Could not confirm your account is approved. Try again.' });
+    if (!approved) return res.status(403).json({ error: 'not_approved', detail: 'Your account is waiting for approval. You can connect a broker once it is approved.' });
+
+    // The cap is enforced in the database; asking first only spares the broker
+    // a call that cannot lead anywhere.
+    const access = await myAccess(env.url, env.userHeaders);
+    if (!access) return res.status(503).json({ error: 'access_unavailable', detail: 'Could not read your account limits. Try again.' });
+    if (access.account_cap != null && access.owned_portfolios >= access.account_cap) {
+        return res.status(409).json({ error: 'account_limit', detail: 'You can connect up to ' + access.account_cap + ' accounts.' });
+    }
+
+    const acct = await verifyAlpacaKeys(keyId, secretKey, paper);
+    if (!acct.ok) return res.status(422).json({ error: 'credentials_rejected', detail: keysRejectedDetail(paper, acct.status) });
+
+    const r = await call(env.url + '/rest/v1/rpc/atlas_connect_broker_account', {
+        method: 'POST', headers: serviceHeaders(env.serviceKey),
+        body: JSON.stringify({
+            p_user_id: user.id, p_name: name, p_account_number: acct.accountNumber,
+            p_is_paper: paper, p_key_id: keyId, p_secret_key: secretKey,
+        }),
+    });
+    if (!r.ok) {
+        const code = r.body && r.body.code;
+        if (code === '23505') {
+            return res.status(409).json({ error: 'already_registered', detail: 'That broker account is already connected to Atlas.' });
+        }
+        if (code === '42501') {
+            return res.status(403).json({ error: 'not_approved', detail: 'Your account is waiting for approval. You can connect a broker once it is approved.' });
+        }
+        if (code === '23514') {
+            return res.status(409).json({ error: 'account_limit', detail: 'You have reached your account limit.' });
+        }
+        console.error('onboarding: connect failed:', r.status, (r.body && r.body.message) || '');
+        return res.status(r.status ? 500 : 504).json({ error: 'connect_failed', detail: 'The account could not be saved. Nothing was connected; try again.' });
+    }
+    const portfolioId = r.body;
+    const syncs = await startFirstSyncs(env.url, portfolioId, process.env.CRON_SECRET);
+    return res.status(201).json({
+        portfolio_id: portfolioId, name, account_last4: last4(acct.accountNumber), paper, first_syncs: syncs,
+    });
+}
+
+// The caller's own accounts, read with THEIR token: an account they do not own
+// is simply absent. Answers the row, null when not theirs, undefined when the
+// list could not be read (never treated as "not theirs").
+async function ownedAccount(url, userHeaders, portfolioId) {
+    const r = await call(url + '/rest/v1/rpc/atlas_my_broker_accounts', {
+        method: 'POST', headers: { ...userHeaders, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!r.ok || !Array.isArray(r.body)) return undefined;
+    return r.body.find((row) => row && row.portfolio_id === portfolioId) || null;
+}
+
+async function replaceKeys(req, res, env) {
+    const parsed = parseReplaceKeysInput(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
+    const { portfolioId, keyId, secretKey } = parsed.value;
+    const user = req.atlasAuth.user;
+
+    const acct = await ownedAccount(env.url, env.userHeaders, portfolioId);
+    if (acct === undefined) return res.status(503).json({ error: 'access_unavailable', detail: 'Could not read your accounts. Try again.' });
+    if (acct === null) return res.status(403).json({ error: 'not_owner', detail: 'Only the account\u2019s owner can replace its keys.' });
+    const paper = acct.is_paper !== false;
+
+    const checked = await verifyAlpacaKeys(keyId, secretKey, paper);
+    if (!checked.ok) return res.status(422).json({ error: 'credentials_rejected', detail: keysRejectedDetail(paper, checked.status) });
+
+    const r = await call(env.url + '/rest/v1/rpc/atlas_replace_broker_credentials', {
+        method: 'POST', headers: serviceHeaders(env.serviceKey),
+        body: JSON.stringify({
+            p_user_id: user.id, p_portfolio_id: portfolioId, p_account_number: checked.accountNumber,
+            p_key_id: keyId, p_secret_key: secretKey,
+        }),
+    });
+    if (!r.ok) {
+        const code = r.body && r.body.code;
+        if (code === '22023') {
+            return res.status(409).json({ error: 'different_account', detail: 'Those keys belong to a different Alpaca account (ending ' + last4(checked.accountNumber) + '). Nothing was changed.' });
+        }
+        if (code === '42501') return res.status(403).json({ error: 'not_owner', detail: 'Only the account\u2019s owner can replace its keys.' });
+        console.error('onboarding: replace_keys failed:', r.status, (r.body && r.body.message) || '');
+        return res.status(r.status ? 500 : 504).json({ error: 'replace_failed', detail: 'The keys could not be saved. The old keys are still in place; try again.' });
+    }
+    // The next five-minute sync reads the new pair; start one now so the
+    // account is confirmed on them straight away.
+    const syncs = await startFirstSyncs(env.url, portfolioId, process.env.CRON_SECRET);
+    return res.status(200).json({ portfolio_id: portfolioId, account_last4: r.body, paper, first_syncs: syncs });
+}
+
+function alreadyRegistered(r) {
+    const b = r.body || {};
+    const code = String(b.error_code || b.code || '');
+    const msg = String(b.msg || b.message || '');
+    return code === 'email_exists' || /already (been )?registered|already exists/i.test(msg);
+}
+
+// The caller is an administrator, asked with THEIR token so the database
+// decides. Answers a response to send when they are not, null when they are.
+async function refuseNonAdmin(res, env, verb) {
+    const isAdmin = await call(env.url + '/rest/v1/rpc/atlas_is_admin', {
+        method: 'POST', headers: { ...env.userHeaders, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    if (!isAdmin.ok) return res.status(503).json({ error: 'access_unavailable', detail: 'Could not confirm you are an administrator. Try again.' });
+    if (isAdmin.body !== true) return res.status(403).json({ error: 'admin_only', detail: 'Only an administrator can ' + verb + '.' });
+    return null;
+}
+
+// A one-time link for this address: an invite, or -- for someone who already
+// has an account -- a link to set a new password. Auth re-issues an invite for
+// a person who never accepted one. Nothing is emailed. Returns { kind, link }
+// or null (logged).
+async function issueLink(req, env, email, data) {
+    const redirect = inviteRedirect(req);
+    const generate = (type) => {
+        const body = { type, email };
+        if (redirect) body.redirect_to = redirect;
+        if (data && type === 'invite') body.data = data;
+        return call(env.url + '/auth/v1/admin/generate_link', {
+            method: 'POST', headers: serviceHeaders(env.serviceKey), body: JSON.stringify(body),
+        });
+    };
+    let kind = 'invite';
+    let r = await generate('invite');
+    if (!r.ok && alreadyRegistered(r)) {
+        kind = 'recovery';
+        r = await generate('recovery');
+    }
+    if (!r.ok) {
+        console.error('onboarding: generate_link failed:', r.status, (r.body && (r.body.error_code || r.body.code)) || '');
+        return null;
+    }
+    const b = r.body || {};
+    const link = b.action_link || (b.properties && b.properties.action_link) || null;
+    if (!link) {
+        console.error('onboarding: generate_link answered without a link');
+        return null;
+    }
+    return { kind, link };
+}
+
+// RA-2: ask Auth to EMAIL the invitation (or, for an existing account, a
+// set-new-password link). Returns { kind, delivered: 'email' } when Auth
+// accepted the message, else { error } with Auth's code -- never throws.
+async function emailInvitation(req, env, email, data) {
+    const redirect = inviteRedirect(req);
+    const qs = redirect ? '?redirect_to=' + encodeURIComponent(redirect) : '';
+    const post = (path, body) => call(env.url + path + qs, {
+        method: 'POST', headers: serviceHeaders(env.serviceKey), body: JSON.stringify(body),
+    });
+    let kind = 'invite';
+    let r = await post('/auth/v1/invite', data ? { email, data } : { email });
+    if (!r.ok && alreadyRegistered(r)) {
+        kind = 'recovery';
+        r = await post('/auth/v1/recover', { email });
+    }
+    if (r.ok) return { kind, delivered: 'email' };
+    const code = String((r.body && (r.body.error_code || r.body.code)) || r.status || 'unreachable');
+    console.error('onboarding: invitation email not sent, falling back to a link:', r.status, code);
+    return { error: code };
+}
+
+// Email first; a link for the administrator to pass on when Auth cannot send
+// (or when they asked for one). Answers the response fields, or null when
+// neither worked (logged).
+async function issueInvitation(req, env, email, data, wantLink) {
+    let emailError = null;
+    if (!wantLink) {
+        const sent = await emailInvitation(req, env, email, data);
+        if (sent.delivered) return { kind: sent.kind, delivered: 'email', expires_in_seconds: INVITE_LINK_TTL_SECONDS };
+        emailError = sent.error;
+    }
+    const issued = await issueLink(req, env, email, data);
+    if (!issued) return null;
+    const out = { kind: issued.kind, delivered: 'link', action_link: issued.link, expires_in_seconds: INVITE_LINK_TTL_SECONDS };
+    if (emailError) out.email_error = emailError;
+    return out;
+}
+
+async function invite(req, res, env) {
+    const refused = await refuseNonAdmin(res, env, 'invite people');
+    if (refused) return refused;
+    const parsed = parseInviteInput(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: 'invalid_input', detail: parsed.error });
+    const { email } = parsed.value;
+    const wantLink = !!(req.body && req.body.link === true);
+    const issued = await issueInvitation(req, env, email, null, wantLink);
+    if (!issued) return res.status(502).json({ error: 'invite_failed', detail: 'The invitation could not be created. Try again.' });
+    return res.status(201).json({ email, ...issued });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// RA-1: approve or decline a request for access. Approval issues the link
+// FIRST and only then marks the request approved: a request marked approved
+// with no link behind it would be a promise nobody can keep, while a link
+// issued for a request that then fails to close is just a pending request
+// with a working invitation.
+async function decide(req, res, env) {
+    const refused = await refuseNonAdmin(res, env, 'decide requests');
+    if (refused) return refused;
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const id = typeof b.id === 'string' ? b.id.trim() : '';
+    const decision = b.decision === 'approve' ? 'approved' : b.decision === 'decline' ? 'declined' : null;
+    if (!UUID_RE.test(id) || !decision) return res.status(400).json({ error: 'invalid_input', detail: 'A request id and approve or decline are required.' });
+
+    const row = await call(env.url + '/rest/v1/access_requests?select=id,name,surname,email,status&id=eq.' + id, {
+        headers: serviceHeaders(env.serviceKey),
+    });
+    const reqRow = row.ok && Array.isArray(row.body) ? row.body[0] : null;
+    if (!row.ok) return res.status(503).json({ error: 'unavailable', detail: 'Could not read the request. Try again.' });
+    if (!reqRow) return res.status(404).json({ error: 'not_found', detail: 'That request no longer exists.' });
+    if (reqRow.status !== 'pending') return res.status(409).json({ error: 'already_decided', detail: 'That request was already ' + reqRow.status + '.' });
+
+    let issued = null;
+    if (decision === 'approved') {
+        // The names travel to the new account's profile (user_metadata).
+        const data = {};
+        if (reqRow.name) data.first_name = reqRow.name;
+        if (reqRow.surname) data.surname = reqRow.surname;
+        issued = await issueInvitation(req, env, reqRow.email, Object.keys(data).length ? data : null, false);
+        if (!issued) return res.status(502).json({ error: 'invite_failed', detail: 'The invitation could not be created, so the request is still pending. Try again.' });
+    }
+    const mark = await call(env.url + '/rest/v1/rpc/atlas_decide_access_request', {
+        method: 'POST', headers: serviceHeaders(env.serviceKey),
+        body: JSON.stringify({ p_id: id, p_status: decision, p_admin: req.atlasAuth.user.id }),
+    });
+    if (!mark.ok) {
+        console.error('onboarding: decide failed:', mark.status, (mark.body && mark.body.code) || '');
+        if (issued) {
+            // The invitation exists; say so rather than hide a working one.
+            return res.status(207).json({ email: reqRow.email, ...issued,
+                warning: 'The invitation was created but the request could not be marked approved.' });
+        }
+        return res.status(502).json({ error: 'decide_failed', detail: 'The request could not be updated. Try again.' });
+    }
+    if (!issued) return res.status(200).json({ email: reqRow.email, decision });
+    return res.status(201).json({ email: reqRow.email, decision, ...issued });
+}
+
+// ONB-5: an administrator approves, revokes or restores a person, and the
+// person is told by email. The change itself is atlas_admin_set_status called
+// with the ADMINISTRATOR's token, so the database decides who may make it
+// (administrators only, never on yourself, never on another administrator).
+// The email is sent only after the change is saved, and a failed email never
+// undoes it: the answer says whether the person was told.
+const SET_STATUS_VALUES = new Set(['approved', 'revoked', 'pending']);
+
+async function setStatus(req, res, env) {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const userId = typeof b.user_id === 'string' ? b.user_id.trim() : '';
+    const status = typeof b.status === 'string' ? b.status : '';
+    if (!UUID_RE.test(userId) || !SET_STATUS_VALUES.has(status)) {
+        return res.status(400).json({ error: 'invalid_input', detail: 'A person and approved, revoked or pending are required.' });
+    }
+    const r = await call(env.url + '/rest/v1/rpc/atlas_admin_set_status', {
+        method: 'POST', headers: { ...env.userHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_user_id: userId, p_status: status }),
+    });
+    if (!r.ok) {
+        const code = (r.body && r.body.code) || '';
+        const message = (r.body && r.body.message) || '';
+        if (code === '42501') return res.status(403).json({ error: 'refused', detail: message || 'Only an administrator can change access.' });
+        if (code === 'P0002') return res.status(404).json({ error: 'not_found', detail: 'That person no longer has an account.' });
+        console.error('onboarding: set_status failed:', r.status, code);
+        return res.status(r.status === null ? 503 : 502).json({ error: 'set_status_failed', detail: 'That change was not saved. Try again.' });
+    }
+    // 'pending -> approved'
+    const m = /^(\w+) -> (\w+)$/.exec(String(r.body || ''));
+    const from = m ? m[1] : null;
+
+    const who = await call(env.url + '/rest/v1/atlas_accounts?select=email,first_name&user_id=eq.' + userId, {
+        headers: serviceHeaders(env.serviceKey),
+    });
+    const person = who.ok && Array.isArray(who.body) ? who.body[0] : null;
+    const msg = person && from ? statusChangeMessage({ from, to: status, email: person.email, first: person.first_name }) : null;
+    let notified = 'none';
+    let notifyError;
+    if (msg) {
+        const sent = await sendEmail(msg, { apiKey: process.env.RESEND_API_KEY });
+        if (sent.sent) notified = 'email';
+        else {
+            notified = sent.reason === 'not_configured' ? 'not_configured' : 'failed';
+            if (notified === 'failed') notifyError = sent.reason;
+            console.error('onboarding: status email not sent:', sent.reason);
+        }
+    } else if (!person && from !== status) {
+        console.error('onboarding: set_status saved but the account could not be read for the email:', who.status);
+        notified = 'failed';
+        notifyError = 'account_unreadable';
+    }
+    const out = { status, from, notified };
+    if (notifyError) out.notify_error = notifyError;
+    return res.status(200).json(out);
+}
+
+async function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+    const { url, serviceKey } = supabaseEnv();
+    const userHeaders = supabaseHeaders(req.atlasAuth, req);
+    if (!serviceKey || !userHeaders) {
+        console.error('onboarding: Supabase keys not configured on this deployment');
+        return res.status(503).json({ error: 'not_configured' });
+    }
+    const env = { url, serviceKey, userHeaders };
+    const action = req.query && req.query.action;
+    if (action === 'connect') return connect(req, res, env);
+    if (action === 'invite') return invite(req, res, env);
+    if (action === 'decide') return decide(req, res, env);
+    if (action === 'replace_keys') return replaceKeys(req, res, env);
+    if (action === 'set_status') return setStatus(req, res, env);
+    return res.status(400).json({ error: 'action must be connect, invite, decide, replace_keys or set_status' });
+}
+
+// A signed-in person only. The cron secret has no business here: an account
+// connected under it would belong to nobody.
+export default withAuth(handler, { cron: false });

@@ -20,7 +20,7 @@ import { writeStoredPortfolio } from '../lib/activePortfolio.js';
 import {
     validateConnectForm, onboardingErrorMessage, accountCapLine,
     canConnectMore, inviteResultText, validateAccessRequest, accountsButtonLabel,
-    ACCESS_REQUEST_REPLY, ACCESS_NOTE_MAX, ACCESS_NAME_MAX, requesterName,
+    ACCESS_REQUEST_REPLY, ACCESS_NOTE_MAX, ACCESS_NAME_MAX, requesterName, statusChangeText,
 } from '../lib/onboarding.js';
 import { BROKERS } from '../lib/brokerOnboarding.js';
 import {
@@ -506,6 +506,7 @@ function PeoplePanel({ onChanged }) {
     const [selfId, setSelfId] = React.useState(null);
     const [busyId, setBusyId] = React.useState(null);
     const [error, setError] = React.useState(null);
+    const [notice, setNotice] = React.useState(null);
     const [shown, setShown] = React.useState({});
     const load = React.useCallback(() => {
         setSt((s) => ({ ...s, loading: true }));
@@ -518,21 +519,21 @@ function PeoplePanel({ onChanged }) {
 
     async function act(row, a) {
         if (a.confirm && !globalThis.confirm(a.confirm)) return;
-        setError(null); setBusyId(row.user_id);
+        setError(null); setNotice(null); setBusyId(row.user_id);
         try {
-            const { error: err } = await supabase.rpc('atlas_admin_set_status', { p_user_id: row.user_id, p_status: a.to });
-            if (err) {
-                console.error('[Onboarding] atlas_admin_set_status:', err.message || err);
-                setError('That change was not saved: ' + (err.message || 'the database refused it') + '.');
+            // ONB-5: through the route, so the person is emailed once the change is saved.
+            const r = await postOnboarding('set_status', { user_id: row.user_id, status: a.to });
+            if (!r.ok) {
+                console.error('[Onboarding] set_status:', r.status, r.body && r.body.error);
+                setError(r.status === 0
+                    ? 'That change was not saved: Atlas could not reach the server. Try again.'
+                    : 'That change was not saved: ' + ((r.body && r.body.detail) || 'the server refused it.'));
                 return;
             }
+            const text = statusChangeText(r.body);
+            if (text) setNotice(text);
             load();
             if (onChanged) onChanged();
-        } catch (e2) {
-            // A rejected call (network, aborted fetch) must not leave the row
-            // looking as if nothing was attempted.
-            console.error('[Onboarding] atlas_admin_set_status threw:', e2 && e2.message ? e2.message : e2);
-            setError('That change was not saved: Atlas could not reach the server. Try again.');
         } finally {
             setBusyId(null);
         }
@@ -548,6 +549,7 @@ function PeoplePanel({ onChanged }) {
     if (groups.length === 0) return e('p', { className: 'ob-hint' }, 'Nobody has signed in yet.');
     return e('div', { className: 'ob-requests' },
         error && e('div', { role: 'alert', className: 'ag-error' }, error),
+        notice && e('p', { role: 'status', className: 'ob-status' }, notice),
         groups.map((g) => {
             const open = shown[g.id] === undefined ? !g.collapsed : shown[g.id];
             return e('section', { key: g.id, className: 'ob-group' },

@@ -46,7 +46,7 @@ globalThis.fetch = async (url, init = {}) => {
     throw new Error('unexpected fetch ' + u);
 };
 
-const { default: handler } = await import('../../api/broker-accounts.js');
+const { default: handler } = await import('../../server/api/broker-accounts.js');
 
 async function call(action, body, auth = 'Bearer admin-secret') {
     let status = null, out = null;

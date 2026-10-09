@@ -35,7 +35,7 @@ test('symbolById maps ids and skips incomplete rows', () => {
 
 // The embed filter is what timed out. Fail any handler that reintroduces it.
 test('no api handler filters price_history through the assets embed', () => {
-    const dir = new URL('../../api/', import.meta.url).pathname;
+    const dir = new URL('../../server/api/', import.meta.url).pathname;
     const hits = [];
     for (const f of readdirSync(dir).filter(n => n.endsWith('.js'))) {
         const src = readFileSync(join(dir, f), 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
@@ -63,7 +63,7 @@ test('select is a plain column list, never an embed or a filter', () => {
 // beside its `1d` ones. Every price_history READ in api/ goes through
 // bookPricesPath, so fail any hand-built PostgREST path.
 test('no api handler hand-builds a price_history read path', () => {
-    const dir = new URL('../../api/', import.meta.url).pathname;
+    const dir = new URL('../../server/api/', import.meta.url).pathname;
     const hits = [];
     for (const f of readdirSync(dir).filter(n => n.endsWith('.js'))) {
         const src = readFileSync(join(dir, f), 'utf8').split('\n')

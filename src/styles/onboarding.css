@@ -41,6 +41,9 @@
   color: var(--nx-text2);
 }
 
+/* ONB-5: the outcome of an access change, above the People list. */
+.ob-status { margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: var(--nx-text2); }
+
 .ob-done { text-align: center; color: var(--nx-text2); font-size: 15px; line-height: 1.5; }
 .ob-done-title {
   margin-bottom: 6px;

@@ -139,7 +139,7 @@ test('on the default account nothing is installed: requests are exactly as befor
 // no Supabase service key in this process) every one must still be refused
 // before the broker is contacted. tradingRouting.test.mjs covers the routed path.
 test('api/trading refuses every ACCOUNT action it cannot route, before touching the broker', async () => {
-    const { default: handler } = await import('../../api/trading.js');
+    const { default: handler } = await import('../../server/api/trading.js');
     const realFetch = globalThis.fetch;
     let brokerCalls = 0;
     globalThis.fetch = async () => { brokerCalls += 1; throw new Error('broker must not be called'); };

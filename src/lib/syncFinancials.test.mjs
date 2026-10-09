@@ -9,7 +9,7 @@
 // ============================================================
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { num, rowsFor, assertNotThrottled, RateLimited, STATEMENTS } from '../../api/sync-financials.js';
+import { num, rowsFor, assertNotThrottled, RateLimited, STATEMENTS } from '../../server/api/sync-financials.js';
 
 const INCOME = STATEMENTS.find(s => s.fn === 'INCOME_STATEMENT');
 const CASH   = STATEMENTS.find(s => s.fn === 'CASH_FLOW');
@@ -118,7 +118,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const LOADER = readFileSync(
-    fileURLToPath(new URL('../../api/sync-financials.js', import.meta.url)), 'utf8');
+    fileURLToPath(new URL('../../server/api/sync-financials.js', import.meta.url)), 'utf8');
 
 function stripComments(src) {
     return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
@@ -180,7 +180,7 @@ test('freshness is judged on COMPLETE coverage, not on the income statement alon
 // ── EQ-3 probe: the concept measurement ────────────────────────────────────
 
 import { indexReport, probeConcepts, GAAP_CONCEPTS, INSTITUTION_CONCEPTS }
-    from '../../api/sync-financials.js';
+    from '../../server/api/sync-financials.js';
 
 test('indexReport flattens all three sections and keeps the first tag', () => {
     const idx = indexReport({
@@ -260,7 +260,7 @@ test('the institution concepts cover all three CFA L2 V3 LM4 frameworks', () => 
 
 // ── the namespace prefix, found by the probe's first live run ───────────────
 
-import { conceptKey, taxonomyOf, indexByLocalName } from '../../api/sync-financials.js';
+import { conceptKey, taxonomyOf, indexByLocalName } from '../../server/api/sync-financials.js';
 
 test('the three us-gaap spellings resolve to one key', () => {
     // Measured: the first probe returned MISS on EVERY field for GOOGL while
@@ -343,7 +343,7 @@ test('indexByLocalName keeps the raw concept alongside the value', () => {
 // a guess. These tests pin the two properties that make the search usable on
 // an UNKNOWN vocabulary rather than a known one.
 // ============================================================
-import { conceptSearch } from '../../api/sync-financials.js';
+import { conceptSearch } from '../../server/api/sync-financials.js';
 
 const P_AND_C = [
     indexReport({
@@ -411,7 +411,7 @@ test('conceptSearch caps its result and the cap is bounded', () => {
 // filed in a currency that is not the dollar.
 // ============================================================
 import { reportedRowsFor, reportedSummary, isoDate, SOURCE_REPORTED }
-    from '../../api/sync-financials.js';
+    from '../../server/api/sync-financials.js';
 
 const TEN_K = {
     data: [{
@@ -570,7 +570,7 @@ test('`taxonomy is not null` IS the foreign test, across all three spellings', (
 // years under one ticker. Case 6 above covered a concept repeated WITHIN one
 // filing; nothing covered the same year arriving in TWO.
 // ============================================================
-import { pickOnePerYear, supersededFilings } from '../../api/sync-financials.js';
+import { pickOnePerYear, supersededFilings } from '../../server/api/sync-financials.js';
 
 const filing = (year, n, filed, acc) => ({
     year, form: '10-K', filedDate: filed, accessNumber: acc,

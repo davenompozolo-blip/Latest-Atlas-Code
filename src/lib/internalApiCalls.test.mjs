@@ -11,7 +11,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { internalCallHeaders } from './apiAuth.js';
 
-const API = new URL('../../api/', import.meta.url).pathname;
+const API = new URL('../../server/api/', import.meta.url).pathname;
 
 /** Files that build a same-deployment /api URL from a resolved origin. */
 export function internalCallers(files) {
