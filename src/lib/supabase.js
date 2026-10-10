@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { portfolioHeaders } from './activePortfolio.js'
+import { createAuthStorage } from './authStorage.js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vdmojjszvvcithuxwexx.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || ''
@@ -11,8 +12,17 @@ if (!supabaseAnonKey) {
 // MP-2: every request carries the chosen portfolio (if any) as
 // x-atlas-portfolio; atlas_active_portfolio() resolves it server-side. No
 // choice sends no header, and the server falls back to the default portfolio.
+// AUTH-3: the session is kept for this browser session only, unless the
+// person ticked "Keep me signed in" (src/lib/authStorage.js). The key is the
+// one supabase-js derives by default, named so the adapter can find it.
+const AUTH_STORAGE_KEY = 'sb-' + new URL(supabaseUrl).hostname.split('.')[0] + '-auth-token'
+export const authStorage = supabaseAnonKey ? createAuthStorage({ storageKey: AUTH_STORAGE_KEY }) : null
+
 export const supabase = supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey, { global: { headers: portfolioHeaders() } })
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: portfolioHeaders() },
+      auth: { storage: authStorage, storageKey: AUTH_STORAGE_KEY, persistSession: true },
+    })
   : null
 
 // Legacy alias used throughout existing pages

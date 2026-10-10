@@ -52,6 +52,20 @@ export function PasswordField({ id, label, ...rest }) {
             }, e(EyeIcon, { open: !shown }))));
 }
 
+/** AUTH-3: unticked by default; ticking it is the only way a session
+ *  outlives the browser. The hint says what leaving it unticked does. */
+export function KeepSignedIn({ id, checked, onChange }) {
+    return e('label', { htmlFor: id, className: 'ag-check' },
+        e('input', {
+            id, type: 'checkbox', className: 'ag-check-box', checked: !!checked,
+            onChange: (ev) => onChange(ev.target.checked),
+            'aria-describedby': id + '-hint',
+        }),
+        e('span', null, 'Keep me signed in',
+            e('span', { id: id + '-hint', className: 'ag-check-hint' },
+                checked ? 'Until you sign out' : 'Until you close the browser')));
+}
+
 export function SubmitButton({ busy, busyLabel, label, arrow }) {
     return e('button', { type: 'submit', className: 'ag-submit', disabled: busy, 'aria-busy': busy || undefined },
         e('span', null, busy ? busyLabel : label),
