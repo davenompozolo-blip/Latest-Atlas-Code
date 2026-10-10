@@ -10,11 +10,11 @@
 // (Supabase Auth -> Attack protection must then be on with the same provider).
 
 import React from 'react';
-import { supabase } from '../../lib/supabase.js';
+import { supabase, authStorage } from '../../lib/supabase.js';
 import {
     validateEmail, validateCode, normaliseCode, resendWaitSeconds, codeErrorMessage,
 } from '../../lib/onboarding/nextStep.js';
-import { Field, SubmitButton, Shell } from './AuthFormParts.js';
+import { Field, SubmitButton, Shell, KeepSignedIn } from './AuthFormParts.js';
 
 const e = React.createElement;
 
@@ -74,6 +74,7 @@ export function CodeSignInForm({ onUsePassword }) {
     const [phase, setPhase] = React.useState('email');   // 'email' | 'code'
     const [email, setEmail] = React.useState('');
     const [code, setCode] = React.useState('');
+    const [remember, setRemember] = React.useState(false);
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState(null);
     const [sentAt, setSentAt] = React.useState(null);
@@ -121,6 +122,7 @@ export function CodeSignInForm({ onUsePassword }) {
         if (invalid) { setError(invalid); return; }
         setBusy(true);
         try {
+            if (authStorage) authStorage.setRemember(remember);
             const { error: err } = await supabase.auth.verifyOtp({ email: email.trim(), token: normaliseCode(code), type: 'email' });
             if (err) {
                 console.error('[CodeSignIn] verifyOtp:', err.status, err.code || '', err.message || '');
@@ -146,6 +148,8 @@ export function CodeSignInForm({ onUsePassword }) {
                     autoComplete: 'one-time-code', inputMode: 'numeric', enterKeyHint: 'go', autoFocus: true,
                     maxLength: 14, onChange: (ev) => setCode(ev.target.value),
                 }),
+                e('div', { className: 'ag-row-split' },
+                    e(KeepSignedIn, { id: 'atlas-remember-code', checked: remember, onChange: setRemember })),
                 e(SubmitButton, { busy, busyLabel: 'Checking…', label: 'Sign in', arrow: true }),
                 error && e('div', { role: 'alert', className: 'ag-error' }, error),
                 needCaptcha && wait === 0 && e(Turnstile, { onToken: setCaptcha, resetKey: captchaReset }),

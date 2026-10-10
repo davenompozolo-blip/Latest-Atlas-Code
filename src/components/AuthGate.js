@@ -10,12 +10,15 @@
 // Layout: scene (auth/AuthBackdrop), brand panel, the glass card, capability
 // rail -- the pieces live in ./auth/. The scene is seeded geometry from
 // src/lib/authBackdrop.js and carries no figures. Colours are the --nx-*
-// tokens so it matches the shell. Two things in the design reference are left
-// out on purpose: "Remember me" (supabase-js already keeps the session until
-// sign-out, so the box would change nothing) and SSO (none is configured).
+// tokens so it matches the shell. SSO in the design reference is left out
+// (none is configured).
+//
+// AUTH-3: "Keep me signed in" is unticked by default and is the only way a
+// session outlives the browser (src/lib/authStorage.js). It is asked on every
+// sign-in, password or code, and forgotten on sign-out.
 
 import React from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase, authStorage } from '../lib/supabase.js';
 import {
     gateState, validateCredentials, validateNewPassword, authErrorMessage,
     signOutStorageKeys, sessionStorageKeys, recoveryPending, authChangeNeedsReload,
@@ -24,7 +27,7 @@ import {
 } from '../lib/authGate.js';
 import { AuthBackdrop } from './auth/AuthBackdrop.js';
 import { AtlasWordmark } from './auth/AtlasWordmark.js';
-import { Field, PasswordField, SubmitButton, Shell } from './auth/AuthFormParts.js';
+import { Field, PasswordField, SubmitButton, Shell, KeepSignedIn } from './auth/AuthFormParts.js';
 import { WelcomeGate } from './Welcome.js';
 import { CodeSignInForm } from './auth/CodeSignIn.js';
 import '../styles/auth-gate.css';
@@ -90,17 +93,21 @@ export async function signOut() {
     writeMarker(null);
     if (supabase) {
         const { error } = await supabase.auth.signOut({ scope: 'local' });
+        // Every store, whatever the server said: the next person on this
+        // machine starts signed out and unticked.
+        if (authStorage) authStorage.forget();
         if (error) {
             // auth-js keeps the stored session when the revoke request fails
             // (a 503, a dropped connection). Remove it here, or the reload
             // below would land the user straight back inside the terminal.
             console.error('[AuthGate] sign-out refused by the server; clearing this device\'s session:', error.message || error);
-            try {
-                const storage = globalThis.localStorage;
-                sessionStorageKeys(storage, supabase.auth.storageKey).forEach((k) => {
-                    try { storage.removeItem(k); } catch (_) { /* ignore */ }
-                });
-            } catch (_) { /* storage blocked */ }
+            [globalThis.localStorage, globalThis.sessionStorage].forEach((storage) => {
+                try {
+                    sessionStorageKeys(storage, supabase.auth.storageKey).forEach((k) => {
+                        try { storage.removeItem(k); } catch (_) { /* ignore */ }
+                    });
+                } catch (_) { /* storage blocked */ }
+            });
         }
     }
     reloadPage();
@@ -153,6 +160,7 @@ function SignInForm({ onUseCode }) {
     const [mode, setMode] = React.useState('sign_in'); // 'sign_in' | 'reset'
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
+    const [remember, setRemember] = React.useState(false);
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState(null);
     const [note, setNote] = React.useState(null);
@@ -165,6 +173,7 @@ function SignInForm({ onUseCode }) {
         setBusy(true);
         try {
             if (mode === 'sign_in') {
+                if (authStorage) authStorage.setRemember(remember);
                 const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
                 if (err) { setError(authErrorMessage(err, 'sign_in')); return; }
                 // onAuthStateChange carries the session to the gate.
@@ -204,7 +213,8 @@ function SignInForm({ onUseCode }) {
                 autoComplete: 'current-password', enterKeyHint: 'go',
                 onChange: (ev) => setPassword(ev.target.value),
             }),
-            signIn && e('div', { className: 'ag-row-end' }, toggle),
+            signIn && e('div', { className: 'ag-row-split' },
+                e(KeepSignedIn, { id: 'atlas-remember', checked: remember, onChange: setRemember }), toggle),
             e(SubmitButton, {
                 busy, arrow: true,
                 busyLabel: signIn ? 'Signing in\u2026' : 'Sending\u2026',

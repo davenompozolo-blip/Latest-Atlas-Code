@@ -7723,6 +7723,25 @@ table matches `server/api/`.
 **After a merge, check the production deployment, not just the PR checks.** A
 red Vercel status on `main` means production is serving an older build.
 
+### A session outlives the browser only when asked (AUTH-3, 2026-10-10)
+
+supabase-js keeps its session in localStorage by default, so whoever signed in
+last on a machine was still signed in the next time anyone opened it -- a
+convenience nobody chose, and the same for every account. Now the session lives
+in **sessionStorage** (gone when the browser closes) unless **Keep me signed
+in** is ticked at sign-in, password or code, and it is unticked by default.
+`src/lib/authStorage.js` is the storage adapter handed to `createClient`; the
+choice is `atlas.auth.remember.v1` in localStorage and is the only thing that
+sends a session there. Sign-out forgets it.
+
+**No flag means not remembered**, so the localStorage session every browser held
+before this deploy is dropped on first load: everyone signs in once more. An
+unticked session does not carry to a NEW tab (sessionStorage is per tab).
+
+**This is the browser half only.** Closing the browser discards the tokens here;
+it does not revoke the refresh token on the server, and Supabase's session
+time-box / inactivity timeout is a paid-plan setting.
+
 ### Sync Status UI
 - `src/components/SyncStatus.jsx` — React component for terminal header
 - Shows live health indicator (green/yellow/red) with expandable detail panel
